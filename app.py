@@ -1,181 +1,193 @@
-import re
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import pandas as pd
 import requests
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
-
+from io import BytesIO
 
 MAX_WORKERS = 20
-TIMEOUT = 10
 
 PLATFORM_URLS = {
-    "x": "https://x.com/{username}",
-    "twitter": "https://x.com/{username}",
-    "instagram": "https://www.instagram.com/{username}/",
-    "youtube": "https://www.youtube.com/@{username}",
-    "facebook": "https://www.facebook.com/{username}",
-    "snapchat": "https://www.snapchat.com/add/{username}",
+    "x": "https://x.com/{}",
+    "instagram": "https://www.instagram.com/{}/",
+    "youtube": "https://www.youtube.com/@{}",
+    "facebook": "https://www.facebook.com/{}",
+    "snapchat": "https://www.snapchat.com/add/{}",
 }
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 
-def clean_username(username: str) -> str:
-    username = str(username).strip()
-    username = username.replace("@", "")
-    username = username.rstrip("/")
-    return username
-
-
-def normalize_platform(platform: str) -> str:
-    platform = str(platform).strip().lower()
-    replacements = {
-        "اكس": "x",
-        "تويتر": "x",
-        "انستغرام": "instagram",
-        "انستقرام": "instagram",
-        "يوتيوب": "youtube",
-        "فيسبوك": "facebook",
-        "سناب": "snapchat",
-        "سناب شات": "snapchat",
-    }
-    return replacements.get(platform, platform)
-
-
-def extract_name(html: str) -> str:
+def استخراج_اسم_الحساب(html):
     soup = BeautifulSoup(html, "html.parser")
 
-    for prop in ["og:title", "twitter:title"]:
-        tag = soup.find("meta", attrs={"property": prop}) or soup.find("meta", attrs={"name": prop})
-        if tag and tag.get("content"):
-            title = tag["content"].strip()
-            title = re.sub(r"\s*[\(@|•-].*$", "", title).strip()
-            return title
+    title = soup.find("meta", property="og:title")
 
-    if soup.title and soup.title.string:
-        return soup.title.string.strip()
+    if title and title.get("content"):
+        return title["content"]
+
+    if soup.title:
+        return soup.title.text
 
     return ""
 
 
-def extract_canonical(html: str, fallback_url: str) -> str:
+def استخراج_عدد_المتابعين(html):
     soup = BeautifulSoup(html, "html.parser")
-    canonical = soup.find("link", rel="canonical")
-    if canonical and canonical.get("href"):
-        return canonical["href"].strip()
-    return fallback_url
+
+    metas = soup.find_all("meta")
+
+    for meta in metas:
+        content = str(meta.get("content", ""))
+
+        if "followers" in content.lower():
+            return content
+
+    return ""
 
 
-def fetch_account(row):
-    platform = normalize_platform(row.get("platform", ""))
-    username = clean_username(row.get("username", ""))
+def معالجة_الحساب(row):
+
+    المنصة = str(row["platform"]).strip().lower()
+    المستخدم = str(row["username"]).replace("@", "").strip()
 
     result = {
-        "platform": platform,
-        "input_username": username,
-        "account_name": "",
-        "permanent_identifier": username,
-        "account_url": "",
-        "status": "",
-        "error": "",
+        "المنصة": المنصة,
+        "اسم المستخدم": المستخدم,
+        "اسم الحساب": "",
+        "رابط الحساب": "",
+        "الدولة": "",
+        "تاريخ إنشاء الحساب": "",
+        "عدد المتابعين": "",
+        "الحالة": "",
     }
 
-    if not platform or not username:
-        result["status"] = "missing_data"
+    if المنصة not in PLATFORM_URLS:
+        result["الحالة"] = "منصة غير مدعومة"
         return result
 
-    if platform not in PLATFORM_URLS:
-        result["status"] = "unsupported_platform"
-        result["error"] = "المنصة غير مدعومة"
-        return result
-
-    url = PLATFORM_URLS[platform].format(username=username)
-    result["account_url"] = url
+    الرابط = PLATFORM_URLS[المنصة].format(المستخدم)
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
-        result["account_url"] = response.url
+
+        response = requests.get(
+            الرابط,
+            headers=HEADERS,
+            timeout=10
+        )
+
+        result["رابط الحساب"] = response.url
 
         if response.status_code == 200:
-            result["account_name"] = extract_name(response.text)
-            result["account_url"] = extract_canonical(response.text, response.url)
-            result["status"] = "ok"
-        elif response.status_code == 404:
-            result["status"] = "not_found"
+
+            html = response.text
+
+            result["اسم الحساب"] = استخراج_اسم_الحساب(html)
+            result["عدد المتابعين"] = استخراج_عدد_المتابعين(html)
+            result["الحالة"] = "تم"
+
         else:
-            result["status"] = f"http_{response.status_code}"
+            result["الحالة"] = f"خطأ {response.status_code}"
 
     except Exception as e:
-        result["status"] = "error"
-        result["error"] = str(e)
+        result["الحالة"] = str(e)
 
     return result
 
 
-st.set_page_config(page_title="مولد حسابات التواصل", layout="wide")
-
-st.title("مولد معلومات حسابات التواصل الاجتماعي")
-st.write("ارفع ملف Excel يحتوي على عمودين: platform و username. الحد الأقصى 500 مدخل.")
-
-sample_df = pd.DataFrame({
-    "platform": ["x", "instagram", "youtube", "facebook", "snapchat"],
-    "username": ["nasa", "natgeo", "MrBeast", "Meta", "snapchat"],
-})
-
-sample_output = BytesIO()
-with pd.ExcelWriter(sample_output, engine="openpyxl") as writer:
-    sample_df.to_excel(writer, index=False)
-sample_output.seek(0)
-
-st.download_button(
-    "تحميل قالب Excel للمدخلات",
-    sample_output,
-    "input_template.xlsx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+st.set_page_config(
+    page_title="مولد معلومات حسابات التواصل",
+    layout="wide"
 )
 
-uploaded_file = st.file_uploader("ارفع ملف Excel", type=["xlsx"])
+st.title("مولد معلومات حسابات التواصل الاجتماعي")
+
+st.markdown("""
+### صيغة ملف Excel المطلوبة
+
+| platform | username |
+|---|---|
+| x | nasa |
+| instagram | natgeo |
+| youtube | MrBeast |
+| facebook | Meta |
+| snapchat | snapchat |
+""")
+
+template_df = pd.DataFrame([
+    {"platform": "x", "username": "nasa"},
+    {"platform": "instagram", "username": "natgeo"},
+])
+
+template_output = BytesIO()
+
+with pd.ExcelWriter(template_output, engine="openpyxl") as writer:
+    template_df.to_excel(writer, index=False)
+
+template_output.seek(0)
+
+st.download_button(
+    label="تحميل قالب Excel",
+    data=template_output,
+    file_name="template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+uploaded_file = st.file_uploader(
+    "ارفع ملف Excel",
+    type=["xlsx"]
+)
 
 if uploaded_file:
+
     df = pd.read_excel(uploaded_file)
 
-    st.subheader("معاينة الملف")
-    st.dataframe(df.head(20), use_container_width=True)
+    st.write("### معاينة البيانات")
+    st.dataframe(df.head())
 
-    required = {"platform", "username"}
-    missing = required - set(df.columns)
+    if st.button("بدء المعالجة"):
 
-    if missing:
-        st.error(f"الأعمدة الناقصة: {', '.join(missing)}")
-    else:
-        if st.button("بدء المعالجة"):
-            rows = df.head(500).to_dict("records")
-            results = []
-            progress = st.progress(0)
+        rows = df.head(500).to_dict("records")
 
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                futures = [executor.submit(fetch_account, row) for row in rows]
-                total = len(futures)
+        النتائج = []
 
-                for i, future in enumerate(as_completed(futures), start=1):
-                    results.append(future.result())
-                    progress.progress(i / total)
+        progress = st.progress(0)
 
-            output_df = pd.DataFrame(results)
-            st.success("تمت المعالجة بنجاح")
-            st.dataframe(output_df, use_container_width=True)
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                output_df.to_excel(writer, index=False)
-            output.seek(0)
+            futures = [
+                executor.submit(معالجة_الحساب, row)
+                for row in rows
+            ]
 
-            st.download_button(
-                "تحميل ملف Excel النهائي",
-                output,
-                "social_accounts_output.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+            completed = 0
+
+            for future in as_completed(futures):
+
+                النتائج.append(future.result())
+
+                completed += 1
+
+                progress.progress(completed / len(futures))
+
+        output_df = pd.DataFrame(النتائج)
+
+        st.success("تم استخراج البيانات")
+
+        st.dataframe(output_df)
+
+        output = BytesIO()
+
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            output_df.to_excel(writer, index=False)
+
+        output.seek(0)
+
+        st.download_button(
+            label="تحميل ملف Excel النهائي",
+            data=output,
+            file_name="نتائج_الحسابات.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
