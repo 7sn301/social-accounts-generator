@@ -1,23 +1,25 @@
 """
-محلل TikTok المتقدم v2 - استخراج بيانات عميقة باستخدام Universal Data
-TikTok Deep Analyzer v2 - Comprehensive analysis with multi-layer location detection
+محلل TikTok المتقدم v5 - مع تحليل الفيديوهات
 
-ملاحظة: TikTok يُخفي حقل region من الواجهة العامة، لذا نستخدم 5 طبقات استنتاج:
-1. region من الـ API (نادر، فقط للمشاهير)
-2. language → منطقة محتملة (ar → دول عربية)
-3. تحليل البايو (مدن/دول/أعلام)
-4. تحليل الاسم الظاهر
-5. تحليل آخر فيديو (إن أمكن)
+🔥 الاكتشاف الذهبي:
+TikTok يحجب region من البروفايل، لكن metadata الفيديو تحوي:
+- locationCreated: مكان تصوير الفيديو (دقيق جداً)
+- author.region: منطقة المؤلف (نادر)
+- textLanguage: لغة المحتوى
+
+نعرض ميزتين:
+1. تحليل البروفايل الأساسي + استنتاج من البايو/اللهجة
+2. تحليل رابط فيديو محدد (يعطي locationCreated مباشرة)
 """
 
 import requests
 import json
 import re
 from bs4 import BeautifulSoup
+from collections import Counter
 from datetime import datetime, timezone
 
 
-# ============ Headers مبسّطة (أثبتت فعاليتها) ============
 TIKTOK_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -28,7 +30,7 @@ TIKTOK_HEADERS = {
 }
 
 
-# ============ خرائط الدول واللغات ============
+# ============ الخرائط ============
 TIKTOK_REGION_MAP = {
     "SA": ("🇸🇦", "السعودية"), "AE": ("🇦🇪", "الإمارات"), "EG": ("🇪🇬", "مصر"),
     "KW": ("🇰🇼", "الكويت"), "QA": ("🇶🇦", "قطر"), "BH": ("🇧🇭", "البحرين"),
@@ -36,22 +38,22 @@ TIKTOK_REGION_MAP = {
     "SY": ("🇸🇾", "سوريا"), "IQ": ("🇮🇶", "العراق"), "YE": ("🇾🇪", "اليمن"),
     "PS": ("🇵🇸", "فلسطين"), "MA": ("🇲🇦", "المغرب"), "DZ": ("🇩🇿", "الجزائر"),
     "TN": ("🇹🇳", "تونس"), "LY": ("🇱🇾", "ليبيا"), "SD": ("🇸🇩", "السودان"),
-    "SO": ("🇸🇴", "الصومال"), "MR": ("🇲🇷", "موريتانيا"), "DJ": ("🇩🇯", "جيبوتي"),
-    "KM": ("🇰🇲", "جزر القمر"),
+    "SO": ("🇸🇴", "الصومال"), "MR": ("🇲🇷", "موريتانيا"),
     "US": ("🇺🇸", "الولايات المتحدة"), "GB": ("🇬🇧", "بريطانيا"), "FR": ("🇫🇷", "فرنسا"),
     "DE": ("🇩🇪", "ألمانيا"), "IT": ("🇮🇹", "إيطاليا"), "ES": ("🇪🇸", "إسبانيا"),
     "NL": ("🇳🇱", "هولندا"), "BE": ("🇧🇪", "بلجيكا"), "CH": ("🇨🇭", "سويسرا"),
-    "SE": ("🇸🇪", "السويد"), "PT": ("🇵🇹", "البرتغال"),
+    "SE": ("🇸🇪", "السويد"), "PT": ("🇵🇹", "البرتغال"), "AT": ("🇦🇹", "النمسا"),
+    "PL": ("🇵🇱", "بولندا"), "GR": ("🇬🇷", "اليونان"),
     "RU": ("🇷🇺", "روسيا"), "UA": ("🇺🇦", "أوكرانيا"),
     "CN": ("🇨🇳", "الصين"), "JP": ("🇯🇵", "اليابان"), "KR": ("🇰🇷", "كوريا الجنوبية"),
     "IN": ("🇮🇳", "الهند"), "PK": ("🇵🇰", "باكستان"), "BD": ("🇧🇩", "بنغلاديش"),
     "TR": ("🇹🇷", "تركيا"), "IR": ("🇮🇷", "إيران"), "AF": ("🇦🇫", "أفغانستان"),
+    "IL": ("🇮🇱", "إسرائيل"),
     "BR": ("🇧🇷", "البرازيل"), "AR": ("🇦🇷", "الأرجنتين"), "MX": ("🇲🇽", "المكسيك"),
-    "CA": ("🇨🇦", "كندا"), "AU": ("🇦🇺", "أستراليا"),
+    "CA": ("🇨🇦", "كندا"), "AU": ("🇦🇺", "أستراليا"), "NZ": ("🇳🇿", "نيوزيلندا"),
     "ID": ("🇮🇩", "إندونيسيا"), "MY": ("🇲🇾", "ماليزيا"), "SG": ("🇸🇬", "سنغافورة"),
     "TH": ("🇹🇭", "تايلاند"), "VN": ("🇻🇳", "فيتنام"), "PH": ("🇵🇭", "الفلبين"),
     "NG": ("🇳🇬", "نيجيريا"), "ZA": ("🇿🇦", "جنوب أفريقيا"), "KE": ("🇰🇪", "كينيا"),
-    "ET": ("🇪🇹", "إثيوبيا"),
 }
 
 LANGUAGE_NAMES_AR = {
@@ -60,56 +62,45 @@ LANGUAGE_NAMES_AR = {
     "tr": "التركية", "fa": "الفارسية", "ur": "الأردية", "hi": "الهندية",
     "zh": "الصينية", "ja": "اليابانية", "ko": "الكورية", "id": "الإندونيسية",
     "ms": "الماليزية", "th": "التايلاندية", "vi": "الفيتنامية", "tl": "الفلبينية",
-    "nl": "الهولندية", "pl": "البولندية", "sv": "السويدية", "el": "اليونانية",
-    "he": "العبرية", "uk": "الأوكرانية", "ro": "الرومانية", "bn": "البنغالية",
+    "nl": "الهولندية", "pl": "البولندية", "el": "اليونانية", "he": "العبرية",
+    "uk": "الأوكرانية", "ro": "الرومانية", "bn": "البنغالية", "un": "غير محدد",
 }
 
-# لغة → مجموعة دول محتملة (للاستنتاج عند غياب region)
 LANG_TO_COUNTRIES = {
     "ar": ["SA", "EG", "AE", "MA", "DZ", "IQ", "KW", "QA", "JO", "LB", "TN", "LY", "SY", "YE", "OM", "BH", "PS", "SD"],
-    "tr": ["TR"], "fa": ["IR", "AF"], "ur": ["PK", "IN"],
-    "hi": ["IN"], "bn": ["BD", "IN"], "id": ["ID"], "ms": ["MY"],
-    "th": ["TH"], "vi": ["VN"], "tl": ["PH"], "ja": ["JP"], "ko": ["KR"],
-    "ru": ["RU", "UA"], "uk": ["UA"], "pl": ["PL"],
-    "es": ["ES", "MX", "AR", "CO", "CL", "PE"], "pt": ["BR", "PT"],
-    "de": ["DE", "AT", "CH"], "it": ["IT"], "nl": ["NL", "BE"],
-    "el": ["GR"], "he": ["IL"], "tr": ["TR"],
+    "tr": ["TR"], "fa": ["IR", "AF"], "ur": ["PK"], "hi": ["IN"], "bn": ["BD"],
+    "id": ["ID"], "ms": ["MY"], "th": ["TH"], "vi": ["VN"], "tl": ["PH"],
+    "ja": ["JP"], "ko": ["KR"], "ru": ["RU"], "uk": ["UA"], "pl": ["PL"],
+    "es": ["ES", "MX", "AR"], "pt": ["BR", "PT"], "de": ["DE"], "it": ["IT"],
+    "nl": ["NL"], "el": ["GR"], "he": ["IL"],
 }
 
-# ============ خريطة المدن للاستنتاج من البايو ============
 CITY_TO_COUNTRY = {
-    # السعودية
-    "riyadh": "SA", "jeddah": "SA", "mecca": "SA", "makkah": "SA", "medina": "SA", "madinah": "SA",
+    "riyadh": "SA", "jeddah": "SA", "mecca": "SA", "makkah": "SA", "medina": "SA",
     "dammam": "SA", "khobar": "SA", "taif": "SA", "abha": "SA", "tabuk": "SA",
-    "الرياض": "SA", "جدة": "SA", "مكة": "SA", "المدينة": "SA", "الدمام": "SA", "الخبر": "SA",
+    "الرياض": "SA", "جدة": "SA", "مكة": "SA", "المدينة": "SA", "الدمام": "SA",
     "الطائف": "SA", "أبها": "SA", "تبوك": "SA", "السعودية": "SA", "ksa": "SA", "saudi": "SA",
-    # الإمارات
-    "dubai": "AE", "abu dhabi": "AE", "abudhabi": "AE", "sharjah": "AE", "ajman": "AE",
-    "دبي": "AE", "أبوظبي": "AE", "ابوظبي": "AE", "الشارقة": "AE", "عجمان": "AE",
+    "dubai": "AE", "abu dhabi": "AE", "abudhabi": "AE", "sharjah": "AE",
+    "دبي": "AE", "أبوظبي": "AE", "ابوظبي": "AE", "الشارقة": "AE",
     "الإمارات": "AE", "الامارات": "AE", "uae": "AE",
-    # مصر
     "cairo": "EG", "alexandria": "EG", "giza": "EG", "egypt": "EG",
-    "القاهرة": "EG", "الإسكندرية": "EG", "الاسكندرية": "EG", "الجيزة": "EG", "مصر": "EG",
-    # دول الخليج
-    "kuwait": "KW", "الكويت": "KW", "doha": "QA", "qatar": "QA", "الدوحة": "QA", "قطر": "QA",
-    "manama": "BH", "bahrain": "BH", "المنامة": "BH", "البحرين": "BH",
+    "القاهرة": "EG", "الإسكندرية": "EG", "الجيزة": "EG", "مصر": "EG",
+    "kuwait": "KW", "الكويت": "KW", "doha": "QA", "qatar": "QA", "قطر": "QA",
+    "manama": "BH", "bahrain": "BH", "البحرين": "BH",
     "muscat": "OM", "oman": "OM", "مسقط": "OM", "سلطنة عمان": "OM",
-    # الشام
-    "amman": "JO", "jordan": "JO", "عمّان": "JO", "عمان": "JO", "الأردن": "JO", "اربد": "JO",
+    "amman": "JO", "jordan": "JO", "عمّان": "JO", "عمان": "JO", "الأردن": "JO",
     "beirut": "LB", "lebanon": "LB", "بيروت": "LB", "لبنان": "LB",
-    "baghdad": "IQ", "iraq": "IQ", "بغداد": "IQ", "العراق": "IQ", "البصرة": "IQ", "أربيل": "IQ", "الموصل": "IQ",
+    "baghdad": "IQ", "iraq": "IQ", "بغداد": "IQ", "العراق": "IQ", "البصرة": "IQ", "أربيل": "IQ",
     "damascus": "SY", "syria": "SY", "دمشق": "SY", "سوريا": "SY", "حلب": "SY",
     "sanaa": "YE", "yemen": "YE", "صنعاء": "YE", "اليمن": "YE", "عدن": "YE",
     "palestine": "PS", "gaza": "PS", "فلسطين": "PS", "غزة": "PS", "القدس": "PS",
-    # شمال أفريقيا
     "morocco": "MA", "casablanca": "MA", "rabat": "MA", "marrakech": "MA",
     "المغرب": "MA", "الدار البيضاء": "MA", "الرباط": "MA", "مراكش": "MA",
     "algeria": "DZ", "algiers": "DZ", "الجزائر": "DZ",
     "tunisia": "TN", "tunis": "TN", "تونس": "TN",
-    "libya": "LY", "tripoli libya": "LY", "ليبيا": "LY", "طرابلس": "LY", "بنغازي": "LY",
+    "libya": "LY", "ليبيا": "LY", "طرابلس": "LY", "بنغازي": "LY",
     "sudan": "SD", "khartoum": "SD", "السودان": "SD", "الخرطوم": "SD",
-    "somalia": "SO", "الصومال": "SO", "moroccan": "MA",
-    # دول أخرى
+    "somalia": "SO", "الصومال": "SO",
     "usa": "US", "united states": "US", "america": "US", "new york": "US", "los angeles": "US",
     "uk": "GB", "london": "GB", "england": "GB", "britain": "GB",
     "france": "FR", "paris": "FR", "فرنسا": "FR", "باريس": "FR",
@@ -124,23 +115,43 @@ CITY_TO_COUNTRY = {
     "canada": "CA", "كندا": "CA", "australia": "AU", "أستراليا": "AU",
 }
 
-# لهجات عربية → دولة
 DIALECT_HINTS = {
     "SA": ["والله", "وش رايك", "تكفى", "يا اخوي", "وايد", "خوش", "حياك", "هلا والله"],
-    "EG": ["ازيك", "إزيك", "ازاي", "إزاي", "كده", "كدا", "اوي", "أوي", "خالص", "بقى", "يلا", "يعني ايه", "عاوز", "عايز"],
-    "AE": ["شحالك", "هلا والله", "تسلم", "وايد", "ها يبه", "ماعليه"],
-    "KW": ["شلونك", "حياك", "تكفى", "والنبي", "هلا"],
+    "EG": ["ازيك", "إزيك", "ازاي", "إزاي", "كده", "كدا", "اوي", "أوي", "خالص", "بقى", "يلا", "عاوز", "عايز"],
+    "AE": ["شحالك", "هلا والله", "تسلم", "وايد", "ها يبه"],
+    "KW": ["شلونك", "حياك", "تكفى", "والنبي"],
     "MA": ["واخا", "بزاف", "زعما", "كيفاش", "شنو", "غادي", "دابا", "صافي", "بصح"],
     "DZ": ["واش", "كيراك", "بصح", "بزاف", "خويا"],
-    "IQ": ["شلون", "اشلون", "هسة", "هسه", "اكو", "ماكو", "هواي", "خوش", "وين"],
+    "IQ": ["شلون", "اشلون", "هسة", "اكو", "ماكو", "هواي", "وين", "شكد"],
     "LB": ["شو في", "كيفك", "هلق", "بدي", "كتير"],
     "SY": ["شو في", "كيفك", "هلق", "بدي", "كتير", "هلأ"],
-    "YE": ["كيف حالك", "وشلون", "بهالعنا"],
+    "YE": ["كيف حالك", "وشلون"],
+}
+
+USERNAME_PATTERNS = {
+    "SA": ["_ksa", "ksa_", "saudi", "_sa_", "_sa.", "riyadh", "jeddah", "966"],
+    "AE": ["_uae", "uae_", "_ae_", "_ae.", "dubai", "971"],
+    "EG": ["_egypt", "egypt_", "_eg_", "_eg.", "masr", "cairo"],
+    "IQ": ["_iraq", "iraq_", "_iq_", "baghdad", "964"],
+    "KW": ["_kuwait", "kuwait_", "_kw_", "965"],
+    "QA": ["_qatar", "qatar_", "_qa_", "974"],
+    "JO": ["_jordan", "jordan_", "_jo_", "962"],
+    "MA": ["_morocco", "morocco_", "_ma_", "maroc", "212"],
+    "DZ": ["_algeria", "algeria_", "_dz_", "algerie", "213"],
+    "TN": ["_tunisia", "tunisia_", "_tn_", "216"],
+    "LB": ["_lebanon", "lebanon_", "_lb_", "961"],
+    "SY": ["_syria", "syria_", "_sy_"],
+    "YE": ["_yemen", "yemen_", "_ye_"],
+    "OM": ["_oman", "oman_"],
+    "BH": ["_bahrain", "bahrain_"],
+    "TR": ["_turkey", "turkey_", "_tr_"],
+    "IR": ["_iran", "iran_", "_ir_"],
+    "PK": ["_pakistan", "pakistan_", "_pk_"],
+    "IN": ["_india", "india_", "_in_", "_ind"],
 }
 
 
 def format_count(n):
-    """تنسيق الأرقام (1.2M, 350K)."""
     try:
         n = int(n)
         if n >= 1_000_000_000:
@@ -154,124 +165,233 @@ def format_count(n):
         return "0"
 
 
-def detect_country_from_text(text: str):
-    """استنتاج الدولة من النص. يعيد (كود, ثقة)."""
+# ============ نظام كشف الموقع ============
+class LocationDetector:
+    def __init__(self):
+        self.scores = {}
+        self.evidence = []
+
+    def add_score(self, country_code, points, source):
+        if not country_code:
+            return
+        self.scores[country_code] = self.scores.get(country_code, 0) + points
+        self.evidence.append(f"{source} (+{points})")
+
+    def add_score_multiple(self, countries, points, source):
+        if not countries:
+            return
+        per = points // len(countries) if len(countries) > 1 else points
+        for cc in countries:
+            self.scores[cc] = self.scores.get(cc, 0) + per
+        if per > 0:
+            self.evidence.append(f"{source} (+{per})")
+
+    def get_winner(self, threshold=20):
+        if not self.scores:
+            return None, 0, []
+        sorted_c = sorted(self.scores.items(), key=lambda x: -x[1])
+        top, score = sorted_c[0]
+        if score < threshold:
+            return None, 0, [c for c, s in sorted_c[:5]]
+        total = sum(self.scores.values())
+        confidence = min(int((score / total) * 100), 100)
+        if len(sorted_c) > 1 and score >= sorted_c[1][1] * 2:
+            confidence = min(confidence + 15, 100)
+        candidates = [c for c, s in sorted_c[:3] if c != top]
+        return top, confidence, candidates
+
+
+def detect_country_from_text(text, source_name, detector, base=30):
     if not text:
-        return None, 0
+        return
     text_lower = text.lower()
-
-    # 1. أعلام مباشرة (ثقة عالية جداً)
-    for code in TIKTOK_REGION_MAP:
-        flag = TIKTOK_REGION_MAP[code][0]
+    for cc, (flag, _) in TIKTOK_REGION_MAP.items():
         if flag in text:
-            return code, 95
-
-    # 2. كلمات مفتاحية للمدن (ثقة عالية)
-    sorted_keys = sorted(CITY_TO_COUNTRY.keys(), key=len, reverse=True)
-    for keyword in sorted_keys:
-        code = CITY_TO_COUNTRY[keyword]
-        if any(ord(c) > 127 for c in keyword):
-            if keyword in text:
-                return code, 88
+            detector.add_score(cc, base + 30, f"🚩 علم {cc} في {source_name}")
+            return
+    for kw in sorted(CITY_TO_COUNTRY.keys(), key=len, reverse=True):
+        cc = CITY_TO_COUNTRY[kw]
+        if any(ord(c) > 127 for c in kw):
+            if kw in text:
+                detector.add_score(cc, base + 20, f"🏙️ '{kw}' في {source_name}")
+                return
         else:
-            if re.search(rf"\b{re.escape(keyword)}\b", text_lower):
-                return code, 85
-
-    # 3. لهجات عربية
-    best_match = None
-    best_count = 0
-    for code, hints in DIALECT_HINTS.items():
+            if re.search(rf"\b{re.escape(kw)}\b", text_lower):
+                detector.add_score(cc, base + 15, f"🏙️ '{kw}' في {source_name}")
+                return
+    for cc, hints in DIALECT_HINTS.items():
         cnt = sum(1 for h in hints if h in text)
-        if cnt > best_count:
-            best_count = cnt
-            best_match = code
-    if best_match and best_count >= 2:
-        return best_match, 65
-    elif best_match and best_count == 1:
-        return best_match, 45
-
-    return None, 0
+        if cnt >= 2:
+            detector.add_score(cc, base + 5, f"🗣️ لهجة {cc} ({cnt}) في {source_name}")
+            return
+        elif cnt == 1:
+            detector.add_score(cc, base - 10, f"🗣️ احتمال لهجة {cc} في {source_name}")
 
 
-def parse_universal_data(html: str):
-    """استخراج JSON من __UNIVERSAL_DATA_FOR_REHYDRATION__."""
+def analyze_username_patterns(username, detector):
+    u = username.lower()
+    for cc, pats in USERNAME_PATTERNS.items():
+        for p in pats:
+            if p in u:
+                detector.add_score(cc, 35, f"🔤 نمط '{p}' في اليوزر")
+                return
+
+
+# ============ Parsing ============
+def parse_universal_data(html, key="webapp.user-detail"):
     try:
-        # طريقة 1: regex مباشرة (أسرع وأكثر موثوقية مع bs4 quirks)
         m = re.search(
             r'<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>',
             html, re.DOTALL,
         )
         if m:
-            content = m.group(1).strip()
-            if content:
-                data = json.loads(content)
-                return data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {})
-
-        # طريقة 2: BeautifulSoup كاحتياطي
+            data = json.loads(m.group(1).strip())
+            return data.get("__DEFAULT_SCOPE__", {}).get(key, {})
         soup = BeautifulSoup(html, "html.parser")
-        script = soup.find("script", {"id": "__UNIVERSAL_DATA_FOR_REHYDRATION__"})
-        if not script:
-            return None
-        # script.string قد لا يعمل، نستخدم str(script) ونزيل الوسوم
-        content = str(script)
-        m2 = re.search(r'>(.*?)</script>', content, re.DOTALL)
-        if m2:
-            content = m2.group(1).strip()
+        s = soup.find("script", {"id": "__UNIVERSAL_DATA_FOR_REHYDRATION__"})
+        if s:
+            content = re.search(r'>(.*?)</script>', str(s), re.DOTALL)
             if content:
-                data = json.loads(content)
-                return data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {})
+                data = json.loads(content.group(1).strip())
+                return data.get("__DEFAULT_SCOPE__", {}).get(key, {})
         return None
     except Exception:
         return None
 
 
-def fetch_tiktok_profile(username: str, timeout: int = 15):
-    """
-    سحب وتحليل ملف TikTok بدقة عالية.
-    
-    يجمع البيانات من 3 مصادر:
-    1. __UNIVERSAL_DATA__ (الأساسي)
-    2. SIGI_STATE (احتياطي)
-    3. Regex (آخر حل)
-    
-    ثم يستنتج الموقع من 5 طبقات.
-    """
+def parse_tiktok_video_url(url):
+    """استخراج username و video_id من رابط TikTok."""
+    url = url.strip()
+    # https://www.tiktok.com/@username/video/1234567890123456789
+    m = re.search(r'tiktok\.com/@([\w._-]+)/video/(\d+)', url)
+    if m:
+        return m.group(1), m.group(2)
+    # https://vm.tiktok.com/XXXXXX/  (رابط مختصر)
+    if 'vm.tiktok.com' in url:
+        try:
+            r = requests.get(url, headers=TIKTOK_HEADERS, timeout=10, allow_redirects=True)
+            return parse_tiktok_video_url(r.url)
+        except Exception:
+            return None, None
+    return None, None
+
+
+def fetch_video_metadata(username, video_id, timeout=15):
+    """🔥 جلب metadata الفيديو - يحوي locationCreated وauthor.region."""
+    url = f"https://www.tiktok.com/@{username}/video/{video_id}"
+    result = {
+        "video_id": video_id,
+        "video_url": url,
+        "username": username,
+        "status": "❌ فشل",
+        "error": "",
+        "location_created": "",
+        "location_flag": "",
+        "location_name_ar": "",
+        "text_language": "",
+        "create_date": "",
+        "author_region": "",
+        "author_region_flag": "",
+        "author_region_name_ar": "",
+        "author_id": "",
+        "author_nickname": "",
+        "author_verified": False,
+        "video_desc": "",
+        "video_views": 0,
+        "video_likes": 0,
+        "video_shares": 0,
+        "video_comments": 0,
+    }
+    try:
+        r = requests.get(url, headers=TIKTOK_HEADERS, timeout=timeout)
+        if r.status_code != 200:
+            result["error"] = f"كود {r.status_code}"
+            return result
+        vd = parse_universal_data(r.text, "webapp.video-detail")
+        if not vd:
+            result["error"] = "لا توجد بيانات في الصفحة"
+            return result
+        sc = vd.get("statusCode", 0)
+        if sc != 0:
+            result["error"] = f"TikTok statusCode={sc} ({vd.get('statusMsg', '')})"
+            return result
+        item = vd.get("itemInfo", {}).get("itemStruct", {})
+        if not item:
+            result["error"] = "بيانات الفيديو فارغة"
+            return result
+
+        # 🔥 المعلومات الذهبية
+        loc = item.get("locationCreated", "") or ""
+        result["location_created"] = loc
+        if loc in TIKTOK_REGION_MAP:
+            result["location_flag"] = TIKTOK_REGION_MAP[loc][0]
+            result["location_name_ar"] = TIKTOK_REGION_MAP[loc][1]
+
+        result["text_language"] = item.get("textLanguage", "") or ""
+        ct = item.get("createTime", 0)
+        if ct:
+            try:
+                dt = datetime.fromtimestamp(int(ct), tz=timezone.utc)
+                result["create_date"] = dt.strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                pass
+
+        result["video_desc"] = (item.get("desc", "") or "")[:300]
+
+        # Stats
+        stats = item.get("stats", {}) or item.get("statsV2", {}) or {}
+        result["video_views"] = int(stats.get("playCount", 0) or 0)
+        result["video_likes"] = int(stats.get("diggCount", 0) or 0)
+        result["video_shares"] = int(stats.get("shareCount", 0) or 0)
+        result["video_comments"] = int(stats.get("commentCount", 0) or 0)
+
+        # Author
+        author = item.get("author", {}) or {}
+        result["author_id"] = str(author.get("id", "") or "")
+        result["author_nickname"] = author.get("nickname", "") or ""
+        result["author_verified"] = bool(author.get("verified", False))
+        ar = (author.get("region") or "").upper()
+        result["author_region"] = ar
+        if ar in TIKTOK_REGION_MAP:
+            result["author_region_flag"] = TIKTOK_REGION_MAP[ar][0]
+            result["author_region_name_ar"] = TIKTOK_REGION_MAP[ar][1]
+
+        result["status"] = "✅ نجح"
+    except requests.Timeout:
+        result["error"] = "انتهت مهلة الاتصال"
+    except Exception as e:
+        result["error"] = str(e)[:150]
+    return result
+
+
+# ============ التحليل الرئيسي للحساب ============
+def fetch_tiktok_profile(username, timeout=15):
+    """تحليل ملف TikTok الأساسي."""
     username = username.replace("@", "").strip()
     profile_url = f"https://www.tiktok.com/@{username}"
 
     result = {
-        "username": username,
-        "profile_url": profile_url,
+        "username": username, "profile_url": profile_url,
         "status": "❌ فشل", "error": "",
-        # المعرّفات الدائمة
         "user_id": "", "sec_uid": "", "short_id": "",
-        # المعلومات
         "nickname": "", "signature": "", "create_date": "",
+        "create_time_raw": 0, "create_hour_utc": "",
         "avatar_thumb": "", "avatar_medium": "", "avatar_large": "",
-        # الموقع المحلل
-        "region": "",  # كود الدولة من API (إن وجد)
-        "region_flag": "", "region_name_ar": "",
-        "region_source": "",  # مصدر الكشف
-        "region_confidence": 0,  # ثقة 0-100
-        "candidates": "",  # دول محتملة (مفصولة بـ |)
-        # اللغة
+        "region": "", "region_flag": "", "region_name_ar": "",
+        "region_source": "", "region_confidence": 0,
+        "region_evidence": "", "candidates": "",
         "language": "", "language_name_ar": "",
-        # الحالة
         "verified": False, "private_account": False,
         "tt_seller": False, "is_organization": False, "secret": False,
-        # الإحصائيات
         "follower_count": 0, "following_count": 0,
         "heart_count": 0, "video_count": 0,
         "digg_count": 0, "friend_count": 0,
-        # تنسيق
         "follower_count_formatted": "", "heart_count_formatted": "",
-        # روابط
         "bio_link": "",
     }
 
     try:
         response = requests.get(profile_url, headers=TIKTOK_HEADERS, timeout=timeout, allow_redirects=True)
-
         if response.status_code == 404:
             result["error"] = "الحساب غير موجود (404)"
             return result
@@ -279,30 +399,26 @@ def fetch_tiktok_profile(username: str, timeout: int = 15):
             result["error"] = f"كود استجابة: {response.status_code}"
             return result
 
-        html = response.text
-        user_detail = parse_universal_data(html)
-
+        user_detail = parse_universal_data(response.text, "webapp.user-detail")
         if not user_detail or "userInfo" not in user_detail:
-            result["error"] = "لم يتم العثور على بيانات في الصفحة (قد يكون الحساب محظوراً أو محذوفاً)"
+            result["error"] = "لم يتم العثور على بيانات في الصفحة"
             return result
 
-        # تحقق من حالة التواجد
-        status_code = user_detail.get("statusCode", 0)
-        if status_code != 0:
-            status_msg = user_detail.get("statusMsg", "")
-            if status_msg:
-                result["error"] = f"TikTok: {status_msg}"
+        sc = user_detail.get("statusCode", 0)
+        if sc != 0:
+            msg = user_detail.get("statusMsg", "")
+            if msg:
+                result["error"] = f"TikTok: {msg}"
                 return result
 
-        user_info = user_detail.get("userInfo", {})
-        user = user_info.get("user", {}) or {}
-        stats = user_info.get("stats", {}) or user_info.get("statsV2", {}) or {}
+        ui = user_detail.get("userInfo", {})
+        user = ui.get("user", {}) or {}
+        stats = ui.get("stats", {}) or ui.get("statsV2", {}) or {}
 
         if not user:
             result["error"] = "بيانات المستخدم فارغة"
             return result
 
-        # ============ استخراج البيانات ============
         result["user_id"] = str(user.get("id", "") or "")
         result["sec_uid"] = user.get("secUid", "") or ""
         result["short_id"] = str(user.get("shortId", "") or "")
@@ -312,16 +428,16 @@ def fetch_tiktok_profile(username: str, timeout: int = 15):
         result["avatar_medium"] = user.get("avatarMedium", "") or ""
         result["avatar_large"] = user.get("avatarLarger", "") or ""
 
-        # تاريخ الإنشاء
-        create_time = user.get("createTime", 0) or 0
-        if create_time:
+        ct = user.get("createTime", 0) or 0
+        result["create_time_raw"] = int(ct) if ct else 0
+        if ct:
             try:
-                dt = datetime.fromtimestamp(int(create_time), tz=timezone.utc)
+                dt = datetime.fromtimestamp(int(ct), tz=timezone.utc)
                 result["create_date"] = dt.strftime("%Y-%m-%d")
+                result["create_hour_utc"] = f"{dt.hour:02d}:{dt.minute:02d} UTC"
             except Exception:
                 pass
 
-        # الحالة
         result["verified"] = bool(user.get("verified", False))
         result["private_account"] = bool(user.get("privateAccount", False))
         result["tt_seller"] = bool(user.get("ttSeller", False))
@@ -329,11 +445,9 @@ def fetch_tiktok_profile(username: str, timeout: int = 15):
         commerce = user.get("commerceUserInfo", {}) or {}
         result["is_organization"] = bool(commerce.get("commerceUser", False))
 
-        # الإحصائيات
         result["follower_count"] = int(stats.get("followerCount", 0) or 0)
         result["following_count"] = int(stats.get("followingCount", 0) or 0)
         result["heart_count"] = max(int(stats.get("heart", 0) or 0), int(stats.get("heartCount", 0) or 0))
-        # heartCount قد يكون سالباً بسبب overflow؛ نأخذ الأكبر
         if result["heart_count"] < 0:
             result["heart_count"] = int(stats.get("heart", 0) or 0)
         result["video_count"] = int(stats.get("videoCount", 0) or 0)
@@ -343,81 +457,53 @@ def fetch_tiktok_profile(username: str, timeout: int = 15):
         result["follower_count_formatted"] = format_count(result["follower_count"])
         result["heart_count_formatted"] = format_count(result["heart_count"])
 
-        # الرابط في البايو
-        bio_link = user.get("bioLink", {})
-        if isinstance(bio_link, dict):
-            result["bio_link"] = bio_link.get("link", "") or ""
+        bl = user.get("bioLink", {})
+        if isinstance(bl, dict):
+            result["bio_link"] = bl.get("link", "") or ""
 
-        # ============ اللغة ============
         lang = (user.get("language") or "").lower()
         result["language"] = lang
         if lang in LANGUAGE_NAMES_AR:
             result["language_name_ar"] = LANGUAGE_NAMES_AR[lang]
 
-        # ============ الموقع - 5 طبقات ============
-        region_code = None
-        confidence = 0
-        source = ""
-        candidates = []
+        # كشف الموقع متعدد الإشارات
+        detector = LocationDetector()
 
-        # الطبقة 1: region من الـ API (نادراً ما يأتي - فقط لبعض الحسابات)
         api_region = (user.get("region") or "").upper()
         if api_region and api_region in TIKTOK_REGION_MAP:
-            region_code = api_region
-            confidence = 100
-            source = "🎯 TikTok API (دقيق 100%)"
+            detector.add_score(api_region, 1000, "🎯 TikTok API region")
 
-        # الطبقة 2: من البايو (إن لم نجد من API)
-        if not region_code and result["signature"]:
-            cc, conf = detect_country_from_text(result["signature"])
-            if cc:
-                region_code = cc
-                confidence = conf
-                source = "📝 من البايو"
+        if result["signature"]:
+            detect_country_from_text(result["signature"], "البايو", detector, 30)
+        if result["nickname"]:
+            detect_country_from_text(result["nickname"], "الاسم", detector, 20)
+        detect_country_from_text(username, "اليوزر", detector, 15)
+        analyze_username_patterns(username, detector)
 
-        # الطبقة 3: من الاسم الظاهر
-        if not region_code and result["nickname"]:
-            cc, conf = detect_country_from_text(result["nickname"])
-            if cc:
-                region_code = cc
-                confidence = max(conf - 10, 30)
-                source = "👤 من الاسم"
-
-        # الطبقة 4: من اسم المستخدم
-        if not region_code:
-            cc, conf = detect_country_from_text(username)
-            if cc:
-                region_code = cc
-                confidence = max(conf - 15, 25)
-                source = "🔤 من اليوزر"
-
-        # الطبقة 5: من اللغة (دول محتملة)
         if lang in LANG_TO_COUNTRIES:
             possible = LANG_TO_COUNTRIES[lang]
-            candidates = possible
-            if not region_code and len(possible) == 1:
-                # لغة لها دولة واحدة فقط (تركيا، إيران...)
-                region_code = possible[0]
-                confidence = 70
-                source = f"🌐 من اللغة ({lang})"
-            elif not region_code:
-                # لغة متعددة الدول (عربية → دول كثيرة)
-                source = f"🌐 لغة {LANGUAGE_NAMES_AR.get(lang, lang)} (دول محتملة)"
+            if len(possible) == 1:
+                detector.add_score(possible[0], 30, f"🌐 اللغة {lang}")
+            else:
+                detector.add_score_multiple(possible, 20, f"🌐 اللغة {lang}")
 
-        if region_code:
-            result["region"] = region_code
-            flag, name_ar = TIKTOK_REGION_MAP.get(region_code, ("🌍", region_code))
+        winner, confidence, candidates = detector.get_winner(threshold=15)
+
+        if winner:
+            result["region"] = winner
+            flag, name_ar = TIKTOK_REGION_MAP.get(winner, ("🌍", winner))
             result["region_flag"] = flag
             result["region_name_ar"] = name_ar
-            result["region_source"] = source
             result["region_confidence"] = confidence
-        elif source:
-            # لم نحدد دولة لكن لدينا مصدر (مثل اللغة العربية)
-            result["region_source"] = source
+            result["region_source"] = "🧠 تحليل ذكي"
+            result["region_evidence"] = " | ".join(detector.evidence[:5])
             if candidates:
                 result["candidates"] = "|".join(candidates)
+        elif candidates:
+            result["candidates"] = "|".join(candidates)
+            result["region_source"] = "دول محتملة"
+            result["region_evidence"] = " | ".join(detector.evidence[:3])
 
-        # تحديد الحالة النهائية
         if result["user_id"] or result["nickname"]:
             result["status"] = "✅ نجح"
         else:
@@ -426,42 +512,54 @@ def fetch_tiktok_profile(username: str, timeout: int = 15):
     except requests.Timeout:
         result["error"] = "انتهت مهلة الاتصال"
     except requests.ConnectionError:
-        result["error"] = "خطأ في الاتصال بـ TikTok"
+        result["error"] = "خطأ في الاتصال"
     except Exception as e:
         result["error"] = f"خطأ: {str(e)[:150]}"
 
     return result
 
 
-def calculate_engagement_metrics(data: dict):
-    """حساب مؤشرات التفاعل."""
+# ============ دالة جديدة: تحليل فيديو محدد ============
+def analyze_tiktok_video(video_url, timeout=15):
+    """
+    🎯 تحليل رابط فيديو محدد للحصول على:
+    - locationCreated: مكان التصوير الفعلي (دقيق جداً!)
+    - author.region: منطقة المؤلف
+    - textLanguage: لغة المحتوى
+    - معلومات المؤلف الكاملة
+    """
+    username, video_id = parse_tiktok_video_url(video_url)
+    if not username or not video_id:
+        return {
+            "status": "❌ فشل",
+            "error": "رابط الفيديو غير صحيح. يجب أن يكون: https://www.tiktok.com/@username/video/ID",
+            "video_url": video_url,
+        }
+    return fetch_video_metadata(username, video_id, timeout=timeout)
+
+
+def calculate_engagement_metrics(data):
     metrics = {
-        "engagement_rate": 0.0,
-        "avg_likes_per_video": 0,
-        "follower_to_following_ratio": 0.0,
-        "tier": "",
+        "engagement_rate": 0.0, "avg_likes_per_video": 0,
+        "follower_to_following_ratio": 0.0, "tier": "",
     }
-    followers = data.get("follower_count", 0)
-    following = data.get("following_count", 0)
-    hearts = data.get("heart_count", 0)
-    videos = data.get("video_count", 0)
+    f, fl, h, v = (data.get(k, 0) for k in ("follower_count", "following_count", "heart_count", "video_count"))
+    if v > 0 and h > 0:
+        metrics["avg_likes_per_video"] = h // v
+    if f > 0 and metrics["avg_likes_per_video"] > 0:
+        metrics["engagement_rate"] = round((metrics["avg_likes_per_video"] / f) * 100, 2)
+    if fl > 0:
+        metrics["follower_to_following_ratio"] = round(f / fl, 1)
 
-    if videos > 0 and hearts > 0:
-        metrics["avg_likes_per_video"] = hearts // videos
-    if followers > 0 and metrics["avg_likes_per_video"] > 0:
-        metrics["engagement_rate"] = round((metrics["avg_likes_per_video"] / followers) * 100, 2)
-    if following > 0:
-        metrics["follower_to_following_ratio"] = round(followers / following, 1)
-
-    if followers >= 10_000_000:
+    if f >= 10_000_000:
         metrics["tier"] = "🌟 Mega Influencer (10M+)"
-    elif followers >= 1_000_000:
+    elif f >= 1_000_000:
         metrics["tier"] = "⭐ Macro Influencer (1M+)"
-    elif followers >= 100_000:
+    elif f >= 100_000:
         metrics["tier"] = "✨ Mid-Tier (100K+)"
-    elif followers >= 10_000:
+    elif f >= 10_000:
         metrics["tier"] = "💫 Micro Influencer (10K+)"
-    elif followers >= 1_000:
+    elif f >= 1_000:
         metrics["tier"] = "🔹 Nano (1K+)"
     else:
         metrics["tier"] = "🆕 جديد/صغير (<1K)"
@@ -471,35 +569,29 @@ def calculate_engagement_metrics(data: dict):
 # ============ اختبار ============
 if __name__ == "__main__":
     import sys
-    test_users = sys.argv[1:] if len(sys.argv) > 1 else ["khaby.lame", "7sn301"]
-
-    for user in test_users:
-        print(f"\n{'='*60}")
-        print(f"🔍 تحليل @{user}")
-        print('='*60)
-        data = fetch_tiktok_profile(user)
-        metrics = calculate_engagement_metrics(data)
-
-        if data["status"] == "✅ نجح":
-            print(f"✅ نجح")
-            print(f"👤 {data['nickname']} {'✓' if data['verified'] else ''}")
-            print(f"🆔 ID: {data['user_id']}")
-            print(f"🔐 secUid: {data['sec_uid'][:60]}...")
-            print(f"🌍 الدولة: {data['region_flag']} {data['region_name_ar']} ({data['region']})")
-            print(f"   📊 المصدر: {data['region_source']} • الثقة: {data['region_confidence']}%")
-            if data["candidates"]:
-                print(f"   📋 دول محتملة: {data['candidates']}")
-            print(f"🌐 اللغة: {data['language_name_ar']} ({data['language']})")
-            print(f"📅 تاريخ الإنشاء: {data['create_date']}")
-            print(f"📝 البايو: {data['signature'][:120]}")
-            print(f"\n📊 الإحصائيات:")
-            print(f"   👥 المتابعون: {data['follower_count_formatted']} ({data['follower_count']:,})")
-            print(f"   ➡️ يتابع: {data['following_count']:,}")
-            print(f"   ❤️ الإعجابات: {data['heart_count_formatted']}")
-            print(f"   🎬 الفيديوهات: {data['video_count']:,}")
-            print(f"\n📈 المؤشرات:")
-            print(f"   {metrics['tier']}")
-            print(f"   متوسط الإعجابات/فيديو: {metrics['avg_likes_per_video']:,}")
-            print(f"   معدل التفاعل: {metrics['engagement_rate']}%")
-        else:
-            print(f"❌ فشل: {data['error']}")
+    print("="*60)
+    print("اختبار 1: تحليل ملف شخصي")
+    print("="*60)
+    p = fetch_tiktok_profile("khaby.lame")
+    print(f"@{p['username']}: {p['nickname']} - {p['follower_count_formatted']} متابع")
+    print(f"الموقع: {p['region_flag']} {p['region_name_ar']} ({p['region_confidence']}%)")
+    
+    print("\n" + "="*60)
+    print("اختبار 2: تحليل فيديو محدد (للحصول على locationCreated)")
+    print("="*60)
+    v = analyze_tiktok_video("https://www.tiktok.com/@noorstars/video/7518458932478725406")
+    if v["status"] == "✅ نجح":
+        print(f"✅ المؤلف: {v['author_nickname']} (@{v['username']})")
+        print(f"🆔 ID: {v['author_id']}")
+        print(f"📅 تاريخ: {v['create_date']}")
+        print(f"🌐 لغة الفيديو: {v['text_language']}")
+        print(f"\n🔥 المعلومات الذهبية:")
+        print(f"   📍 مكان التصوير: {v['location_flag']} {v['location_name_ar']} ({v['location_created']})")
+        print(f"   🌍 منطقة المؤلف: {v['author_region_flag']} {v['author_region_name_ar']} ({v['author_region']})")
+        print(f"\n📊 الإحصائيات:")
+        print(f"   👁️ المشاهدات: {format_count(v['video_views'])}")
+        print(f"   ❤️ الإعجابات: {format_count(v['video_likes'])}")
+        print(f"   💬 التعليقات: {format_count(v['video_comments'])}")
+        print(f"\n📝 الوصف: {v['video_desc'][:150]}")
+    else:
+        print(f"❌ {v['error']}")
