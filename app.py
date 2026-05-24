@@ -2216,7 +2216,7 @@ with tab_geo:
 
 
 # ════════════════════════════════════════════════════════════
-# 🕵️ تبويب OSINT محقّق تويتر
+# 🕵️ تبويب OSINT محقّق تويتر  (نسخة دائمة — النتائج تبقى)
 # ════════════════════════════════════════════════════════════
 with tab_osint:
     st.markdown("### 🕵️ محقّق تويتر — أدوات OSINT جغرافية متكاملة")
@@ -2224,14 +2224,14 @@ with tab_osint:
         """
 <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:18px;
             border-radius:12px;color:white;border-right:5px solid #e94560;'>
-  <b>🎯 أدوات مستوحاة من Bellingcat & BirdHunt & Tinfoleak & TWINT</b>
+  <b>🎯 أدوات مستوحاة من Bellingcat &amp; BirdHunt &amp; Tinfoleak &amp; TWINT</b>
   <ul style='font-size:14px;margin-top:10px;'>
-    <li>🗝 <b>geocode operator</b>: ابحث عن تغريدات داخل دائرة جغرافية (إحداثيات + نصف قطر)</li>
-    <li>📍 <b>near + within</b>: تغريدات بالقرب من مدينة بنصف قطر محدد</li>
-    <li>🆔 <b>place: ID</b>: بحث بـ Twitter Place ID (أدقّ من اسم المدينة)</li>
-    <li>⏰ <b>Timezone Detection</b>: تحليل أوقات النشر لاستنتاج المنطقة الزمنية الفعلية</li>
-    <li>🗺️ <b>9 محرّكات خرائط</b>: Google، Bing، Yandex، Apple، Mapillary، Wikimapia، StreetView، Earth، OSM</li>
-    <li>🔗 <b>Entity Extraction</b>: @mentions / #hashtags / URLs (دعم عربي كامل)</li>
+    <li>🗺 <b>geocode</b>: ابحث عن تغريدات داخل دائرة جغرافية</li>
+    <li>📍 <b>near + within</b>: تغريدات قرب مدينة بنصف قطر</li>
+    <li>🆔 <b>place: ID</b>: بحث بـ Twitter Place ID</li>
+    <li>⏰ <b>Timezone Detection</b>: استنتاج المنطقة الزمنية من النشر</li>
+    <li>🗺️ <b>9 محرّكات خرائط</b>: Google · Bing · Yandex · Apple · Mapillary · Wikimapia · OSM · Earth · StreetView</li>
+    <li>🔗 <b>Entity Extraction</b>: @mentions · #hashtags · URLs (دعم عربي كامل)</li>
   </ul>
 </div>
         """,
@@ -2242,6 +2242,12 @@ with tab_osint:
     if not OSINT_AVAILABLE:
         st.error(f"twitter_osint.py غير متوفر: {OSINT_ERROR}")
         st.stop()
+
+    # 🔑 تهيئة الذاكرة الدائمة لكل وضع
+    for k in ("osint_geo_result", "osint_place_result",
+              "osint_tz_result", "osint_full_result",
+              "osint_rev_result"):
+        st.session_state.setdefault(k, None)
 
     osint_mode = st.radio(
         "📡 وضع التحقيق:",
@@ -2255,170 +2261,211 @@ with tab_osint:
         key="osint_mode",
     )
 
-    # ─── وضع 1 — بحث جغرافي دائري ───
+    # ═══════════════════════════════════════════════════════════
+    # 1️⃣ بحث جغرافي دائري
+    # ═══════════════════════════════════════════════════════════
     if osint_mode.startswith("🗺️"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            preset = st.selectbox(
-                "📌 مواقع جاهزة:",
-                ["— اختر يدوياً —"]
-                + [n for n, _, _ in FAMOUS_LOCATIONS_AR],
-                key="osint_preset",
-            )
-        if preset != "— اختر يدوياً —":
-            preset_data = next(p for p in FAMOUS_LOCATIONS_AR if p[0] == preset)
-            default_lat, default_lon = preset_data[1], preset_data[2]
-        else:
-            default_lat, default_lon = 24.7136, 46.6753
+        with st.form("osint_form_geo", clear_on_submit=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                preset = st.selectbox(
+                    "📌 مواقع جاهزة:",
+                    ["— اختر يدوياً —"] + [n for n, _, _ in FAMOUS_LOCATIONS_AR],
+                    key="osint_preset",
+                )
+            if preset != "— اختر يدوياً —":
+                pdata = next(p for p in FAMOUS_LOCATIONS_AR if p[0] == preset)
+                dlat, dlon = pdata[1], pdata[2]
+            else:
+                dlat, dlon = 24.7136, 46.6753
+            with col2:
+                lat_in = st.number_input("🌐 خط العرض", value=dlat,
+                                         format="%.6f", key="osint_lat")
+            with col3:
+                lon_in = st.number_input("🌐 خط الطول", value=dlon,
+                                         format="%.6f", key="osint_lon")
 
-        with col2:
-            lat_in = st.number_input("🌐 خط العرض (Latitude)",
-                value=default_lat, format="%.6f", key="osint_lat")
-        with col3:
-            lon_in = st.number_input("🌐 خط الطول (Longitude)",
-                value=default_lon, format="%.6f", key="osint_lon")
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                radius_km = st.number_input("📏 نصف القطر (كم)", 0.1, 500.0,
+                                            5.0, 0.5, key="osint_radius")
+            with col5:
+                keywords = st.text_input("🔍 كلمات (اختياري)",
+                                         placeholder="حريق OR حادث",
+                                         key="osint_kw")
+            with col6:
+                lang_filter = st.selectbox("🗣️ لغة:",
+                    ["—", "ar", "en", "fr", "es", "ru", "tr", "fa", "ur"],
+                    key="osint_lang")
 
-        col4, col5, col6 = st.columns(3)
-        with col4:
-            radius_km = st.number_input("📏 نصف القطر (كم)",
-                min_value=0.1, max_value=500.0, value=5.0, step=0.5,
-                key="osint_radius")
-        with col5:
-            keywords = st.text_input("🔍 كلمات مفتاحية (اختياري)",
-                placeholder="حريق OR حادث", key="osint_kw")
-        with col6:
-            lang_filter = st.selectbox("🗣️ لغة التغريدات:",
-                ["—", "ar", "en", "fr", "es", "ru", "tr", "fa", "ur"],
-                key="osint_lang")
+            col7, col8, col9 = st.columns(3)
+            with col7:
+                date_since = st.date_input("📅 من", value=None, key="osint_since")
+            with col8:
+                date_until = st.date_input("📅 إلى", value=None, key="osint_until")
+            with col9:
+                min_likes = st.number_input("❤️ أدنى إعجابات", 0, value=0,
+                                            step=10, key="osint_minlikes")
+            filter_media = st.checkbox("🖼️ صور/فيديو فقط", key="osint_media")
 
-        col7, col8, col9 = st.columns(3)
-        with col7:
-            date_since = st.date_input("📅 من تاريخ",
-                value=None, key="osint_since")
-        with col8:
-            date_until = st.date_input("📅 إلى تاريخ",
-                value=None, key="osint_until")
-        with col9:
-            min_likes = st.number_input("❤️ أدنى إعجابات",
-                min_value=0, value=0, step=10, key="osint_minlikes")
-        filter_media = st.checkbox("🖼️ تغريدات تحتوي صور/فيديو فقط",
-            key="osint_media")
+            submitted_geo = st.form_submit_button("🚀 بناء روابط البحث",
+                                                  type="primary",
+                                                  use_container_width=True)
 
-        if st.button("🚀 بناء روابط البحث", type="primary", key="osint_run_geo"):
-            x_url = build_geocode_search(
-                lat_in, lon_in, radius_km, keywords or "",
-                lang_filter if lang_filter and lang_filter != "—" else None,
-                str(date_since) if date_since else None,
-                str(date_until) if date_until else None,
-                filter_media, int(min_likes),
-            )
-            st.success(f"✅ تم بناء رابط البحث؛ افتحه في X للحصول على التغريدات داخل دائرة {radius_km} كم:")
-            st.markdown(f"🔗 **رابط البحث في X**: [افتح الآن]({x_url})")
-            with st.expander("📝 عرض الرابط الكامل"):
-                st.code(x_url, language="text")
+        if submitted_geo:
+            st.session_state["osint_geo_result"] = {
+                "lat": lat_in, "lon": lon_in, "radius_km": radius_km,
+                "keywords": keywords, "lang": lang_filter,
+                "since": str(date_since) if date_since else None,
+                "until": str(date_until) if date_until else None,
+                "min_likes": int(min_likes), "filter_media": filter_media,
+                "x_url": build_geocode_search(
+                    lat_in, lon_in, radius_km, keywords or "",
+                    lang_filter if lang_filter and lang_filter != "—" else None,
+                    str(date_since) if date_since else None,
+                    str(date_until) if date_until else None,
+                    filter_media, int(min_likes)),
+                "maps": build_map_verification_links(lat_in, lon_in),
+            }
 
-            # 9-engine map verification
+        # ─── دائماً اعرض النتيجة المحفوظة ───
+        R = st.session_state.get("osint_geo_result")
+        if R:
+            st.success(f"✅ تم بناء البحث داخل دائرة "
+                       f"{R['radius_km']} كم من ({R['lat']:.4f}, {R['lon']:.4f})")
+            st.markdown(f"#### 🔗 رابط البحث في X (انقر للفتح):")
+            st.markdown(f"[🐦 افتح في X الآن]({R['x_url']})")
+            with st.expander("📝 الرابط الكامل"):
+                st.code(R['x_url'], language="text")
+
             st.markdown("#### 🗺️ تحقّق بصري عبر 9 محركات خرائط:")
-            maps_links = build_map_verification_links(lat_in, lon_in)
-            cols = st.columns(3)
-            for i, (engine, url) in enumerate(maps_links.items()):
-                with cols[i % 3]:
-                    st.link_button(f"🌐 {engine}", url,
-                                   use_container_width=True)
+            ckeys = list(R["maps"].keys())
+            for row in range(0, 9, 3):
+                cs = st.columns(3)
+                for i, k in enumerate(ckeys[row:row+3]):
+                    with cs[i]:
+                        st.link_button(f"🌐 {k}", R["maps"][k],
+                                       use_container_width=True)
 
-            # Folium interactive map
             if FOLIUM_AVAILABLE:
-                st.markdown("#### 📌 خريطة تفاعلية (الدائرة الزرقاء = نطاق البحث)")
-                m = folium.Map(location=[lat_in, lon_in],
-                               zoom_start=max(8, 18 - int(math.log2(radius_km+1))))
-                folium.Marker([lat_in, lon_in],
-                              popup=f"مركز البحث<br>{lat_in:.5f}, {lon_in:.5f}",
+                st.markdown("#### 📌 الخريطة التفاعلية (الدائرة الزرقاء = نطاق البحث)")
+                m = folium.Map([R["lat"], R["lon"]],
+                               zoom_start=max(8, 18 - int(math.log2(R["radius_km"]+1))))
+                folium.Marker([R["lat"], R["lon"]],
+                              popup=f"مركز البحث<br>{R['lat']:.5f}, {R['lon']:.5f}",
                               icon=folium.Icon(color="red", icon="star")).add_to(m)
-                folium.Circle([lat_in, lon_in], radius=radius_km*1000,
+                folium.Circle([R["lat"], R["lon"]], radius=R["radius_km"]*1000,
                               color="#1976d2", fill=True,
                               fill_opacity=0.15).add_to(m)
-                st_folium(m, width=700, height=420, key="osint_map_geo")
+                st_folium(m, width=720, height=420, key="osint_map_geo")
 
-    # ─── وضع 2 — بحث باسم مدينة ───
+            if st.button("🗑️ مسح النتيجة", key="osint_clear_geo"):
+                st.session_state["osint_geo_result"] = None
+                st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # 2️⃣ بحث باسم مدينة/معلم
+    # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("🏙️"):
-        place_q = st.text_input("📍 اسم المدينة أو المعلم:",
-            placeholder="مثال: برج العرب، الدوحة، Times Square",
-            key="osint_place_q")
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            place_radius = st.number_input("📏 نصف القطر (كم)",
-                min_value=0.5, max_value=200.0, value=5.0, step=0.5,
-                key="osint_pradius")
-        with col_b:
-            place_kw = st.text_input("🔍 كلمات (اختياري)",
-                key="osint_pkw")
-        with col_c:
-            place_lang = st.selectbox("🗣️ لغة",
-                ["—", "ar", "en"], key="osint_plang")
+        with st.form("osint_form_place", clear_on_submit=False):
+            place_q = st.text_input("📍 اسم المدينة أو المعلم:",
+                placeholder="مثال: برج العرب، الدوحة، Times Square",
+                key="osint_place_q")
+            ca, cb, cc = st.columns(3)
+            with ca:
+                place_radius = st.number_input("📏 نصف القطر (كم)",
+                    0.5, 200.0, 5.0, 0.5, key="osint_pradius")
+            with cb:
+                place_kw = st.text_input("🔍 كلمات (اختياري)",
+                    key="osint_pkw")
+            with cc:
+                place_lang = st.selectbox("🗣️ لغة",
+                    ["—", "ar", "en"], key="osint_plang")
 
-        if place_q and st.button("🚀 ابحث", type="primary", key="osint_run_place"):
+            submitted_place = st.form_submit_button("🚀 ابحث",
+                type="primary", use_container_width=True)
+
+        if submitted_place and place_q:
             with st.spinner("جارٍ تحديد الإحداثيات عبر OpenStreetMap…"):
                 geo = geocode_place(place_q)
             if not geo:
-                st.error("⛔ تعذّر العثور على هذا المكان. جرب صيغة أخرى.")
+                st.error("⛔ تعذّر العثور على المكان. جرب صياغة أخرى.")
+                st.session_state["osint_place_result"] = None
             else:
-                st.success(f"✅ تم العثور: **{geo['display_name']}**")
-                st.json({"خط العرض": geo['lat'], "خط الطول": geo['lon'],
-                         "الدولة": geo.get("country"),
-                         "المدينة": geo.get("city")})
-
-                # Build all three search strategies
                 lang = place_lang if place_lang != "—" else None
-                url_geo  = build_geocode_search(geo["lat"], geo["lon"],
-                    place_radius, place_kw, lang)
-                url_near = build_near_search(place_q, place_radius,
-                    place_kw, lang=lang)
-                pid = find_place_id(place_q)
+                st.session_state["osint_place_result"] = {
+                    "query": place_q, "geo": geo,
+                    "radius_km": place_radius, "kw": place_kw, "lang": lang,
+                    "url_geo":  build_geocode_search(
+                        geo["lat"], geo["lon"], place_radius, place_kw, lang),
+                    "url_near": build_near_search(
+                        place_q, place_radius, place_kw, lang=lang),
+                    "place_id": find_place_id(place_q),
+                    "maps": build_map_verification_links(
+                        geo["lat"], geo["lon"]),
+                }
 
-                st.markdown("#### 🔗 ثلاثة أساليب بحث مختلفة:")
-                cols = st.columns(3)
-                cols[0].link_button("🎯 geocode (الأدقّ)", url_geo,
-                    use_container_width=True)
-                cols[1].link_button("📍 near + within", url_near,
-                    use_container_width=True)
-                if pid:
-                    cols[2].link_button(f"🆔 place:{pid['name']}",
-                        pid["search_url"], use_container_width=True)
-                else:
-                    cols[2].caption("(لا يوجد place_id معروف لهذا المكان)")
+        R = st.session_state.get("osint_place_result")
+        if R:
+            geo = R["geo"]
+            st.success(f"✅ تم العثور: **{geo['display_name']}**")
+            cdata = st.columns(4)
+            cdata[0].metric("🌐 العرض",  f"{geo['lat']:.4f}")
+            cdata[1].metric("🌐 الطول",  f"{geo['lon']:.4f}")
+            cdata[2].metric("🏳️ الدولة", geo.get("country_code") or "—")
+            cdata[3].metric("🏙️ المدينة", geo.get("city") or "—")
 
-                # Map verification
-                st.markdown("#### 🗺️ تحقّق عبر 9 محركات خرائط:")
-                maps_links = build_map_verification_links(geo['lat'], geo['lon'])
-                cols2 = st.columns(3)
-                for i, (engine, url) in enumerate(maps_links.items()):
-                    with cols2[i % 3]:
-                        st.link_button(f"🌐 {engine}", url,
+            st.markdown("#### 🔗 ثلاثة أساليب بحث مختلفة في X:")
+            cols = st.columns(3)
+            cols[0].link_button("🎯 geocode (الأدقّ)", R["url_geo"],
+                                use_container_width=True)
+            cols[1].link_button("📍 near + within", R["url_near"],
+                                use_container_width=True)
+            if R["place_id"]:
+                cols[2].link_button(f"🆔 place:{R['place_id']['name']}",
+                    R["place_id"]["search_url"], use_container_width=True)
+            else:
+                cols[2].caption("(لا يوجد place_id معروف لهذا المكان)")
+
+            st.markdown("#### 🗺️ تحقّق عبر 9 محركات خرائط:")
+            ks = list(R["maps"].keys())
+            for row in range(0, 9, 3):
+                cs = st.columns(3)
+                for i, k in enumerate(ks[row:row+3]):
+                    with cs[i]:
+                        st.link_button(f"🌐 {k}", R["maps"][k],
                                        use_container_width=True)
 
-                if FOLIUM_AVAILABLE:
-                    m = folium.Map(location=[geo['lat'], geo['lon']],
-                                   zoom_start=12)
-                    folium.Marker([geo['lat'], geo['lon']],
-                                  popup=geo['display_name'],
-                                  icon=folium.Icon(color="red")).add_to(m)
-                    folium.Circle([geo['lat'], geo['lon']],
-                                  radius=place_radius*1000,
-                                  color="#e94560", fill=True,
-                                  fill_opacity=0.2).add_to(m)
-                    st_folium(m, width=700, height=420, key="osint_map_place")
+            if FOLIUM_AVAILABLE:
+                m = folium.Map([geo["lat"], geo["lon"]], zoom_start=12)
+                folium.Marker([geo["lat"], geo["lon"]],
+                              popup=geo["display_name"][:80],
+                              icon=folium.Icon(color="red")).add_to(m)
+                folium.Circle([geo["lat"], geo["lon"]],
+                              radius=R["radius_km"]*1000,
+                              color="#e94560", fill=True,
+                              fill_opacity=0.2).add_to(m)
+                st_folium(m, width=720, height=420, key="osint_map_place")
 
-    # ─── وضع 3 — Timezone analysis ───
+            if st.button("🗑️ مسح النتيجة", key="osint_clear_place"):
+                st.session_state["osint_place_result"] = None
+                st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # 3️⃣ تحليل المنطقة الزمنية
+    # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("⏰"):
-        st.markdown(
-            "💡 **أدخل تواريخ UTC لتغريدات المستخدم** (سطر لكل تغريدة). "
-            "الصيغ المدعومة: ISO `2026-05-24T14:30:00Z` أو RFC `Sat May 24 14:30:00 +0000 2026`"
-        )
-        timestamps_text = st.text_area(
-            "📅 أوقات UTC:", height=180, key="osint_ts_in",
-            placeholder="2026-05-24T08:30:00Z\n2026-05-24T14:15:00Z\n2026-05-25T19:45:00Z\n…",
-        )
-        if timestamps_text and st.button("⏰ حلل المنطقة الزمنية", type="primary", key="osint_run_tz"):
+        st.markdown("💡 **أدخل تواريخ UTC لتغريدات المستخدم** (سطر لكل تغريدة). "
+                    "الصيغ المدعومة: ISO `2026-05-24T14:30:00Z` أو "
+                    "RFC `Sat May 24 14:30:00 +0000 2026`")
+        with st.form("osint_form_tz", clear_on_submit=False):
+            timestamps_text = st.text_area("📅 أوقات UTC:", height=180,
+                key="osint_ts_in",
+                placeholder="2026-05-24T08:30:00Z\n2026-05-24T14:15:00Z\n2026-05-25T19:45:00Z")
+            submitted_tz = st.form_submit_button("⏰ حلّل المنطقة الزمنية",
+                type="primary", use_container_width=True)
+
+        if submitted_tz and timestamps_text:
             ts_list = []
             for line in timestamps_text.splitlines():
                 line = line.strip()
@@ -2427,8 +2474,7 @@ with tab_osint:
                     if "T" in line:
                         dt = datetime.fromisoformat(line.replace("Z", "+00:00"))
                     else:
-                        dt = datetime.strptime(line,
-                            "%a %b %d %H:%M:%S %z %Y")
+                        dt = datetime.strptime(line, "%a %b %d %H:%M:%S %z %Y")
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     ts_list.append(dt.astimezone(timezone.utc))
@@ -2436,67 +2482,94 @@ with tab_osint:
                     continue
             if not ts_list:
                 st.error("⛔ لم يتم تحليل أي تاريخ صحيح.")
+                st.session_state["osint_tz_result"] = None
             else:
-                tz = analyze_timezone_from_tweets(ts_list)
-                colA, colB, colC = st.columns(3)
-                colA.metric("🌐 المنطقة الزمنية",
-                            tz["best_offset_str"])
-                colB.metric("📊 درجة الثقة", f"{tz['confidence']}%")
-                colC.metric("📈 عينة", tz["sample_size"])
+                st.session_state["osint_tz_result"] = analyze_timezone_from_tweets(ts_list)
 
-                st.markdown(f"##### 🎯 الدول المحتملة لهذه المنطقة الزمنية:")
-                if tz["candidate_countries"]:
-                    st.success(" · ".join(tz["candidate_countries"]))
-                else:
-                    st.info("لا توجد دول معروفة بهذا الفارق")
+        R = st.session_state.get("osint_tz_result")
+        if R:
+            colA, colB, colC = st.columns(3)
+            colA.metric("🌐 المنطقة الزمنية", R["best_offset_str"])
+            colB.metric("📊 الثقة", f"{R['confidence']}%")
+            colC.metric("📈 العينة", R["sample_size"])
 
-                # Histogram chart
-                hist = tz["histogram_local_hours"]
-                if hist:
-                    df_hist = pd.DataFrame(
-                        sorted(hist.items()),
-                        columns=["الساعة المحلية", "عدد التغريدات"])
-                    st.markdown("#### 📊 توزيع النشاط خلال 24 ساعة:")
-                    st.bar_chart(df_hist.set_index("الساعة المحلية"))
-                    st.caption("النشاط الطبيعي يتركّز بين 8ص و 11م بالتوقيت المحلي، وليلًا يقلّ بشدّة.")
+            st.markdown("##### 🎯 الدول المحتملة:")
+            if R["candidate_countries"]:
+                st.success(" · ".join(R["candidate_countries"]))
+            else:
+                st.info("لا توجد دول معروفة بهذا الفارق")
 
-                with st.expander("🔍 تفاصيل كل المناطق الزمنية"):
-                    df_off = pd.DataFrame([
-                        {"UTC offset": f"UTC{k:+d}", "نسبة النشاط 8ص-11م":
-                         f"{v*100:.0f}%"} for k, v in tz["score_by_offset"].items()
-                    ])
-                    st.dataframe(df_off, use_container_width=True, height=300)
+            hist = R.get("histogram_local_hours") or {}
+            if hist:
+                df_hist = pd.DataFrame(sorted(hist.items()),
+                    columns=["الساعة المحلية", "عدد التغريدات"])
+                st.markdown("#### 📊 توزيع النشاط على 24 ساعة:")
+                st.bar_chart(df_hist.set_index("الساعة المحلية"))
+                st.caption("النشاط يتركّز عادة بين 8ص و11م بالتوقيت المحلي.")
 
-    # ─── وضع 4 — Full investigator ───
+            with st.expander("🔍 كل الفروق المحتملة"):
+                df_off = pd.DataFrame([
+                    {"UTC offset": f"UTC{k:+d}",
+                     "نسبة النشاط 8ص-11م": f"{v*100:.0f}%"}
+                    for k, v in R["score_by_offset"].items()
+                ])
+                st.dataframe(df_off, use_container_width=True, height=300)
+
+            if st.button("🗑️ مسح النتيجة", key="osint_clear_tz"):
+                st.session_state["osint_tz_result"] = None
+                st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # 4️⃣ المحقّق الشامل
+    # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("🕵️"):
-        username = st.text_input("👤 اسم مستخدم X (بدون @):",
-            placeholder="مثال: hureyaksa", key="osint_user")
-        n_tweets = st.slider("عدد التغريدات للتحليل (الأخيرة)",
-            5, 50, 20, key="osint_ntw")
+        with st.form("osint_form_full", clear_on_submit=False):
+            username = st.text_input("👤 اسم مستخدم X (بدون @):",
+                placeholder="مثال: hureyaksa", key="osint_user")
+            n_tweets = st.slider("عدد التغريدات للتحليل (الأخيرة)",
+                5, 50, 20, key="osint_ntw")
+            submitted_full = st.form_submit_button("🚀 ابدأ التحقيق الشامل",
+                type="primary", use_container_width=True)
 
-        if username and st.button("🚀 ابدأ التحقيق الشامل", type="primary", key="osint_run_full"):
-            with st.spinner("جارٍ جلب بيانات الحساب والتغريدات…"):
-                # Use fxtwitter API for profile + recent tweets
+        if submitted_full and username:
+            uname = username.strip().lstrip("@")
+            with st.spinner(f"جارٍ جلب بيانات @{uname} عبر fxtwitter API…"):
                 try:
                     pr = requests.get(
-                        f"https://api.fxtwitter.com/{username}",
-                        timeout=20, headers={"User-Agent": "Mozilla/5.0"}).json()
+                        f"https://api.fxtwitter.com/{uname}",
+                        timeout=20,
+                        headers={"User-Agent": "Mozilla/5.0"}).json()
                 except Exception as e:
-                    st.error(f"تعذّر جلب البروفايل: {e}")
-                    st.stop()
-                user = (pr or {}).get("user", {})
-                if not user:
-                    st.error("⛔ الحساب غير موجود أو محمي.")
-                    st.stop()
+                    st.error(f"تعذّر الاتصال: {e}")
+                    pr = None
+            user = (pr or {}).get("user", {}) if pr else {}
+            if not user:
+                st.error("⛔ الحساب غير موجود أو محمي.")
+                st.session_state["osint_full_result"] = None
+            else:
+                geo = None
+                if user.get("location"):
+                    with st.spinner("تحويل الموقع المعلن لإحداثيات…"):
+                        geo = geocode_place(user["location"])
+                st.session_state["osint_full_result"] = {
+                    "username": uname, "user": user, "geo": geo,
+                    "maps": (build_map_verification_links(geo["lat"], geo["lon"])
+                             if geo else None),
+                }
 
-            # Display profile
+        R = st.session_state.get("osint_full_result")
+        if R:
+            user = R["user"]
+            uname = R["username"]
+            geo = R["geo"]
+
             st.markdown("#### 👤 بروفايل الحساب")
             cprof = st.columns([1, 3])
             with cprof[0]:
                 if user.get("avatar_url"):
                     st.image(user["avatar_url"], width=120)
             with cprof[1]:
-                st.markdown(f"**{user.get('name', '')}** · @{user.get('screen_name','')}")
+                st.markdown(f"**{user.get('name','')}** · @{user.get('screen_name','')}")
                 st.caption(f"🆔 ID: `{user.get('id')}`  ·  "
                            f"📅 انضم: {user.get('joined','')}  ·  "
                            f"👥 متابعون: {user.get('followers',0):,}")
@@ -2507,69 +2580,72 @@ with tab_osint:
                 if user.get("description"):
                     st.caption(user["description"][:200])
 
-            # Try to geocode declared location
-            tz_iso = None
-            if user.get("location"):
-                with st.spinner("جارٍ تحويل الموقع المعلن إلى إحداثيات…"):
-                    g = geocode_place(user["location"])
-                if g:
-                    tz_iso = g.get("country_code")
-                    st.markdown(f"##### 🌐 الموقع المعلن على الخريطة:")
-                    if FOLIUM_AVAILABLE:
-                        m = folium.Map([g["lat"], g["lon"]], zoom_start=10)
-                        folium.Marker([g["lat"], g["lon"]],
-                            popup=g["display_name"],
-                            icon=folium.Icon(color="green")).add_to(m)
-                        st_folium(m, width=700, height=350, key="osint_map_full")
-                    # Map links
-                    st.markdown("🗺️ **تحقّق بصري:**")
-                    maps_links = build_map_verification_links(g["lat"], g["lon"])
-                    cmap = st.columns(3)
-                    for i, (engine, url) in enumerate(maps_links.items()):
-                        with cmap[i % 3]:
-                            st.link_button(f"🌐 {engine}", url, use_container_width=True)
+            if geo:
+                st.markdown("##### 🌐 الموقع المعلن على الخريطة:")
+                if FOLIUM_AVAILABLE:
+                    m = folium.Map([geo["lat"], geo["lon"]], zoom_start=10)
+                    folium.Marker([geo["lat"], geo["lon"]],
+                        popup=geo["display_name"][:80],
+                        icon=folium.Icon(color="green")).add_to(m)
+                    st_folium(m, width=720, height=350, key="osint_map_full")
+                st.markdown("🗺️ **تحقّق بصري:**")
+                ks = list(R["maps"].keys())
+                for row in range(0, 9, 3):
+                    cs = st.columns(3)
+                    for i, k in enumerate(ks[row:row+3]):
+                        with cs[i]:
+                            st.link_button(f"🌐 {k}", R["maps"][k],
+                                           use_container_width=True)
 
-            # Build user-related searches
             st.markdown("#### 🔍 روابط تحقيق جاهزة:")
             cinv = st.columns(2)
-            cinv[0].link_button(
-                "📌 كل تغريدات المستخدم (live)",
-                f"https://x.com/search?q=from%3A{username}&f=live",
-                use_container_width=True,
-            )
-            cinv[1].link_button(
-                "📞 ردود المستخدم (لرصد العلاقات)",
-                f"https://x.com/search?q=to%3A{username}&f=live",
-                use_container_width=True,
-            )
-            if tz_iso and user.get("location"):
+            cinv[0].link_button("📌 كل تغريدات المستخدم (live)",
+                f"https://x.com/search?q=from%3A{uname}&f=live",
+                use_container_width=True)
+            cinv[1].link_button("📞 ردود المستخدم (للعلاقات)",
+                f"https://x.com/search?q=to%3A{uname}&f=live",
+                use_container_width=True)
+            if geo:
                 cinv2 = st.columns(2)
-                if g:
-                    cinv2[0].link_button(
-                        f"📍 تغريدات حول موقعه المعلن (50كم)",
-                        build_user_search(username, g["lat"], g["lon"], 50),
-                        use_container_width=True,
-                    )
-                cinv2[1].link_button(
-                    "📱 التغريدات الأخيرة (لجلب أوقات النشر)",
-                    f"https://x.com/{username}",
-                    use_container_width=True,
-                )
-            st.caption("💡 افتح الرابط الأخير، انسخ أوقات نشر آخر 20-30 تغريدة والصقها في وضع 'تحليل المنطقة الزمنية' للكشف الدقيق.")
+                cinv2[0].link_button(
+                    "📍 تغريدات حول موقعه (50كم)",
+                    build_user_search(uname, geo["lat"], geo["lon"], 50),
+                    use_container_width=True)
+                cinv2[1].link_button("📱 بروفايل X",
+                    f"https://x.com/{uname}", use_container_width=True)
+            st.caption("💡 افتح بروفايل X، انسخ أوقات نشر آخر 20-30 تغريدة "
+                       "والصقها في وضع 'تحليل المنطقة الزمنية' للكشف الدقيق.")
 
-    # ─── وضع 5 — تحويل إحداثيات → عنوان ───
+            if st.button("🗑️ مسح النتيجة", key="osint_clear_full"):
+                st.session_state["osint_full_result"] = None
+                st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # 5️⃣ تحويل إحداثيات → عنوان
+    # ═══════════════════════════════════════════════════════════
     else:
-        col1, col2 = st.columns(2)
-        with col1:
-            r_lat = st.number_input("🌐 خط العرض",
-                value=24.7136, format="%.6f", key="osint_rlat")
-        with col2:
-            r_lon = st.number_input("🌐 خط الطول",
-                value=46.6753, format="%.6f", key="osint_rlon")
+        with st.form("osint_form_rev", clear_on_submit=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                r_lat = st.number_input("🌐 خط العرض", value=24.7136,
+                    format="%.6f", key="osint_rlat")
+            with col2:
+                r_lon = st.number_input("🌐 خط الطول", value=46.6753,
+                    format="%.6f", key="osint_rlon")
+            submitted_rev = st.form_submit_button("🔍 استخرج العنوان",
+                type="primary", use_container_width=True)
 
-        if st.button("🔍 استخرج العنوان", type="primary", key="osint_run_rev"):
+        if submitted_rev:
             with st.spinner("جارٍ البحث في OpenStreetMap…"):
                 rev = osint_reverse(r_lat, r_lon)
+            st.session_state["osint_rev_result"] = {
+                "lat": r_lat, "lon": r_lon, "rev": rev,
+                "maps": build_map_verification_links(r_lat, r_lon),
+            }
+
+        R = st.session_state.get("osint_rev_result")
+        if R:
+            rev = R["rev"]
             if rev:
                 st.success(f"✅ العنوان: {rev['display_name']}")
                 cols = st.columns(2)
@@ -2583,23 +2659,26 @@ with tab_osint:
                              "الرمز البريدي": rev.get("postcode")})
                 if FOLIUM_AVAILABLE:
                     with cols[1]:
-                        m = folium.Map([r_lat, r_lon], zoom_start=17)
-                        folium.Marker([r_lat, r_lon],
-                            popup=rev.get("display_name", "")[:80],
-                            icon=folium.Icon(color="red", icon="info-sign")
-                        ).add_to(m)
+                        m = folium.Map([R["lat"], R["lon"]], zoom_start=17)
+                        folium.Marker([R["lat"], R["lon"]],
+                            popup=(rev.get("display_name") or "")[:80],
+                            icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
                         st_folium(m, width=400, height=380, key="osint_map_rev")
             else:
                 st.error("⛔ لم يتم العثور على عنوان لهذه الإحداثيات.")
 
-            # Always show map links
             st.markdown("#### 🗺️ تحقّق بصري عبر كل المحرّكات:")
-            maps_links = build_map_verification_links(r_lat, r_lon)
-            cm = st.columns(3)
-            for i, (engine, url) in enumerate(maps_links.items()):
-                with cm[i % 3]:
-                    st.link_button(f"🌐 {engine}", url,
-                                   use_container_width=True)
+            ks = list(R["maps"].keys())
+            for row in range(0, 9, 3):
+                cm = st.columns(3)
+                for i, k in enumerate(ks[row:row+3]):
+                    with cm[i]:
+                        st.link_button(f"🌐 {k}", R["maps"][k],
+                                       use_container_width=True)
+
+            if st.button("🗑️ مسح النتيجة", key="osint_clear_rev"):
+                st.session_state["osint_rev_result"] = None
+                st.rerun()
 
 
 # ============ تبويب الإدخال اليدوي ============
