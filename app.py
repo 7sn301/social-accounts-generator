@@ -519,6 +519,13 @@ from about_account_fetcher import (
     parse_cookies_string,
 )
 
+# استيراد مصدّر التقارير (Word + PowerPoint) 📑
+try:
+    from report_exporter import generate_word_report, generate_pptx_report
+    REPORT_EXPORTER_AVAILABLE = True
+except ImportError:
+    REPORT_EXPORTER_AVAILABLE = False
+
 # ============ التبويبات ============
 tab_tt, tab_video, tab_x, tab_postloc, tab_manual, tab_excel, tab_help = st.tabs([
     "🎵 محلل حسابات TikTok",
@@ -1671,6 +1678,9 @@ with tab_postloc:
                 csv_pl = df_pl.to_csv(index=False).encode("utf-8-sig")
                 json_pl = df_pl.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
                 ts_pl = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # تصدير بسيط
+                st.markdown("##### 📊 تصدير بسيط (بيانات)")
                 ec1, ec2 = st.columns(2)
                 ec1.download_button(
                     "⬇️ CSV", data=csv_pl,
@@ -1682,6 +1692,76 @@ with tab_postloc:
                     file_name=f"post_locations_{ts_pl}.json",
                     mime="application/json", use_container_width=True,
                 )
+                
+                # 📑 تصدير تقارير احترافية (Word + PowerPoint)
+                st.markdown("##### 📑 تصدير تقارير احترافية (مع الصور والتنسيق الكامل)")
+                if not REPORT_EXPORTER_AVAILABLE:
+                    st.warning(
+                        "⚠️ ثبّت `python-docx` و `python-pptx` في requirements.txt لتفعيل هذه الميزة"
+                    )
+                else:
+                    er1, er2 = st.columns(2)
+                    
+                    with er1:
+                        if st.button(
+                            "📝 توليد تقرير Word (.docx)",
+                            use_container_width=True,
+                            key="pl_gen_word",
+                        ):
+                            with st.spinner("⏳ جارٍ توليد تقرير Word مع الصور..."):
+                                try:
+                                    docx_bytes = generate_word_report(
+                                        results,
+                                        title="🌍 تقرير تحليل مواقع المنشورات + كاشف VPN",
+                                    )
+                                    st.session_state["_pl_docx_bytes"] = docx_bytes
+                                    st.session_state["_pl_docx_ts"] = ts_pl
+                                    st.success(f"✅ تم توليد Word ({len(docx_bytes):,} bytes)")
+                                except Exception as e:
+                                    st.error(f"❌ فشل: {e}")
+                        
+                        if st.session_state.get("_pl_docx_bytes"):
+                            st.download_button(
+                                "⬇️ تحميل Word",
+                                data=st.session_state["_pl_docx_bytes"],
+                                file_name=f"post_locations_report_{st.session_state.get('_pl_docx_ts', ts_pl)}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                                key="pl_dl_word",
+                            )
+                    
+                    with er2:
+                        if st.button(
+                            "📊 توليد عرض PowerPoint (.pptx)",
+                            use_container_width=True,
+                            key="pl_gen_pptx",
+                        ):
+                            with st.spinner("⏳ جارٍ توليد عرض PowerPoint مع الصور..."):
+                                try:
+                                    pptx_bytes = generate_pptx_report(
+                                        results,
+                                        title="🌍 تحليل مواقع المنشورات + كاشف VPN",
+                                    )
+                                    st.session_state["_pl_pptx_bytes"] = pptx_bytes
+                                    st.session_state["_pl_pptx_ts"] = ts_pl
+                                    st.success(f"✅ تم توليد PowerPoint ({len(pptx_bytes):,} bytes)")
+                                except Exception as e:
+                                    st.error(f"❌ فشل: {e}")
+                        
+                        if st.session_state.get("_pl_pptx_bytes"):
+                            st.download_button(
+                                "⬇️ تحميل PowerPoint",
+                                data=st.session_state["_pl_pptx_bytes"],
+                                file_name=f"post_locations_report_{st.session_state.get('_pl_pptx_ts', ts_pl)}.pptx",
+                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                                use_container_width=True,
+                                key="pl_dl_pptx",
+                            )
+                    
+                    st.info(
+                        "💡 **التقارير تحتوي:** صور البروفايل + صور المنشورات + كل البيانات + "
+                        "مقارنة المواقع + تشخيص VPN بالألوان. تنسيق RTL عربي كامل."
+                    )
     
     # وضع 2: رفع صورة مباشرة
     elif pl_mode.startswith("🖼️ رفع صورة"):
