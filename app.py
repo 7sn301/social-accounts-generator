@@ -28,7 +28,7 @@ from tiktok_analyzer import (
     format_count as tt_format_count,
 )
 
-# استيراد محلل X (Twitter) v3 - مع حقل location الرسمي ⭐
+# استيراد محلل X (Twitter) v4 - محرك ذكي متعدد الطبقات + AI Vision ⭐
 from x_analyzer import (
     analyze_x_tweet_legacy as analyze_x_tweet,
     analyze_x_account,
@@ -36,6 +36,64 @@ from x_analyzer import (
     X_REGION_MAP,
     LANGUAGE_NAMES_AR_X,
 )
+
+# تحميل اختياري للذكاء الاصطناعي Gemini
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
+import os
+import base64
+
+
+# =====================================================
+# 🧠 AI Vision Callback — تحليل صور المنشورات
+# =====================================================
+
+def gemini_vision_callback(image_urls, prompt):
+    """استخدام Gemini Vision لتحليل الصور واستخراج الدلائل الجغرافية"""
+    if not GEMINI_AVAILABLE:
+        return "NO_GEO_SIGNALS"
+    
+    api_key = os.environ.get("GEMINI_API_KEY") or st.session_state.get("gemini_api_key")
+    if not api_key:
+        return "NO_GEO_SIGNALS"
+    
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')  # الأسرع والأرخص
+        
+        # حمّل الصور
+        import io
+        from PIL import Image
+        
+        images = []
+        for url in image_urls[:3]:  # أول 3 صور فقط
+            try:
+                resp = requests.get(url, timeout=10)
+                if resp.status_code == 200:
+                    img = Image.open(io.BytesIO(resp.content))
+                    images.append(img)
+            except Exception:
+                continue
+        
+        if not images:
+            return "NO_GEO_SIGNALS"
+        
+        response = model.generate_content([prompt] + images)
+        return response.text or "NO_GEO_SIGNALS"
+    except Exception as e:
+        return f"NO_GEO_SIGNALS\n# خطأ: {e}"
+
+
+def get_vision_callback():
+    """يرجع callback إذا كانت AI Vision مفعلة، وإلا None"""
+    if st.session_state.get("enable_ai_vision", False):
+        if (os.environ.get("GEMINI_API_KEY") or st.session_state.get("gemini_api_key")) and GEMINI_AVAILABLE:
+            return gemini_vision_callback
+    return None
 
 # ============ إعدادات الصفحة ============
 st.set_page_config(
@@ -390,6 +448,30 @@ with st.sidebar:
     st.markdown("### ⚙️ الإعدادات")
     max_workers = st.slider("عدد العمليات المتوازية", 1, 20, 10)
     min_confidence = st.slider("🎯 الحد الأدنى لثقة الدولة", 0, 100, 30)
+
+    st.markdown("---")
+    
+    # 🧠 الذكاء الاصطناعي لتحليل صور المنشورات
+    st.markdown("### 🧠 الذكاء الاصطناعي (تحليل صور)")
+    enable_ai_vision = st.checkbox(
+        "تفعيل تحليل صور التغريدات (X فقط)",
+        value=False,
+        key="enable_ai_vision",
+        help="يستخرج دلائل جغرافية من صور المنشور (معالم، لوحات، أعلام، لباس تقليدي). يرفع الدقة بشكل كبير للحسابات بدون بيانات نصية"
+    )
+    if enable_ai_vision:
+        st.text_input(
+            "Gemini API Key",
+            type="password",
+            key="gemini_api_key",
+            help="مجاني من https://aistudio.google.com/apikey"
+        )
+        if not GEMINI_AVAILABLE:
+            st.warning("⚠️ ثبّت `google-generativeai` في requirements.txt")
+        elif not (os.environ.get("GEMINI_API_KEY") or st.session_state.get("gemini_api_key")):
+            st.info("💡 أدخل API Key لتفعيل تحليل الصور")
+        else:
+            st.success("✅ تحليل الصور مفعل")
 
     st.markdown("---")
     st.markdown("### 🎵 تحليل TikTok المتقدم")
@@ -821,19 +903,19 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
 
 # ============ تبويب تحليل تغريدات X ============
 with tab_x:
-    st.markdown("### 🐦 محلل تغريدات X (Twitter) v3 - مع حقل الموقع الرسمي! ⭐")
+    st.markdown("### 🐦 محلل تغريدات X v4 - محرك ذكي 7 طبقات + AI Vision! 🧠")
     st.markdown(
         """
         <div class="info-box">
-        <strong>🔥 الجديد: يستخرج حقل الموقع الفعلي الذي يدخله المستخدم في بروفايله!</strong><br>
-        يستخدم <code>fxtwitter API</code> العام (بدون مصادقة) لجلب:<br>
-        • 📍 <strong>حقل location الرسمي من البروفايل</strong> (مثل: "الرياض", "England, UK")<br>
-        • 🆔 Tweet ID + User ID الدائم<br>
-        • 📝 نص التغريدة + التاريخ + اللغة<br>
-        • ❤️ الإعجابات + الردود + المشاهدات<br>
-        • 🖼️ الصور والفيديوهات بأعلى جودة<br>
-        • 👤 صورة البروفايل + التوثيق + المتابعون<br>
-        • 🌍 كشف الدولة من 3 مصادر: حقل الموقع → البايو → النص
+        <strong>🔥 محرك كشف الدولة الجذري (7 طبقات):</strong><br>
+        • 📍 <strong>طبقة 1: حقل الموقع الرسمي</strong> (ثقة 90-95%) — "الرياض"، "Oslo, Norway"<br>
+        • 🏳️ <strong>طبقة 2: الأعلام في البايو/الاسم</strong> (ثقة 70-80%)<br>
+        • 🏛️ <strong>طبقة 3: تحليل السياق (انتماء/سفر)</strong> — "مصاب بالعراق" = انتماء<br>
+        • 📝 <strong>طبقة 4: مدن في البايو/الاسم</strong> (ثقة 65-75%)<br>
+        • 🖼️ <strong>طبقة 5: AI Vision للصور</strong> — معالم، لوحات سيارات، لباس تقليدي (ثقة 65-75%)<br>
+        • 📄 <strong>طبقة 6: نص التغريدة</strong> (ثقة إضافية 35-40%)<br>
+        • 🔬 <strong>طبقة 7: دمج وأوزان</strong> — ثقة نهائية تصل لـ 95%<br>
+        ✅ <strong>بيانات تحدث: User ID دائم + تغريدة كاملة + صور + إحصائيات + توثيق</strong>
         </div>
         """,
         unsafe_allow_html=True,
@@ -889,7 +971,10 @@ https://twitter.com/elonmusk/status/2007910921914769832
 
             x_results = []
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = {ex.submit(analyze_x_tweet, url): url for url in x_urls}
+                vc = get_vision_callback()
+                if vc:
+                    st.info("🧠 AI Vision مفعل — سيتم تحليل صور التغريدات (وقت أطول)")
+                futures = {ex.submit(analyze_x_tweet, url, vision_callback=vc): url for url in x_urls}
                 done = 0
                 for f in as_completed(futures):
                     try:
@@ -955,6 +1040,17 @@ https://twitter.com/elonmusk/status/2007910921914769832
                         st.markdown(f"### {ud.get('user_name', '')}{verified}{vtype}")
                         st.caption(f"@{ud.get('user_screen_name', '')} • ID: `{ud.get('user_id', '')}`")
                         
+                        # 📍 حقل الموقع الرسمي
+                        if ud.get("location_field"):
+                            st.markdown(
+                                f"📍 <strong>حقل الموقع الرسمي:</strong> <code>{ud['location_field']}</code>",
+                                unsafe_allow_html=True
+                            )
+                        # 📝 البايو المختصر
+                        if ud.get("user_bio"):
+                            bio_short = ud['user_bio'][:120]
+                            st.caption(f"📝 {bio_short}" + ("..." if len(ud['user_bio']) > 120 else ""))
+                        
                         # القرار النهائي
                         if ud.get("final_region"):
                             flag = ud.get("final_region_flag", "")
@@ -981,6 +1077,34 @@ https://twitter.com/elonmusk/status/2007910921914769832
             
             st.markdown("---")
         
+        # 📸 عرض نتائج AI Vision (إن توفرت)
+        ai_results = [r for r in x_results if r.get("image_findings")]
+        if ai_results:
+            with st.expander(f"🧠 نتائج تحليل الصور بالذكاء الاصطناعي ({len(ai_results)} تغريدة)", expanded=False):
+                for r in ai_results:
+                    st.markdown(f"**@{r.get('user_screen_name')}** - [التغريدة]({r.get('tweet_url')})")
+                    for f in r.get("image_findings", []):
+                        code = f.get("country_code", "?")
+                        info = X_REGION_MAP.get(code, {})
+                        st.markdown(
+                            f"  - {info.get('flag', '?')} **{info.get('ar', code)}** — {f.get('description', '')}"
+                        )
+                    st.markdown("---")
+        
+        # 🔍 عرض أدلة مفصلة لكل تغريدة
+        with st.expander("🔍 الأدلة المفصلة وسبب الكشف (لكل تغريدة)", expanded=False):
+            for r in x_results:
+                if not r.get("all_evidence"):
+                    continue
+                st.markdown(
+                    f"**@{r.get('user_screen_name', '?')}** → "
+                    f"{r.get('region_flag', '?')} {r.get('region_name_ar', '?')} "
+                    f"({r.get('region_confidence', 0)}%)"
+                )
+                for ev in r.get("all_evidence", [])[:5]:
+                    st.caption(f"  • {ev}")
+                st.markdown("---")
+        
         # توزيع الدول (التغريدات الفردية)
         countries_x = [
             f"{r['region_flag']} {r['region_name_ar']}" for r in x_results
@@ -1002,9 +1126,10 @@ https://twitter.com/elonmusk/status/2007910921914769832
         st.markdown("#### 📋 جدول التغريدات")
         x_cols = [
             "user_screen_name", "user_name", "user_id",
-            "user_location_field",  # 🎯 جديد: حقل الموقع الرسمي
+            "user_location_field",
             "region_flag", "region_name_ar", "region_confidence",
-            "region_source",
+            "region_evidence",
+            "used_image_ai",
             "lang_name_ar", "created_at",
             "favorite_count", "conversation_count", "media_count", "media_type",
             "user_blue_verified",
@@ -1021,7 +1146,8 @@ https://twitter.com/elonmusk/status/2007910921914769832
                 "user_screen_name": st.column_config.TextColumn("@يوزر"),
                 "user_name": st.column_config.TextColumn("الاسم"),
                 "user_location_field": st.column_config.TextColumn("📍 حقل الموقع الرسمي", width="medium"),
-                "region_source": st.column_config.TextColumn("📊 مصدر الكشف", width="medium"),
+                "region_evidence": st.column_config.TextColumn("🔍 دليل الكشف", width="medium"),
+                "used_image_ai": st.column_config.TextColumn("🧠 AI", width="small", help="هل تم تحليل صورة التغريدة؟"),
                 "region_flag": st.column_config.TextColumn("🚩", width="small"),
                 "region_name_ar": st.column_config.TextColumn("الدولة"),
                 "region_confidence": st.column_config.ProgressColumn(
