@@ -526,12 +526,31 @@ try:
 except ImportError:
     REPORT_EXPORTER_AVAILABLE = False
 
+# 🛰️ استيراد Geo-Engine (GeoSpy.ai + EXIF + Yandex + AI) - المحرّك الجديد
+try:
+    from geo_engine import (
+        analyze_image_full,
+        extract_exif_full,
+        summarize_exif,
+        build_reverse_search_links,
+        triangulate,
+        detect_vpn as ge_detect_vpn,
+        flag as ge_flag,
+        country_ar as ge_country_ar,
+        ISO_TO_AR,
+    )
+    GEO_ENGINE_AVAILABLE = True
+except ImportError as _e:
+    GEO_ENGINE_AVAILABLE = False
+    GEO_ENGINE_ERROR = str(_e)
+
 # ============ التبويبات ============
-tab_tt, tab_video, tab_x, tab_postloc, tab_manual, tab_excel, tab_help = st.tabs([
+tab_tt, tab_video, tab_x, tab_postloc, tab_geo, tab_manual, tab_excel, tab_help = st.tabs([
     "🎵 محلل حسابات TikTok",
     "🎬 تحليل فيديو تيك توك",
     "🐦 تحليل تغريدات X (Twitter)",
-    "🌍 موقع المنشور + كاشف VPN",  # التبويب الجديد
+    "🌍 موقع المنشور + كاشف VPN",
+    "🛰️ Geo-Engine (GeoSpy + EXIF + Yandex)",  # GeoSpy-style tab
     "📝 إدخال يدوي (كل المنصات)",
     "📂 رفع Excel",
     "ℹ️ التعليمات",
@@ -1394,11 +1413,19 @@ with tab_postloc:
                             if isinstance(p, dict) and p.get("url"):
                                 photos_urls.append(p["url"])
                     
-                    # 3. حلل الصور بـ Gemini Vision
+                    # 3. حلل الصور بـ Gemini Vision (مع hint من موقع الحساب ⚡)
                     image_analysis = None
                     if photos_urls:
+                        # مرر موقع الحساب لتحسين الكشف
+                        account_loc_hint = (
+                            tweet_data.get("user_location_field") or
+                            tweet_data.get("region_name_ar") or
+                            ""
+                        )
                         image_analysis = analyze_post_images(
-                            photos_urls, api_key_for_post, max_images=int(pl_max_imgs)
+                            photos_urls, api_key_for_post,
+                            max_images=int(pl_max_imgs),
+                            account_location=account_loc_hint,
                         )
                     
                     # 4. لا نستخدم About API (آمن بدون cookies)
@@ -1582,6 +1609,22 @@ with tab_postloc:
                                 f"⚠️ التغريدة فيها صور لكن لم نستخرج موقعاً "
                                 f"({len(r['photos'])} صور)"
                             )
+                            # عرض الأدلة الجزئية إن وجدت (جديد ⚡)
+                            partial_obs = (img_an or {}).get("partial_observations", [])
+                            partial_texts = (img_an or {}).get("partial_texts", [])
+                            if partial_obs or partial_texts:
+                                with st.expander("🔍 عرض الأدلة الجزئية التي رصدها AI", expanded=True):
+                                    if partial_texts:
+                                        st.markdown("**📝 نصوص في الصورة:**")
+                                        for t in partial_texts[:5]:
+                                            st.markdown(f"• {t}")
+                                    if partial_obs:
+                                        st.markdown("**👁️ ملاحظات:**")
+                                        for o in partial_obs[:5]:
+                                            st.markdown(f"• {o}")
+                                    st.caption(
+                                        "💡 التحليل رصد هذه الإشارات لكنها غير كافية لتحديد دولة بدقة"
+                                    )
                         else:
                             st.info("📝 التغريدة بدون صور")
                     
@@ -1616,9 +1659,21 @@ with tab_postloc:
                     # تفاصيل الصور وأدلة Gemini
                     if img_an and img_an.get("aggregate"):
                         agg = img_an["aggregate"]
-                        with st.expander("📸 تفاصيل تحليل الصور بالذكاء الاصطناعي", expanded=False):
+                        with st.expander("📸 تفاصيل تحليل الصور بالذكاء الاصطناعي", expanded=True):
                             if agg.get("reasoning"):
                                 st.markdown(f"**🧠 الاستنتاج:** {agg['reasoning']}")
+                            if agg.get("verification"):
+                                ver = agg["verification"]
+                                if ver == "MATCHES":
+                                    st.success(f"✅ الصورة **تطابق** موقع الحساب المعلن")
+                                elif ver == "DIFFERENT":
+                                    st.error(f"🚨 الصورة **مختلفة** عن موقع الحساب (VPN!)")
+                                else:
+                                    st.info("ℹ️ غير محدد")
+                            if agg.get("visible_texts"):
+                                st.markdown("**📝 نصوص مرئية في الصورة:**")
+                                for t in agg["visible_texts"][:5]:
+                                    st.markdown(f"• {t}")
                             if agg.get("key_evidence"):
                                 st.markdown("**🔑 الأدلة الرئيسية:**")
                                 for ev in agg["key_evidence"]:
@@ -1629,7 +1684,6 @@ with tab_postloc:
                                     st.markdown(f"  ○ {obs}")
                             if agg.get("coordinates"):
                                 st.markdown(f"**📍 إحداثيات تقريبية:** `{agg['coordinates']}`")
-                                # خريطة
                                 try:
                                     lat, lon = [float(x.strip()) for x in agg['coordinates'].split(',')[:2]]
                                     import pandas as pd
@@ -1878,6 +1932,261 @@ with tab_postloc:
                             else:
                                 st.warning("⚠️ لم توجد إشارات جغرافية واضحة")
                     progress.progress((i+1) / len(urls))
+
+
+# ════════════════════════════════════════════════════════════
+# Helper: render one geo-engine result
+# ════════════════════════════════════════════════════════════
+def _render_geo_result(label, img_bytes, res):
+    if not res or res.get("error"):
+        st.error(f"❌ فشل التحليل: {res.get('error', 'unknown')}")
+        return
+
+    cols = st.columns([1, 2])
+    with cols[0]:
+        if img_bytes:
+            try:
+                st.image(img_bytes, caption=label[:60], use_container_width=True)
+            except Exception:
+                st.caption("(تعذر عرض الصورة)")
+
+    with cols[1]:
+        tri = res.get("triangulation", {})
+        vpn = res.get("vpn", {})
+
+        # Final answer
+        if tri.get("final_iso"):
+            st.markdown(
+                f"<div style='background:#e8f5e9; padding:14px;"
+                f"border-radius:10px; border-right:5px solid #2e7d32;'>"
+                f"<h3 style='margin:0;'>{tri['final_flag']} {tri['country_ar']} "
+                f"<span style='color:#555;font-size:14px;'>(ثقة {tri['confidence']}%)</span></h3>"
+                f"<b>🏙️ المدينة:</b> {tri.get('city') or '—'}<br>"
+                f"<b>📍 الحي:</b> {tri.get('neighbourhood') or '—'}<br>"
+                f"<b>🌐 الإحداثيات:</b> {tri.get('lat')}, {tri.get('lon')}<br>"
+                f"<b>🔍 الطريقة:</b> <code>{tri.get('method')}</code>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            if tri.get("lat") and tri.get("lon"):
+                st.markdown(f"[🗺️ فتح على OpenStreetMap]"
+                            f"(https://www.openstreetmap.org/?mlat={tri['lat']}"
+                            f"&mlon={tri['lon']}&zoom=16)")
+        else:
+            st.warning("⚠️ لم يتمكّن أي من الطبقات من تحديد الدولة — جرّب Yandex يدوياً")
+
+        # VPN
+        risk = vpn.get("risk_score", 0)
+        risk_color = ("#c62828" if risk >= 80 else
+                      "#ef6c00" if risk >= 50 else
+                      "#f9a825" if risk >= 25 else "#2e7d32")
+        st.markdown(
+            f"<div style='background:#fafafa;padding:12px;border-radius:8px;"
+            f"border-right:5px solid {risk_color}; margin-top:10px;'>"
+            f"<b>🛡️ تشخيص VPN:</b> {vpn.get('verdict')} "
+            f"<span style='color:{risk_color};font-weight:bold;'>({risk}/100)</span><br>"
+            f"‪{'<br>'.join('• ' + r for r in vpn.get('reasons', []))}‬"
+            f"<br><i>💡 {vpn.get('recommendation','')}</i>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ─── EXIF table ───
+    e = res.get("exif", {})
+    with st.expander(f"🔍 فحص EXIF التفصيلي ({e.get('total_tags', 0)} حقل)", expanded=False):
+        if e.get("available"):
+            exif_show = {k: v for k, v in e.items() if v not in (None, "", {})
+                         and k not in ("available", "total_tags")}
+            st.json(exif_show)
+        else:
+            st.info("لا توجد بيانات EXIF (غالباً X/Twitter يحذفها عند الرفع).")
+
+    # ─── AI Vision details ───
+    ai = res.get("ai_vision", {})
+    with st.expander("🤖 تفاصيل AI GEO-Detective", expanded=False):
+        if "error" in ai:
+            st.warning(f"AI غير متاح: {ai['error']}")
+        else:
+            st.json(ai)
+
+    # ─── Reverse-image search links ───
+    rev = res.get("reverse_search", {})
+    if rev:
+        st.markdown("##### 🔗 Reverse Image Search (افتح يدوياً للتحقّق):")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.link_button("🧬 Yandex", rev.get("yandex", "#"), use_container_width=True)
+        c2.link_button("🔍 Google Lens", rev.get("google_lens", "#"), use_container_width=True)
+        c3.link_button("🌐 Google", rev.get("google", "#"), use_container_width=True)
+        c4.link_button("🅱️ Bing", rev.get("bing", "#"), use_container_width=True)
+        c5.link_button("👁️ TinEye", rev.get("tineye", "#"), use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════
+# 🛰️ تبويب Geo-Engine (GeoSpy + EXIF + Yandex + AI Vision)
+# ════════════════════════════════════════════════════════════
+with tab_geo:
+    st.markdown("### 🛰️ Geo-Engine — محرّك التحليل الجغرافي المتعدد الطبقات")
+    st.markdown(
+        """
+<div style='background: linear-gradient(135deg, #0f2027, #2c5364);
+            padding: 18px; border-radius: 12px; color: white;
+            border-left: 5px solid #00d4ff;'>
+  <b>🎯 محرّك مستوحى من GeoSpy.ai وورقة PIGEON من Stanford</b>
+  <ul style='margin-top: 10px; font-size: 14px;'>
+    <li>🔍 <b>الطبقة 1 — ExifTool Deep Scan</b>: فحص 100+ حقل (GPS، كاميرا، توقيت، برامج، XMP، IPTC) — بنفس محرّك ExifGlass</li>
+    <li>🔗 <b>الطبقة 2 — Reverse Image Search</b>: روابط جاهزة لـ Yandex (الأقوى عالمياً)، Google Lens، Bing، TinEye</li>
+    <li>🤖 <b>الطبقة 3 — AI GEO-Detective</b>: Gemini 2.0 يفحص 6 فئات (لافتات، عمارة، مركبات، طبيعة، أشخاص، رقميّة)</li>
+    <li>🎯 <b>الطبقة 4 — Triangulation Voting</b>: تصويت موزون بين الطبقات للحصول على دليل واحد موثوق</li>
+    <li>🛡️ <b>الطبقة 5 — VPN Detector</b>: يقارن موقع الحساب × موقع الصورة × اللغة × المنطقة الزمنية</li>
+  </ul>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.write("")
+
+    if not GEO_ENGINE_AVAILABLE:
+        st.error(f"⚠️ geo_engine.py غير متوفر: {GEO_ENGINE_ERROR}")
+        st.stop()
+
+    # ─── إعدادات الإدخال ───
+    geo_mode = st.radio(
+        "📁 وضع الإدخال:",
+        [
+            "📎 رفع صورة مباشرة (أدقّ فحص EXIF)",
+            "🔗 روابط صور مباشرة (URLs)",
+            "🐦 روابط منشورات X (استخراج تلقائي)",
+        ],
+        horizontal=True, key="geo_mode",
+    )
+
+    # API key
+    geo_api_key = st.session_state.get("gemini_api_key", "") \
+                  or os.environ.get("GEMINI_API_KEY", "")
+    if not geo_api_key:
+        with st.expander("🔑 إعداد Gemini API Key (مجاني 1500 طلب/يوم)", expanded=False):
+            st.markdown(
+                "احصل على مفتاح مجاني من [Google AI Studio]"
+                "(https://aistudio.google.com/apikey) — بدون بطاقة بنكية."
+            )
+            geo_api_key = st.text_input(
+                "AIza...", type="password", key="geo_api_input",
+                placeholder="اتركه فارغاً لتعطيل AI والاكتفاء بـ EXIF + Reverse-Search",
+            )
+            if geo_api_key:
+                st.session_state["gemini_api_key"] = geo_api_key
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        geo_account_iso = st.selectbox(
+            "🏠 الدولة المعلنة للحساب (للمقارنة/كشف VPN)",
+            ["— غير محدد —"] + [f"{ge_flag(k)} {k} — {v}" for k, v in ISO_TO_AR.items()],
+            key="geo_acc_iso",
+        )
+    with col_b:
+        geo_lang = st.selectbox(
+            "🗣️ لغة المنشور (لكشف VPN)",
+            ["—", "ar", "en", "fr", "es", "ru", "tr", "fa", "ur", "id", "ms"],
+            key="geo_lang",
+        )
+
+    parsed_account_iso = (geo_account_iso.split(" ")[1]
+                          if geo_account_iso and "—" not in geo_account_iso[:5]
+                          else None)
+    parsed_lang = geo_lang if geo_lang and geo_lang != "—" else None
+
+    # ─── وضع 1: رفع صورة ###############################
+    if geo_mode.startswith("📎"):
+        uploaded = st.file_uploader(
+            "اختر صورة (jpg/jpeg/png/webp/heic) — حتى 8 MB",
+            type=["jpg", "jpeg", "png", "webp", "heic", "heif"],
+            accept_multiple_files=True,
+            key="geo_upload",
+        )
+        if uploaded and st.button("🚀 تحليل عبر 5 طبقات", type="primary", key="geo_run_upload"):
+            for idx, file in enumerate(uploaded):
+                st.markdown(f"---\n#### 📸 صورة {idx+1}: `{file.name}`")
+                img_bytes = file.read()
+                with st.spinner("جارٍ فحص EXIF + Reverse Search + AI …"):
+                    res = analyze_image_full(
+                        image_bytes=img_bytes,
+                        gemini_api_key=geo_api_key or None,
+                        account_iso=parsed_account_iso,
+                        tweet_lang=parsed_lang,
+                    )
+                _render_geo_result(file.name, img_bytes, res)
+
+    # ─── وضع 2: روابط صور مباشرة #####################
+    elif geo_mode.startswith("🔗"):
+        urls_text = st.text_area(
+            "ألصق روابط صور مباشرة (رابط لكل سطر):",
+            height=140, key="geo_urls_in",
+            placeholder="https://pbs.twimg.com/media/XXX.jpg\nhttps://example.com/photo.jpg",
+        )
+        if urls_text and st.button("🚀 تحليل الروابط", type="primary", key="geo_run_urls"):
+            urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
+            for idx, url in enumerate(urls):
+                st.markdown(f"---\n#### 🔗 رابط {idx+1}")
+                st.caption(url)
+                with st.spinner("جارٍ تحليل 5 طبقات …"):
+                    res = analyze_image_full(
+                        image_url=url,
+                        gemini_api_key=geo_api_key or None,
+                        account_iso=parsed_account_iso,
+                        tweet_lang=parsed_lang,
+                    )
+                # try to fetch bytes for preview
+                try:
+                    img_bytes = requests.get(url, timeout=15,
+                        headers={"User-Agent":"Mozilla/5.0"}).content
+                except Exception:
+                    img_bytes = None
+                _render_geo_result(url, img_bytes, res)
+
+    # ─── وضع 3: منشورات X #################################
+    else:
+        x_links = st.text_area(
+            "ألصق روابط منشورات X (رابط لكل سطر):",
+            height=140, key="geo_x_in",
+            placeholder="https://x.com/username/status/1234567890",
+        )
+        if x_links and st.button("🚀 استخراج الصور + تحليل", type="primary", key="geo_run_x"):
+            from x_analyzer import analyze_x_tweet_legacy as _atl
+            urls = [u.strip() for u in x_links.splitlines() if u.strip()]
+            for idx, url in enumerate(urls):
+                st.markdown(f"---\n#### 🐦 تغريدة {idx+1}")
+                st.caption(url)
+                with st.spinner("جارٍ جلب بيانات التغريدة …"):
+                    try:
+                        tw = _atl(url) or {}
+                    except Exception as e:
+                        st.error(f"تعذّر جلب التغريدة: {e}")
+                        continue
+                    media_urls = tw.get("media_urls") or tw.get("images") or []
+                    acc_iso = parsed_account_iso or (tw.get("region_iso") or None)
+                    acc_lang = parsed_lang or tw.get("lang")
+
+                if not media_urls:
+                    st.warning("لا توجد صور في هذه التغريدة.")
+                    continue
+                st.success(f"تمّ استخراج {len(media_urls)} صورة — الحساب @{tw.get('user_screen_name','?')} "
+                           f"({ge_flag(acc_iso) if acc_iso else ''} {acc_iso or '—'})")
+                for j, mu in enumerate(media_urls[:4]):
+                    st.markdown(f"##### 🖼️ صورة {j+1}/{len(media_urls[:4])}")
+                    with st.spinner("تحليل 5 طبقات …"):
+                        res = analyze_image_full(
+                            image_url=mu,
+                            gemini_api_key=geo_api_key or None,
+                            account_iso=acc_iso,
+                            tweet_lang=acc_lang,
+                        )
+                    try:
+                        img_bytes = requests.get(mu, timeout=15,
+                            headers={"User-Agent":"Mozilla/5.0"}).content
+                    except Exception:
+                        img_bytes = None
+                    _render_geo_result(mu, img_bytes, res)
+
 
 
 # ============ تبويب الإدخال اليدوي ============
