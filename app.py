@@ -502,11 +502,29 @@ with st.sidebar:
         use_container_width=True,
     )
 
+# استيراد محلل موقع المنشور
+from post_location_analyzer import (
+    analyze_image_geo,
+    analyze_post_images,
+    detect_vpn,
+    extract_exif_gps,
+    reverse_geocode,
+)
+
+# استيراد About Account fetcher (X الرسمي) ⭐
+from about_account_fetcher import (
+    fetch_about_account,
+    diagnose_vpn_from_about,
+    country_name_to_iso,
+    parse_cookies_string,
+)
+
 # ============ التبويبات ============
-tab_tt, tab_video, tab_x, tab_manual, tab_excel, tab_help = st.tabs([
+tab_tt, tab_video, tab_x, tab_postloc, tab_manual, tab_excel, tab_help = st.tabs([
     "🎵 محلل حسابات TikTok",
     "🎬 تحليل فيديو تيك توك",
     "🐦 تحليل تغريدات X (Twitter)",
+    "🌍 موقع المنشور + كاشف VPN",  # التبويب الجديد
     "📝 إدخال يدوي (كل المنصات)",
     "📂 رفع Excel",
     "ℹ️ التعليمات",
@@ -1224,6 +1242,563 @@ https://twitter.com/elonmusk/status/2007910921914769832
                                 f"({t['region_confidence']}% - {t['region_source']})"
                             )
                         st.markdown(f"[🔗 فتح في X]({t.get('tweet_url', '')})")
+
+
+# ============ 🌍 تبويب تحليل موقع المنشور + كاشف VPN — الأقوى! ============
+with tab_postloc:
+    st.markdown("### 🌍 تحديد موقع المنشور + كاشف VPN — تحليل بصري عميق 🧠")
+    st.markdown(
+        """
+        <div class="info-box">
+        <strong>🔥 الفرق الجوهري:</strong> هذا التبويب يحدد <strong>موقع تصوير المنشور الفعلي</strong>
+        (وليس ما يدّعيه الحساب في بروفايله)!
+        <ul>
+        <li>🛰️ <strong>EXIF GPS</strong>: الدقة القصوى 100% — يستخرج إحداثيات فعلية إن وجدت</li>
+        <li>🤖 <strong>Gemini Vision (GEO-Detective)</strong>: تحليل بصري 5 فئات (معمار، بنية تحتية، بيئة، تخطيط، لافتات)</li>
+        <li>🚨 <strong>كاشف VPN</strong>: يقارن موقع الحساب مع موقع التصوير → التناقض = احتمال VPN</li>
+        <li>🏛️ يكتشف: معالم، لوحات سيارات، لافتات، لباس تقليدي، علامات تجارية محلية</li>
+        </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    # اختيار وضع التحليل
+    st.markdown("#### 📝 وضع التحليل")
+    pl_mode = st.radio(
+        "اختر طريقة الإدخال:",
+        [
+            "🔗 روابط منشورات X (تحليل صور + كشف VPN)",
+            "🖼️ رفع صورة مباشرة لتحديد موقعها",
+            "🔗 روابط صور مباشرة",
+        ],
+        horizontal=False,
+        key="pl_mode",
+    )
+    
+    # تحقق من API key
+    api_key_for_post = (
+        os.environ.get("GEMINI_API_KEY")
+        or st.session_state.get("gemini_api_key")
+    )
+    
+    if not api_key_for_post:
+        st.warning(
+            "⚠️ تحتاج **Gemini API Key** لتفعيل تحليل الصور. "
+            "احصل عليه مجاناً من: https://aistudio.google.com/apikey"
+        )
+        new_key = st.text_input(
+            "أدخل Gemini API Key:",
+            type="password",
+            key="gemini_api_key_postloc",
+        )
+        if new_key:
+            st.session_state["gemini_api_key"] = new_key
+            api_key_for_post = new_key
+            st.rerun()
+    else:
+        st.success("✅ Gemini API مفعل — جاهز للتحليل!")
+    
+    # ✅ رسالة إعلامية - لا حاجة لـ cookies!
+    st.markdown(
+        """
+        <div style="background: #d1fae5; border-right: 4px solid #10b981; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+        <strong>✅ آمن بنسبة 100% — لا حاجة لتسجيل دخول!</strong><br>
+        هذا التبويب يستخدم فقط APIs عامة وآمنة:
+        <ul style="margin: 0.5rem 0;">
+        <li>🌐 <strong>fxtwitter API</strong>: مجاني ومفتوح — يجلب حقل الموقع المعلن في البروفايل</li>
+        <li>🤖 <strong>Gemini Vision</strong>: يحلل صور المنشور لتحديد موقع التصوير الفعلي</li>
+        <li>🔍 <strong>EXIF GPS</strong>: إحداثيات مباشرة إن وجدت</li>
+        </ul>
+        🎯 <strong>كشف VPN</strong>: بمقارنة الموقع المعلن في البروفايل مع موقع التصوير من الصور = التناقض يكشف VPN!
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    # الوضع الآمن: لا نستخدم cookies أبداً
+    use_about_api = False
+    x_cookies = ""
+    
+    st.markdown("---")
+    
+    # وضع 1: روابط منشورات X
+    if pl_mode.startswith("🔗 روابط منشورات X"):
+        st.markdown("#### 🔗 أدخل روابط تغريدات X تحتوي صور:")
+        pl_x_urls = st.text_area(
+            "رابط لكل سطر:",
+            height=150,
+            placeholder="https://x.com/username/status/1234567890\nhttps://x.com/another/status/9876543210",
+            key="pl_x_urls_input",
+        )
+        
+        col_pl1, col_pl2 = st.columns([3, 1])
+        with col_pl2:
+            pl_max_imgs = st.number_input(
+                "صور لكل تغريدة", min_value=1, max_value=4, value=2,
+                help="عدد الصور التي ستحلل لكل تغريدة (أقل = أسرع)",
+            )
+        
+        if st.button(
+            "🚀 تحليل مواقع المنشورات + كشف VPN",
+            type="primary",
+            use_container_width=True,
+            key="pl_x_analyze",
+            disabled=not api_key_for_post,
+        ):
+            urls = [u.strip() for u in pl_x_urls.splitlines()
+                    if u.strip() and ('x.com' in u or 'twitter.com' in u)]
+            
+            if not urls:
+                st.error("❌ لم يتم العثور على روابط صحيحة")
+            else:
+                st.info(f"🔄 جارٍ تحليل **{len(urls)}** منشورات... (قد يستغرق دقيقة لكل منشور)")
+                progress = st.progress(0)
+                status = st.empty()
+                pl_results = []
+                
+                for i, url in enumerate(urls):
+                    status.text(f"⏳ تحليل {i+1}/{len(urls)}: {url[:60]}...")
+                    
+                    # 1. جلب بيانات التغريدة (تتضمن روابط الصور + موقع الحساب)
+                    tweet_data = analyze_x_tweet(url)
+                    
+                    if tweet_data.get("status") != "✅ نجح":
+                        pl_results.append({
+                            "url": url, "error": tweet_data.get("error"),
+                            "success": False,
+                        })
+                        progress.progress((i+1) / len(urls))
+                        continue
+                    
+                    # 2. استخرج روابط الصور
+                    photos_urls = []
+                    # من النتيجة الجديدة (legacy wrapper)
+                    media = tweet_data.get("media") if isinstance(tweet_data.get("media"), dict) else {}
+                    if not media:
+                        # جلب مباشر
+                        from x_analyzer import fetch_x_tweet, parse_x_url
+                        u_, tid_ = parse_x_url(url)
+                        if u_ and tid_:
+                            full = fetch_x_tweet(u_, tid_)
+                            photos_urls = full.get("photos_urls", [])
+                    else:
+                        for p in (media.get("photos") or []):
+                            if isinstance(p, dict) and p.get("url"):
+                                photos_urls.append(p["url"])
+                    
+                    # 3. حلل الصور بـ Gemini Vision
+                    image_analysis = None
+                    if photos_urls:
+                        image_analysis = analyze_post_images(
+                            photos_urls, api_key_for_post, max_images=int(pl_max_imgs)
+                        )
+                    
+                    # 4. لا نستخدم About API (آمن بدون cookies)
+                    about_data = None
+                    about_diagnosis = None
+                    screen_name = tweet_data.get("user_screen_name")
+                    
+                    # 5. كشف VPN: بالموقع المعلن في البروفايل (fxtwitter)
+                    account_country_iso = tweet_data.get("region")
+                    
+                    post_country = None
+                    if image_analysis and image_analysis.get("aggregate"):
+                        post_country = image_analysis["aggregate"].get("country_code")
+                    
+                    vpn_check = detect_vpn(
+                        account_country=account_country_iso,
+                        post_country=post_country,
+                        lang=tweet_data.get("lang", ""),
+                        name=tweet_data.get("user_name", ""),
+                        bio=tweet_data.get("user_bio", ""),
+                    )
+                    
+                    pl_results.append({
+                        "success": True,
+                        "url": url,
+                        "tweet": tweet_data,
+                        "photos": photos_urls,
+                        "image_analysis": image_analysis,
+                        "about_data": about_data,
+                        "about_diagnosis": about_diagnosis,
+                        "vpn_check": vpn_check,
+                        "account_country": account_country_iso,
+                        "post_country": post_country,
+                    })
+                    
+                    progress.progress((i+1) / len(urls))
+                
+                progress.empty()
+                status.empty()
+                st.session_state["pl_results"] = pl_results
+                st.success(f"✅ تم تحليل {len(pl_results)} منشورات!")
+        
+        # عرض النتائج
+        if "pl_results" in st.session_state and st.session_state["pl_results"]:
+            results = st.session_state["pl_results"]
+            
+            st.markdown("---")
+            st.markdown("## 📊 نتائج تحليل مواقع المنشورات")
+            
+            # إحصائيات سريعة
+            total = len([r for r in results if r.get("success")])
+            with_post_loc = sum(1 for r in results if r.get("post_country"))
+            vpn_alerts = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "likely_vpn")
+            matched = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "matched")
+            travel = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") in ("travel", "expat_visit"))
+            
+            ms1, ms2, ms3, ms4, ms5 = st.columns(5)
+            ms1.metric("🔗 الإجمالي", total)
+            ms2.metric("🌍 لها موقع صورة", with_post_loc)
+            ms3.metric("🚨 احتمال VPN", vpn_alerts, delta=f"{vpn_alerts}/{total}" if total else None)
+            ms4.metric("✅ تطابق", matched)
+            ms5.metric("✈️ سفر/مغترب", travel)
+            
+            # عرض كل نتيجة
+            for idx, r in enumerate(results):
+                if not r.get("success"):
+                    with st.container(border=True):
+                        st.error(f"❌ فشل تحليل: {r.get('url')} — {r.get('error')}")
+                    continue
+                
+                tweet = r.get("tweet", {})
+                vpn = r.get("vpn_check", {})
+                img_an = r.get("image_analysis", {})
+                
+                with st.container(border=True):
+                    # Header
+                    h1, h2 = st.columns([1, 4])
+                    with h1:
+                        if tweet.get("user_profile_image"):
+                            try:
+                                st.image(tweet["user_profile_image"], width=80)
+                            except Exception:
+                                pass
+                    with h2:
+                        st.markdown(
+                            f"### {tweet.get('user_name', '')} "
+                            f"{'✓' if tweet.get('user_blue_verified') else ''}"
+                        )
+                        st.caption(
+                            f"@{tweet.get('user_screen_name', '')} • "
+                            f"ID: `{tweet.get('user_id', '')}`"
+                        )
+                        st.markdown(f"🔗 [فتح التغريدة]({tweet.get('tweet_url', '')})")
+                    
+                    # 🎯 عرض بيانات About Account (إن توفرت)
+                    about = r.get("about_data") or {}
+                    about_diag = r.get("about_diagnosis") or {}
+                    if about.get("success"):
+                        with st.container(border=True):
+                            st.markdown("### 🎯 بيانات /about من X مباشرة (الأدق!)")
+                            ab1, ab2, ab3, ab4 = st.columns(4)
+                            ab1.metric(
+                                "📍 account_based_in",
+                                about.get("account_based_in") or "-",
+                            )
+                            la = about.get("location_accurate")
+                            if la is True:
+                                ab2.metric("✅ location_accurate", "True", delta="موثوق")
+                            elif la is False:
+                                ab2.metric("🚨 location_accurate", "False", delta="VPN!", delta_color="inverse")
+                            else:
+                                ab2.metric("❓ location_accurate", "unknown")
+                            ab3.metric("📱 source", (about.get("source") or "-")[:25])
+                            ab4.metric(
+                                "🔄 username_changes",
+                                about.get("username_changes_count", 0),
+                            )
+                            
+                            # تشخيص X الرسمي
+                            if about_diag:
+                                if about_diag["risk_score"] >= 80:
+                                    st.error(f"## {about_diag['verdict_ar']}")
+                                elif about_diag["risk_score"] >= 40:
+                                    st.warning(f"## {about_diag['verdict_ar']}")
+                                else:
+                                    st.success(f"## {about_diag['verdict_ar']}")
+                                
+                                for ind in about_diag.get("indicators", []):
+                                    st.markdown(f"• {ind}")
+                    
+                    # المقارنة الرئيسية: حساب vs منشور
+                    cmp1, cmp2 = st.columns(2)
+                    with cmp1:
+                        st.markdown("#### 🏠 موقع الحساب")
+                        # أولوية لـ about_data
+                        if about.get("success") and about.get("account_based_in"):
+                            st.markdown(
+                                f"**🎯 من X مباشرة:** {about['account_based_in']}"
+                            )
+                            iso = country_name_to_iso(about["account_based_in"])
+                            if iso:
+                                from x_analyzer import X_REGION_MAP
+                                ci = X_REGION_MAP.get(iso, {})
+                                st.markdown(f"### {ci.get('flag', '')} {ci.get('ar', iso)}")
+                            if about.get("location_accurate") is False:
+                                st.error("🚨 X أبلغ: الموقع غير دقيق (VPN/Proxy)")
+                        elif tweet.get("user_location_field"):
+                            st.markdown(f"**حقل الموقع:** `{tweet['user_location_field']}`")
+                            if tweet.get("region_flag"):
+                                st.markdown(
+                                    f"### {tweet['region_flag']} {tweet.get('region_name_ar', '')}"
+                                )
+                                st.caption(f"ثقة: {tweet.get('region_confidence', 0)}%")
+                        elif tweet.get("region_flag"):
+                            st.markdown(
+                                f"### {tweet['region_flag']} {tweet.get('region_name_ar', '')}"
+                            )
+                            st.caption(f"ثقة: {tweet.get('region_confidence', 0)}%")
+                        else:
+                            st.warning("لم يحدد الحساب موقعاً")
+                    
+                    with cmp2:
+                        st.markdown("#### 📸 موقع تصوير الصورة (فعلي)")
+                        if img_an and img_an.get("aggregate"):
+                            agg = img_an["aggregate"]
+                            from x_analyzer import X_REGION_MAP
+                            cc = agg.get("country_code")
+                            country_info = X_REGION_MAP.get(cc, {})
+                            flag = country_info.get("flag", "🌍")
+                            ar = country_info.get("ar", agg.get("country_name", cc))
+                            st.markdown(f"### {flag} {ar}")
+                            if agg.get("city"):
+                                st.markdown(f"🏙️ **{agg['city']}**")
+                            if agg.get("neighborhood"):
+                                st.caption(f"📍 {agg['neighborhood']}")
+                            st.caption(f"ثقة: {agg.get('confidence_score', 0)}% • مصدر: {agg.get('source', '')}")
+                            if agg.get("votes_str"):
+                                st.caption(f"🗳️ تصويت: {agg['votes_str']}")
+                        elif r.get("photos"):
+                            st.warning(
+                                f"⚠️ التغريدة فيها صور لكن لم نستخرج موقعاً "
+                                f"({len(r['photos'])} صور)"
+                            )
+                        else:
+                            st.info("📝 التغريدة بدون صور")
+                    
+                    # تشخيص VPN
+                    risk = vpn.get("risk_score", 0)
+                    if risk >= 80:
+                        st.error(f"## {vpn.get('icon', '🚨')} {vpn.get('verdict_ar', '')}")
+                    elif risk >= 50:
+                        st.warning(f"## {vpn.get('icon', '⚠️')} {vpn.get('verdict_ar', '')}")
+                    elif risk >= 25:
+                        st.info(f"## {vpn.get('icon', 'ℹ️')} {vpn.get('verdict_ar', '')}")
+                    else:
+                        st.success(f"## {vpn.get('icon', '✅')} {vpn.get('verdict_ar', '')}")
+                    
+                    # شريط الخطر
+                    st.progress(risk / 100, text=f"📊 درجة خطر VPN: {risk}/100")
+                    
+                    # المؤشرات
+                    if vpn.get("indicators"):
+                        with st.expander("🔍 تفاصيل التحليل", expanded=risk >= 70):
+                            for ind in vpn.get("indicators", []):
+                                st.markdown(f"• {ind}")
+                            if vpn.get("recommendation"):
+                                st.markdown(f"\n**💡 التوصية:** {vpn['recommendation']}")
+                            if vpn.get("real_location_guess"):
+                                rg_info = X_REGION_MAP.get(vpn["real_location_guess"], {})
+                                st.markdown(
+                                    f"\n**🎯 الموقع الفعلي المرجّح:** "
+                                    f"{rg_info.get('flag', '')} {rg_info.get('ar', vpn['real_location_guess'])}"
+                                )
+                    
+                    # تفاصيل الصور وأدلة Gemini
+                    if img_an and img_an.get("aggregate"):
+                        agg = img_an["aggregate"]
+                        with st.expander("📸 تفاصيل تحليل الصور بالذكاء الاصطناعي", expanded=False):
+                            if agg.get("reasoning"):
+                                st.markdown(f"**🧠 الاستنتاج:** {agg['reasoning']}")
+                            if agg.get("key_evidence"):
+                                st.markdown("**🔑 الأدلة الرئيسية:**")
+                                for ev in agg["key_evidence"]:
+                                    st.markdown(f"• {ev}")
+                            if agg.get("observations"):
+                                st.markdown("**👁️ الملاحظات:**")
+                                for obs in agg["observations"]:
+                                    st.markdown(f"  ○ {obs}")
+                            if agg.get("coordinates"):
+                                st.markdown(f"**📍 إحداثيات تقريبية:** `{agg['coordinates']}`")
+                                # خريطة
+                                try:
+                                    lat, lon = [float(x.strip()) for x in agg['coordinates'].split(',')[:2]]
+                                    import pandas as pd
+                                    map_df = pd.DataFrame({'lat': [lat], 'lon': [lon]})
+                                    st.map(map_df, zoom=10)
+                                except Exception:
+                                    pass
+                    
+                    # عرض الصور المحللة
+                    if r.get("photos"):
+                        with st.expander(f"🖼️ عرض صور التغريدة ({len(r['photos'])})", expanded=False):
+                            img_cols = st.columns(min(len(r['photos']), 3))
+                            for j, pu in enumerate(r['photos'][:3]):
+                                with img_cols[j]:
+                                    try:
+                                        st.image(pu, use_container_width=True)
+                                    except Exception:
+                                        st.caption(f"فشل تحميل: {pu[:50]}")
+            
+            # تصدير النتائج
+            st.markdown("---")
+            st.markdown("#### 📥 تصدير")
+            export_rows = []
+            for r in results:
+                if not r.get("success"):
+                    continue
+                tw = r.get("tweet", {})
+                ag = (r.get("image_analysis") or {}).get("aggregate") or {}
+                vp = r.get("vpn_check", {})
+                export_rows.append({
+                    "الرابط": r.get("url"),
+                    "المستخدم": f"@{tw.get('user_screen_name','')}",
+                    "الاسم": tw.get("user_name", ""),
+                    "User ID": tw.get("user_id", ""),
+                    "موقع الحساب (معلن)": tw.get("region_name_ar", ""),
+                    "حقل الموقع": tw.get("user_location_field", ""),
+                    "موقع الصورة (فعلي)": ag.get("country_name") or ag.get("country_code", ""),
+                    "المدينة": ag.get("city", ""),
+                    "ثقة الصورة": f"{ag.get('confidence_score', 0)}%",
+                    "تشخيص VPN": vp.get("verdict_ar", ""),
+                    "درجة الخطر": vp.get("risk_score", 0),
+                    "التوصية": vp.get("recommendation", ""),
+                })
+            if export_rows:
+                df_pl = pd.DataFrame(export_rows)
+                csv_pl = df_pl.to_csv(index=False).encode("utf-8-sig")
+                json_pl = df_pl.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
+                ts_pl = datetime.now().strftime("%Y%m%d_%H%M%S")
+                ec1, ec2 = st.columns(2)
+                ec1.download_button(
+                    "⬇️ CSV", data=csv_pl,
+                    file_name=f"post_locations_{ts_pl}.csv",
+                    mime="text/csv", use_container_width=True,
+                )
+                ec2.download_button(
+                    "⬇️ JSON", data=json_pl,
+                    file_name=f"post_locations_{ts_pl}.json",
+                    mime="application/json", use_container_width=True,
+                )
+    
+    # وضع 2: رفع صورة مباشرة
+    elif pl_mode.startswith("🖼️ رفع صورة"):
+        st.markdown("#### 🖼️ ارفع صورة لتحديد موقعها:")
+        uploaded = st.file_uploader(
+            "اختر صورة:",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="pl_upload",
+        )
+        
+        if uploaded and api_key_for_post:
+            if st.button("🔍 حلل موقع الصورة", type="primary", use_container_width=True):
+                col_img, col_res = st.columns([1, 2])
+                with col_img:
+                    st.image(uploaded, caption="الصورة المحللة", use_container_width=True)
+                
+                with col_res:
+                    with st.spinner("🔄 جارٍ التحليل بالذكاء الاصطناعي..."):
+                        image_bytes = uploaded.read()
+                        result = analyze_image_geo(image_bytes, api_key_for_post)
+                    
+                    if not result.get("success"):
+                        st.error(f"❌ فشل: {result.get('error')}")
+                    else:
+                        # عرض EXIF
+                        if result.get("exif"):
+                            ex = result["exif"]
+                            st.success(f"🛰️ **EXIF GPS وجد!** (الأدق 100%)")
+                            st.markdown(f"• الدولة: **{ex.get('country_name')}** ({ex.get('country_code')})")
+                            if ex.get("city"):
+                                st.markdown(f"• المدينة: **{ex['city']}**")
+                            if ex.get("neighborhood"):
+                                st.markdown(f"• الحي: **{ex['neighborhood']}**")
+                            st.markdown(f"• الإحداثيات: `{ex['lat']:.5f}, {ex['lon']:.5f}`")
+                            try:
+                                map_df = pd.DataFrame({'lat': [ex['lat']], 'lon': [ex['lon']]})
+                                st.map(map_df, zoom=12)
+                            except Exception:
+                                pass
+                        
+                        # عرض Gemini
+                        if result.get("gemini"):
+                            g = result["gemini"]
+                            if g.get("country_code"):
+                                from x_analyzer import X_REGION_MAP
+                                ci = X_REGION_MAP.get(g["country_code"], {})
+                                st.markdown(f"### {ci.get('flag','🌍')} {ci.get('ar', g.get('country_name'))}")
+                                if g.get("city"):
+                                    st.markdown(f"🏙️ **المدينة:** {g['city']}")
+                                if g.get("neighborhood"):
+                                    st.markdown(f"📍 **الحي:** {g['neighborhood']}")
+                                st.markdown(f"🎯 **الثقة:** {g.get('confidence')} ({g.get('confidence_score', 0)}%)")
+                                if g.get("reasoning"):
+                                    st.markdown(f"**🧠 الاستنتاج:** {g['reasoning']}")
+                                if g.get("key_evidence"):
+                                    st.markdown("**🔑 الأدلة:**")
+                                    for ev in g["key_evidence"]:
+                                        st.markdown(f"• {ev}")
+                                if g.get("observations"):
+                                    with st.expander("👁️ كل الملاحظات"):
+                                        for o in g["observations"]:
+                                            st.markdown(f"• {o}")
+                                if g.get("alternative_locations"):
+                                    with st.expander("🔀 مواقع بديلة محتملة"):
+                                        for a in g["alternative_locations"]:
+                                            st.markdown(f"• {a}")
+                            else:
+                                st.warning("⚠️ الصورة لا تحتوي على إشارات جغرافية واضحة")
+                                if g.get("observations"):
+                                    st.markdown("ملاحظات:")
+                                    for o in g["observations"]:
+                                        st.markdown(f"• {o}")
+    
+    # وضع 3: روابط صور مباشرة
+    elif pl_mode.startswith("🔗 روابط صور"):
+        st.markdown("#### 🔗 أدخل روابط صور مباشرة:")
+        pl_img_urls = st.text_area(
+            "رابط صورة لكل سطر:",
+            height=120,
+            placeholder="https://example.com/photo1.jpg\nhttps://example.com/photo2.jpg",
+            key="pl_img_urls_input",
+        )
+        if st.button("🔍 حلل الصور", type="primary", use_container_width=True,
+                     key="pl_imgs_analyze", disabled=not api_key_for_post):
+            urls = [u.strip() for u in pl_img_urls.splitlines() if u.strip().startswith("http")]
+            if not urls:
+                st.error("❌ لم تدخل روابط صحيحة")
+            else:
+                st.info(f"🔄 تحليل {len(urls)} صورة...")
+                progress = st.progress(0)
+                for i, u in enumerate(urls):
+                    with st.container(border=True):
+                        col_i, col_d = st.columns([1, 2])
+                        with col_i:
+                            try:
+                                st.image(u, use_container_width=True)
+                            except Exception:
+                                pass
+                        with col_d:
+                            res = analyze_image_geo(u, api_key_for_post)
+                            if not res.get("success"):
+                                st.error(f"❌ {res.get('error')}")
+                            elif res.get("gemini") and res["gemini"].get("country_code"):
+                                g = res["gemini"]
+                                from x_analyzer import X_REGION_MAP
+                                ci = X_REGION_MAP.get(g["country_code"], {})
+                                st.markdown(f"### {ci.get('flag','🌍')} {ci.get('ar', g.get('country_name'))}")
+                                if g.get("city"):
+                                    st.markdown(f"🏙️ {g['city']}")
+                                st.caption(f"ثقة: {g.get('confidence_score', 0)}%")
+                                if g.get("key_evidence"):
+                                    for ev in g["key_evidence"][:3]:
+                                        st.caption(f"• {ev}")
+                            else:
+                                st.warning("⚠️ لم توجد إشارات جغرافية واضحة")
+                    progress.progress((i+1) / len(urls))
+
 
 # ============ تبويب الإدخال اليدوي ============
 with tab_manual:
