@@ -568,6 +568,14 @@ try:
 except ImportError:
     FOLIUM_AVAILABLE = False
 
+# 🛡️ VPN Detector (multi-signal investigation)
+try:
+    from vpn_detector import investigate as vpn_investigate
+    VPN_DETECTOR_AVAILABLE = True
+except ImportError as _e:
+    VPN_DETECTOR_AVAILABLE = False
+    VPN_DETECTOR_ERROR = str(_e)
+
 # ============ التبويبات ============
 (tab_tt, tab_video, tab_x, tab_postloc, tab_geo, tab_osint,
  tab_manual, tab_excel, tab_help) = st.tabs([
@@ -2520,105 +2528,283 @@ with tab_osint:
                 st.rerun()
 
     # ═══════════════════════════════════════════════════════════
-    # 4️⃣ المحقّق الشامل
+    # 4️⃣ المحقّق الشامل  —  كاشف VPN + موقع فعلي دقيق (8 إشارات)
     # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("🕵️"):
-        with st.form("osint_form_full", clear_on_submit=False):
-            username = st.text_input("👤 اسم مستخدم X (بدون @):",
-                placeholder="مثال: hureyaksa", key="osint_user")
-            n_tweets = st.slider("عدد التغريدات للتحليل (الأخيرة)",
-                5, 50, 20, key="osint_ntw")
-            submitted_full = st.form_submit_button("🚀 ابدأ التحقيق الشامل",
-                type="primary", use_container_width=True)
+        if not VPN_DETECTOR_AVAILABLE:
+            st.error("vpn_detector.py غير متوفر — أعد تثبيت v19+")
+        else:
+            st.markdown(
+                "<div style='background:#1a1a2e;color:white;padding:14px;"
+                "border-radius:8px;border-right:5px solid #e94560;'>"
+                "<b>🛡️ كاشف VPN متعدد الإشارات</b> — يجمع 8 مصادر مستقلة:"
+                "<ol style='margin:8px 0 0 20px;font-size:13px;'>"
+                "<li>الموقع المعلن (fxtwitter)</li>"
+                "<li>تحويله لإحداثيات (OpenStreetMap)</li>"
+                "<li>آخر 30 تغريدة (Nitter RSS / Syndication)</li>"
+                "<li>⏰ المنطقة الزمنية الفعلية من أوقات النشر</li>"
+                "<li>🤖 AI Vision على آخر صورة (إن وُجدت)</li>"
+                "<li>EXIF GPS من الصور</li>"
+                "<li>تحليل اللهجة العربية</li>"
+                "<li>إشارات الذكر الجغرافي</li>"
+                "</ol></div>", unsafe_allow_html=True)
+            st.write("")
 
-        if submitted_full and username:
-            uname = username.strip().lstrip("@")
-            with st.spinner(f"جارٍ جلب بيانات @{uname} عبر fxtwitter API…"):
-                try:
-                    pr = requests.get(
-                        f"https://api.fxtwitter.com/{uname}",
-                        timeout=20,
-                        headers={"User-Agent": "Mozilla/5.0"}).json()
-                except Exception as e:
-                    st.error(f"تعذّر الاتصال: {e}")
-                    pr = None
-            user = (pr or {}).get("user", {}) if pr else {}
-            if not user:
-                st.error("⛔ الحساب غير موجود أو محمي.")
-                st.session_state["osint_full_result"] = None
-            else:
-                geo = None
-                if user.get("location"):
-                    with st.spinner("تحويل الموقع المعلن لإحداثيات…"):
-                        geo = geocode_place(user["location"])
-                st.session_state["osint_full_result"] = {
-                    "username": uname, "user": user, "geo": geo,
-                    "maps": (build_map_verification_links(geo["lat"], geo["lon"])
-                             if geo else None),
-                }
+            with st.form("osint_form_full", clear_on_submit=False):
+                col_u, col_n = st.columns([3, 1])
+                with col_u:
+                    username = st.text_input(
+                        "👤 اسم مستخدم X (بدون @):",
+                        placeholder="مثال: salim_Aljomaili", key="osint_user")
+                with col_n:
+                    max_imgs = st.number_input("🖼️ صور للتحليل",
+                        0, 4, 2, key="osint_maximg",
+                        help="0 = بدون AI Vision (أسرع)")
 
-        R = st.session_state.get("osint_full_result")
-        if R:
-            user = R["user"]
-            uname = R["username"]
-            geo = R["geo"]
-
-            st.markdown("#### 👤 بروفايل الحساب")
-            cprof = st.columns([1, 3])
-            with cprof[0]:
-                if user.get("avatar_url"):
-                    st.image(user["avatar_url"], width=120)
-            with cprof[1]:
-                st.markdown(f"**{user.get('name','')}** · @{user.get('screen_name','')}")
-                st.caption(f"🆔 ID: `{user.get('id')}`  ·  "
-                           f"📅 انضم: {user.get('joined','')}  ·  "
-                           f"👥 متابعون: {user.get('followers',0):,}")
-                if user.get("location"):
-                    st.success(f"📍 الموقع المعلن: **{user['location']}**")
+                use_ai = max_imgs > 0
+                if use_ai:
+                    api_key = (st.session_state.get("gemini_api_key", "")
+                               or os.environ.get("GEMINI_API_KEY", ""))
+                    if not api_key:
+                        api_key = st.text_input(
+                            "🔑 Gemini API key (مجاني):",
+                            type="password", key="osint_gem_in",
+                            placeholder="AIza... — اتركه فارغاً لتعطيل AI")
+                        if api_key:
+                            st.session_state["gemini_api_key"] = api_key
                 else:
-                    st.info("📍 لا يوجد موقع معلن")
-                if user.get("description"):
-                    st.caption(user["description"][:200])
+                    api_key = None
 
-            if geo:
-                st.markdown("##### 🌐 الموقع المعلن على الخريطة:")
-                if FOLIUM_AVAILABLE:
-                    m = folium.Map([geo["lat"], geo["lon"]], zoom_start=10)
-                    folium.Marker([geo["lat"], geo["lon"]],
-                        popup=geo["display_name"][:80],
-                        icon=folium.Icon(color="green")).add_to(m)
-                    st_folium(m, width=720, height=350, key="osint_map_full")
-                st.markdown("🗺️ **تحقّق بصري:**")
-                ks = list(R["maps"].keys())
-                for row in range(0, 9, 3):
-                    cs = st.columns(3)
-                    for i, k in enumerate(ks[row:row+3]):
-                        with cs[i]:
-                            st.link_button(f"🌐 {k}", R["maps"][k],
-                                           use_container_width=True)
+                submitted_full = st.form_submit_button(
+                    "🚀 ابدأ التحقيق الشامل (8 إشارات)",
+                    type="primary", use_container_width=True)
 
-            st.markdown("#### 🔍 روابط تحقيق جاهزة:")
-            cinv = st.columns(2)
-            cinv[0].link_button("📌 كل تغريدات المستخدم (live)",
-                f"https://x.com/search?q=from%3A{uname}&f=live",
-                use_container_width=True)
-            cinv[1].link_button("📞 ردود المستخدم (للعلاقات)",
-                f"https://x.com/search?q=to%3A{uname}&f=live",
-                use_container_width=True)
-            if geo:
-                cinv2 = st.columns(2)
-                cinv2[0].link_button(
-                    "📍 تغريدات حول موقعه (50كم)",
-                    build_user_search(uname, geo["lat"], geo["lon"], 50),
+            if submitted_full and username:
+                uname = username.strip().lstrip("@")
+                progress = st.progress(0, "جارٍ جلب البروفايل…")
+                with st.spinner("⏳ يستغرق 10-30 ثانية حسب عدد الصور"):
+                    try:
+                        progress.progress(20, "جلب التغريدات الأخيرة…")
+                        report = vpn_investigate(
+                            uname, gemini_api_key=api_key,
+                            analyze_images=use_ai, max_images=int(max_imgs))
+                        progress.progress(100, "تم!")
+                    except Exception as e:
+                        st.error(f"خطأ: {e}")
+                        report = None
+                progress.empty()
+
+                if report and "error" in report:
+                    st.error(f"⛔ {report['error']}")
+                    st.session_state["osint_full_result"] = None
+                elif report:
+                    st.session_state["osint_full_result"] = report
+
+            # ─── Display the persistent result ───
+            R = st.session_state.get("osint_full_result")
+            if R and "final_verdict" in R:
+                p = R["profile"]
+                d = R["declared_location"]
+                v = R["final_verdict"]
+
+                # ── Header card with profile + verdict side by side ──
+                st.markdown("---")
+                top = st.columns([1, 2, 2])
+                with top[0]:
+                    if p.get("avatar_url"):
+                        st.image(p["avatar_url"], width=130)
+                with top[1]:
+                    st.markdown(f"### {p.get('name','')}")
+                    st.markdown(f"**@{p.get('screen_name','')}** "
+                                f"{'✅' if p.get('verified') else ''}")
+                    st.caption(
+                        f"🆔 `{p.get('id')}` · "
+                        f"📅 {(p.get('joined') or '')[:16]} · "
+                        f"👥 {p.get('followers') or 0:,}")
+                    if d.get("raw"):
+                        st.markdown(f"📍 **معلن:** {d['flag']} {d['raw']}")
+                    else:
+                        st.info("📍 لا يوجد موقع معلن")
+                with top[2]:
+                    # The big verdict box
+                    st.markdown(
+                        f"<div style='background:#fff;padding:14px;"
+                        f"border-radius:10px;border-right:6px solid {v['vpn_color']};"
+                        f"box-shadow:0 2px 6px rgba(0,0,0,.1);'>"
+                        f"<h3 style='margin:0;color:{v['vpn_color']};'>"
+                        f"{v['vpn_label']}</h3>"
+                        f"<div style='font-size:38px;font-weight:bold;color:{v['vpn_color']};'>"
+                        f"{v['vpn_score']}/100</div>"
+                        f"<small>درجة احتمال VPN</small>"
+                        f"</div>", unsafe_allow_html=True)
+
+                # ── Actual location box ──
+                st.markdown("---")
+                cloc = st.columns([2, 3])
+                with cloc[0]:
+                    st.markdown(
+                        f"<div style='background:#e8f5e9;padding:14px;"
+                        f"border-radius:10px;border-right:5px solid #2e7d32;'>"
+                        f"<h4 style='margin:0;'>🎯 الموقع الفعلي المُستنتج</h4>"
+                        f"<div style='font-size:32px;'>{v['actual_flag']} "
+                        f"{v['actual_country_ar']}</div>"
+                        f"<b>الثقة: {v['actual_confidence']}%</b><br>"
+                        f"<b>المدينة:</b> {v.get('actual_city') or '—'}<br>"
+                        f"<b>الإحداثيات:</b> {v.get('actual_coords') or '—'}"
+                        f"</div>", unsafe_allow_html=True)
+                with cloc[1]:
+                    st.markdown("##### 🛡️ أسباب التشخيص:")
+                    for reason in v["vpn_reasons"]:
+                        st.markdown(f"• {reason}")
+
+                # ── Side-by-side maps: declared vs actual ──
+                if FOLIUM_AVAILABLE and (d.get("coords") or v.get("actual_coords")):
+                    st.markdown("---")
+                    st.markdown("#### 🗺️ مقارنة: المعلن مقابل الفعلي")
+                    mc1, mc2 = st.columns(2)
+                    if d.get("coords"):
+                        with mc1:
+                            st.caption(f"📍 المعلن: {d['flag']} {d.get('raw','')}")
+                            m1 = folium.Map(d["coords"], zoom_start=5)
+                            folium.Marker(d["coords"],
+                                popup=d.get("raw",""),
+                                icon=folium.Icon(color="orange")).add_to(m1)
+                            st_folium(m1, width=350, height=300,
+                                      key="map_declared")
+                    if v.get("actual_coords"):
+                        with mc2:
+                            st.caption(f"🎯 الفعلي: {v['actual_flag']} "
+                                       f"{v['actual_country_ar']}")
+                            m2 = folium.Map(list(v["actual_coords"]),
+                                            zoom_start=8)
+                            folium.Marker(list(v["actual_coords"]),
+                                popup=v.get("actual_city",""),
+                                icon=folium.Icon(color="red", icon="screenshot")
+                            ).add_to(m2)
+                            st_folium(m2, width=350, height=300,
+                                      key="map_actual")
+
+                # ── Signal breakdown ──
+                with st.expander("📊 تحليل الإشارات الـ8 المستقلة", expanded=True):
+                    sigs = st.columns(2)
+                    with sigs[0]:
+                        st.markdown("##### ⏰ الإشارة 1: المنطقة الزمنية")
+                        tz = R.get("timezone_analysis")
+                        if tz:
+                            st.metric("UTC offset (من النشر)",
+                                      tz["best_offset_str"],
+                                      f"{tz['confidence']}% ثقة")
+                            st.caption(f"🌍 دول مرشحة: "
+                                       f"{', '.join(tz.get('candidate_countries', [])[:6])}")
+                            hist = tz.get("histogram_local_hours") or {}
+                            if hist:
+                                df = pd.DataFrame(sorted(hist.items()),
+                                    columns=["ساعة محلية", "تغريدات"])
+                                st.bar_chart(df.set_index("ساعة محلية"),
+                                             height=180)
+                        else:
+                            st.info("⚠ لا توجد تغريدات كافية لتحليل التوقيت")
+
+                    with sigs[1]:
+                        st.markdown("##### 🤖 الإشارة 2: AI Vision على الصور")
+                        imgs = R.get("image_locations") or []
+                        if imgs:
+                            for ii, ir in enumerate(imgs):
+                                if ir.get("country_iso"):
+                                    st.success(
+                                        f"صورة {ii+1}: "
+                                        f"{ge_flag(ir['country_iso'])} "
+                                        f"{ir['country_iso']} / "
+                                        f"{ir.get('city') or '—'} "
+                                        f"({ir.get('confidence')}%)")
+                                elif ir.get("error"):
+                                    st.warning(f"صورة {ii+1}: {ir['error'][:80]}")
+                                else:
+                                    st.info(f"صورة {ii+1}: لم يتم الكشف")
+                        else:
+                            st.info("⚠ لم يتم تشغيل AI Vision (مفعّل بـ صور > 0)")
+
+                    sigs2 = st.columns(2)
+                    with sigs2[0]:
+                        st.markdown("##### 🌍 الإشارة 3: الذكر الجغرافي")
+                        gm = R.get("geo_mentions") or {}
+                        if gm:
+                            df_gm = pd.DataFrame(
+                                [{"الدولة": ge_flag(k)+" "+k, "تكرار": v}
+                                 for k, v in list(gm.items())[:6]])
+                            st.dataframe(df_gm, hide_index=True,
+                                         use_container_width=True)
+                        else:
+                            st.info("لا توجد إشارات جغرافية")
+
+                    with sigs2[1]:
+                        st.markdown("##### 🗣️ الإشارة 4: اللهجة")
+                        di = R.get("dialect")
+                        ds = R.get("dialect_scores") or {}
+                        if di:
+                            st.success(f"اللهجة الغالبة: **{di}**")
+                        st.caption(f"التوزيع: {ds}")
+
+                # ── Vote breakdown ──
+                with st.expander("🗳️ تفصيل أصوات الترجيح"):
+                    vd = v.get("vote_breakdown") or {}
+                    if vd:
+                        df_vote = pd.DataFrame([
+                            {"الدولة": ge_flag(k) + " " + k +
+                             " — " + ge_country_ar(k),
+                             "الوزن": round(w, 1)}
+                            for k, w in vd.items()])
+                        st.dataframe(df_vote, hide_index=True,
+                                     use_container_width=True)
+                    voters = v.get("all_voters") or []
+                    if voters:
+                        st.markdown("##### 📋 سجل المصادر:")
+                        df_vt = pd.DataFrame(voters)
+                        st.dataframe(df_vt, hide_index=True,
+                                     use_container_width=True)
+
+                # ── Map verification for actual location ──
+                if v.get("maps_links"):
+                    st.markdown("#### 🗺️ تحقّق بصري للموقع الفعلي عبر 9 محرّكات:")
+                    ks = list(v["maps_links"].keys())
+                    for row in range(0, 9, 3):
+                        cs = st.columns(3)
+                        for i, k in enumerate(ks[row:row+3]):
+                            with cs[i]:
+                                st.link_button(f"🌐 {k}", v["maps_links"][k],
+                                               use_container_width=True)
+
+                # ── Quick OSINT links ──
+                st.markdown("#### 🔍 روابط تحقيق جاهزة:")
+                uname = R["username"]
+                cinv = st.columns(2)
+                cinv[0].link_button("📌 كل تغريدات المستخدم (live)",
+                    f"https://x.com/search?q=from%3A{uname}&f=live",
                     use_container_width=True)
-                cinv2[1].link_button("📱 بروفايل X",
-                    f"https://x.com/{uname}", use_container_width=True)
-            st.caption("💡 افتح بروفايل X، انسخ أوقات نشر آخر 20-30 تغريدة "
-                       "والصقها في وضع 'تحليل المنطقة الزمنية' للكشف الدقيق.")
+                cinv[1].link_button("📞 ردود المستخدم",
+                    f"https://x.com/search?q=to%3A{uname}&f=live",
+                    use_container_width=True)
+                if v.get("actual_coords"):
+                    cinv2 = st.columns(2)
+                    lat, lon = v["actual_coords"]
+                    cinv2[0].link_button(
+                        f"📍 تغريدات قرب موقعه الفعلي ({v['actual_iso']})",
+                        build_user_search(uname, lat, lon, 50),
+                        use_container_width=True)
+                    cinv2[1].link_button("📱 بروفايل X",
+                        f"https://x.com/{uname}", use_container_width=True)
 
-            if st.button("🗑️ مسح النتيجة", key="osint_clear_full"):
-                st.session_state["osint_full_result"] = None
-                st.rerun()
+                # ── Download report JSON ──
+                rep_json = json.dumps(R, default=str, ensure_ascii=False,
+                                      indent=2)
+                st.download_button("📥 تحميل التقرير JSON",
+                    rep_json,
+                    file_name=f"osint_{R['username']}_{int(time.time())}.json",
+                    mime="application/json")
+
+                if st.button("🗑️ مسح النتيجة", key="osint_clear_full"):
+                    st.session_state["osint_full_result"] = None
+                    st.rerun()
 
     # ═══════════════════════════════════════════════════════════
     # 5️⃣ تحويل إحداثيات → عنوان
