@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 # استيراد محلل TikTok المتخصص
 from tiktok_analyzer import (
     fetch_tiktok_profile,
+    analyze_tiktok_video,
     calculate_engagement_metrics,
     TIKTOK_REGION_MAP,
     LANGUAGE_NAMES_AR,
@@ -411,8 +412,9 @@ with st.sidebar:
     )
 
 # ============ التبويبات ============
-tab_tt, tab_manual, tab_excel, tab_help = st.tabs([
-    "🎵 محلل TikTok المتقدم",
+tab_tt, tab_video, tab_manual, tab_excel, tab_help = st.tabs([
+    "🎵 محلل حسابات TikTok",
+    "🎬 تحليل فيديو تيك توك (موقع دقيق!)",
     "📝 إدخال يدوي (كل المنصات)",
     "📂 رفع Excel",
     "ℹ️ التعليمات",
@@ -633,6 +635,179 @@ zachking
                         if r.get("bio_link"):
                             st.markdown(f"🔗 [{r['bio_link'][:30]}...]({r['bio_link']})")
                         st.markdown(f"[فتح في TikTok ↗]({r['profile_url']})")
+
+# ============ تبويب تحليل فيديو تيك توك (الجديد) ============
+with tab_video:
+    st.markdown("### 🎬 تحليل فيديو TikTok - الحل الذهبي للموقع!")
+    st.markdown(
+        """
+        <div class="info-box">
+        <strong>🔥 الحل الأفضل لمعرفة موقع حساب TikTok!</strong><br>
+        بدلاً من تحليل البروفايل (الذي يحجب الموقع)، ألصق <strong>روابط فيديو مباشرة</strong>.<br>
+        كل فيديو يحوي حقل <code>locationCreated</code> الذي يعكس <strong>مكان التصوير الفعلي</strong>.<br>
+        دقة النتيجة: <strong>عالية جداً!</strong> 🎯
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### 💡 كيف تستخدم هذه الميزة:")
+    st.markdown("""
+    1. افتح بروفايل الحساب على TikTok في المتصفح
+    2. اضغط على أي فيديو لفتحه
+    3. انسخ رابط الفيديو والصقه هنا (أو عدة روابط، سطر لكل فيديو)
+    4. دع المحلل يعمل عمله ✨
+    """)
+
+    video_urls_input = st.text_area(
+        "ألصق روابط فيديوهات TikTok (رابط لكل سطر):",
+        value="""https://www.tiktok.com/@noorstars/video/7518458932478725406
+https://www.tiktok.com/@khaby.lame/video/7402695860712164641
+""",
+        height=200,
+        key="video_urls_input",
+    )
+
+    col_v1, col_v2 = st.columns([3, 1])
+    with col_v2:
+        live_video_count = len([l for l in video_urls_input.splitlines() if l.strip() and 'tiktok.com' in l.lower()])
+        st.metric("🎬 عدد الفيديوهات", live_video_count)
+
+    if st.button("🚀 تحليل الفيديوهات + مواقعها", type="primary", use_container_width=True, key="video_analyze"):
+        # استخراج الروابط
+        video_urls = []
+        for line in video_urls_input.splitlines():
+            line = line.strip()
+            if line and 'tiktok.com' in line.lower() and '/video/' in line:
+                video_urls.append(line)
+
+        if not video_urls:
+            st.error("❌ لم يتم العثور على روابط فيديو صحيحة")
+        else:
+            st.info(f"🔄 جارٍ تحليل **{len(video_urls)}** فيديو...")
+            progress = st.progress(0)
+            status = st.empty()
+            start = time.time()
+
+            video_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(analyze_tiktok_video, url): url for url in video_urls}
+                done = 0
+                for f in as_completed(futures):
+                    try:
+                        video_results.append(f.result())
+                    except Exception as e:
+                        video_results.append({"video_url": futures[f], "status": "❌", "error": str(e)})
+                    done += 1
+                    progress.progress(done / len(video_urls))
+                    status.text(f"⏳ {done}/{len(video_urls)}")
+
+            elapsed = time.time() - start
+            progress.empty()
+            status.empty()
+            st.session_state["video_results"] = video_results
+            st.success(f"✅ تم تحليل {len(video_results)} فيديو في {elapsed:.1f} ثانية!")
+
+    # عرض نتائج الفيديوهات
+    if "video_results" in st.session_state and st.session_state["video_results"]:
+        v_results = st.session_state["video_results"]
+        df_v = pd.DataFrame(v_results)
+
+        st.markdown("---")
+        st.markdown("## 📊 نتائج تحليل الفيديوهات")
+
+        # إحصائيات
+        total_v = len(v_results)
+        success_v = sum(1 for r in v_results if r.get("status") == "✅ نجح")
+        with_loc = sum(1 for r in v_results if r.get("location_created"))
+        total_views = sum(r.get("video_views", 0) for r in v_results if r.get("status") == "✅ نجح")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("🎬 الإجمالي", total_v)
+        c2.metric("✅ ناجح", success_v)
+        c3.metric("📍 له موقع", with_loc)
+        c4.metric("👁️ إجمالي المشاهدات", tt_format_count(total_views))
+
+        # توزيع المواقع
+        if with_loc > 0:
+            st.markdown("#### 🌍 توزيع أماكن التصوير")
+            loc_data = [f"{r['location_flag']} {r['location_name_ar']}" for r in v_results if r.get("location_created")]
+            if loc_data:
+                loc_counts = pd.Series(loc_data).value_counts()
+                col_chart, col_list = st.columns([2, 1])
+                with col_chart:
+                    st.bar_chart(loc_counts)
+                with col_list:
+                    st.markdown("**أكثر الأماكن:**")
+                    for loc, count in loc_counts.head(10).items():
+                        st.markdown(f"- {loc}: **{count}**")
+
+        # تجميع حسب الحساب - لرؤية موقع كل حساب
+        st.markdown("#### 👤 تجميع حسب الحساب (الموقع الأكثر تكراراً)")
+        if success_v > 0:
+            users_locations = {}
+            for r in v_results:
+                if r.get("status") == "✅ نجح":
+                    u = r.get("username", "")
+                    loc = r.get("location_created", "")
+                    if u not in users_locations:
+                        users_locations[u] = {"locations": [], "data": r}
+                    if loc:
+                        users_locations[u]["locations"].append(loc)
+
+            for u, info in users_locations.items():
+                if info["locations"]:
+                    locs = info["locations"]
+                    most_common = max(set(locs), key=locs.count)
+                    flag = TIKTOK_REGION_MAP.get(most_common, ("🌍", most_common))[0]
+                    name = TIKTOK_REGION_MAP.get(most_common, ("", most_common))[1]
+                    count = locs.count(most_common)
+                    st.markdown(f"**@{u}**: {flag} **{name}** ({count}/{len(locs)} فيديو)")
+                    if len(set(locs)) > 1:
+                        st.caption(f"أماكن أخرى: {', '.join(set(locs) - {most_common})}")
+
+        # جدول الفيديوهات
+        st.markdown("#### 📋 جدول الفيديوهات")
+        v_cols = [
+            "username", "author_nickname", "location_flag", "location_name_ar",
+            "location_created", "text_language", "create_date",
+            "video_views", "video_likes", "video_comments",
+            "author_id", "author_verified", "video_desc", "video_url", "status",
+        ]
+        v_cols = [c for c in v_cols if c in df_v.columns]
+
+        st.dataframe(
+            df_v[v_cols], use_container_width=True, height=400,
+            column_config={
+                "video_url": st.column_config.LinkColumn("🔗 الفيديو"),
+                "author_verified": st.column_config.CheckboxColumn("✓"),
+                "location_flag": st.column_config.TextColumn("🚩", width="small"),
+                "location_name_ar": st.column_config.TextColumn("🌍 الموقع"),
+                "location_created": st.column_config.TextColumn("رمز", width="small"),
+                "video_views": st.column_config.NumberColumn("👁️ مشاهدات", format="%d"),
+                "video_likes": st.column_config.NumberColumn("❤️ إعجابات", format="%d"),
+                "video_comments": st.column_config.NumberColumn("💬 تعليقات", format="%d"),
+                "author_id": st.column_config.TextColumn("🆔 ID المؤلف"),
+                "video_desc": st.column_config.TextColumn("📝 الوصف", width="large"),
+            },
+        )
+
+        # تصدير
+        timestamp_v = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ev1, ev2, ev3 = st.columns(3)
+        csv_v = df_v.to_csv(index=False).encode("utf-8-sig")
+        ev1.download_button("⬇️ CSV", data=csv_v,
+                            file_name=f"tiktok_videos_{timestamp_v}.csv",
+                            mime="text/csv", use_container_width=True)
+        json_v = df_v.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
+        ev2.download_button("⬇️ JSON", data=json_v,
+                            file_name=f"tiktok_videos_{timestamp_v}.json",
+                            mime="application/json", use_container_width=True)
+        excel_v = results_to_excel(df_v.to_dict("records"))
+        ev3.download_button("⬇️ Excel", data=excel_v,
+                            file_name=f"tiktok_videos_{timestamp_v}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True)
 
 # ============ تبويب الإدخال اليدوي ============
 with tab_manual:
