@@ -28,6 +28,13 @@ from tiktok_analyzer import (
     format_count as tt_format_count,
 )
 
+# استيراد محلل X (Twitter)
+from x_analyzer import (
+    analyze_x_tweet,
+    X_REGION_MAP,
+    LANGUAGE_NAMES_AR_X,
+)
+
 # ============ إعدادات الصفحة ============
 st.set_page_config(
     page_title="مولد معلومات حسابات التواصل الاجتماعي",
@@ -412,9 +419,10 @@ with st.sidebar:
     )
 
 # ============ التبويبات ============
-tab_tt, tab_video, tab_manual, tab_excel, tab_help = st.tabs([
+tab_tt, tab_video, tab_x, tab_manual, tab_excel, tab_help = st.tabs([
     "🎵 محلل حسابات TikTok",
-    "🎬 تحليل فيديو تيك توك (موقع دقيق!)",
+    "🎬 تحليل فيديو تيك توك",
+    "🐦 تحليل تغريدات X (Twitter)",
     "📝 إدخال يدوي (كل المنصات)",
     "📂 رفع Excel",
     "ℹ️ التعليمات",
@@ -808,6 +816,216 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                             file_name=f"tiktok_videos_{timestamp_v}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True)
+
+# ============ تبويب تحليل تغريدات X ============
+with tab_x:
+    st.markdown("### 🐦 محلل تغريدات X (Twitter) - بيانات كاملة!")
+    st.markdown(
+        """
+        <div class="info-box">
+        <strong>🔥 يستخدم Twitter Syndication API العام</strong> (بدون مصادقة!)<br>
+        يستخرج بدقة 100%:<br>
+        • 🆔 Tweet ID + User ID (الدائم)<br>
+        • 📝 نص التغريدة كاملاً<br>
+        • 📅 تاريخ النشر بدقة الثانية<br>
+        • ❤️ عدد الإعجابات + الردود<br>
+        • 🖼️ الصور والفيديوهات (URLs مباشرة)<br>
+        • ✓ التوثيق ونوعه (Government / Business / News)<br>
+        • 🌍 كشف الدولة بالتحليل الذكي
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### 💡 ألصق روابط تغريدات X / Twitter (رابط لكل سطر):")
+
+    x_urls_input = st.text_area(
+        "روابط التغريدات:",
+        value="""https://x.com/elonmusk/status/1874342693310259604
+https://x.com/SaudiMOH/status/1941171425823576458
+https://twitter.com/elonmusk/status/2007910921914769832
+""",
+        height=200,
+        key="x_urls_input",
+        help="يدعم: x.com و twitter.com",
+    )
+
+    col_x1, col_x2 = st.columns([3, 1])
+    with col_x2:
+        live_x_count = len([l for l in x_urls_input.splitlines() 
+                            if l.strip() and ('x.com' in l.lower() or 'twitter.com' in l.lower())])
+        st.metric("🐦 عدد التغريدات", live_x_count)
+
+    if st.button("🚀 تحليل التغريدات", type="primary", use_container_width=True, key="x_analyze"):
+        x_urls = []
+        for line in x_urls_input.splitlines():
+            line = line.strip()
+            if line and ('x.com' in line.lower() or 'twitter.com' in line.lower()):
+                x_urls.append(line)
+
+        if not x_urls:
+            st.error("❌ لم يتم العثور على روابط صحيحة")
+        else:
+            st.info(f"🔄 جارٍ تحليل **{len(x_urls)}** تغريدة...")
+            progress = st.progress(0)
+            status = st.empty()
+            start = time.time()
+
+            x_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(analyze_x_tweet, url): url for url in x_urls}
+                done = 0
+                for f in as_completed(futures):
+                    try:
+                        x_results.append(f.result())
+                    except Exception as e:
+                        x_results.append({"tweet_url": futures[f], "status": "❌", "error": str(e)})
+                    done += 1
+                    progress.progress(done / len(x_urls))
+                    status.text(f"⏳ {done}/{len(x_urls)}")
+
+            elapsed = time.time() - start
+            progress.empty()
+            status.empty()
+            st.session_state["x_results"] = x_results
+            st.success(f"✅ تم تحليل {len(x_results)} تغريدة في {elapsed:.1f} ثانية!")
+
+    # عرض النتائج
+    if "x_results" in st.session_state and st.session_state["x_results"]:
+        x_results = st.session_state["x_results"]
+        df_x = pd.DataFrame(x_results)
+
+        st.markdown("---")
+        st.markdown("## 📊 نتائج تحليل تغريدات X")
+
+        # الإحصائيات
+        total_x = len(x_results)
+        success_x = sum(1 for r in x_results if r.get("status") == "✅ نجح")
+        with_country_x = sum(1 for r in x_results if r.get("region") and r.get("region_confidence", 0) >= 30)
+        verified_x = sum(1 for r in x_results if r.get("user_blue_verified") or r.get("user_verified"))
+        total_likes = sum(r.get("favorite_count", 0) for r in x_results if r.get("status") == "✅ نجح")
+        total_replies = sum(r.get("conversation_count", 0) for r in x_results if r.get("status") == "✅ نجح")
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("🐦 الإجمالي", total_x)
+        c2.metric("✅ ناجح", success_x)
+        c3.metric("🌍 له دولة", with_country_x)
+        c4.metric("✓ موثّق", verified_x)
+        c5.metric("❤️ إجمالي الإعجابات", tt_format_count(total_likes))
+        c6.metric("💬 إجمالي الردود", tt_format_count(total_replies))
+
+        # توزيع الدول
+        countries_x = [
+            f"{r['region_flag']} {r['region_name_ar']}" for r in x_results
+            if r.get("region") and r.get("region_confidence", 0) >= 30
+        ]
+        if countries_x:
+            st.markdown("#### 🌍 توزيع الدول")
+            x_country_counts = pd.Series(countries_x).value_counts()
+            cl, cr = st.columns([2, 1])
+            with cl:
+                st.bar_chart(x_country_counts)
+            with cr:
+                st.markdown("**أكثر الدول:**")
+                for c, n in x_country_counts.head(10).items():
+                    st.markdown(f"- {c}: **{n}**")
+
+        # الجدول
+        st.markdown("#### 📋 جدول التغريدات")
+        x_cols = [
+            "user_screen_name", "user_name", "user_id",
+            "region_flag", "region_name_ar", "region_confidence",
+            "lang", "lang_name_ar", "created_at",
+            "favorite_count", "conversation_count", "media_count", "media_type",
+            "user_blue_verified", "user_verified_type",
+            "text", "hashtags", "mentions", "tweet_url", "status",
+        ]
+        x_cols = [c for c in x_cols if c in df_x.columns]
+
+        st.dataframe(
+            df_x[x_cols], use_container_width=True, height=400,
+            column_config={
+                "tweet_url": st.column_config.LinkColumn("🔗 الرابط"),
+                "user_blue_verified": st.column_config.CheckboxColumn("✓"),
+                "user_id": st.column_config.TextColumn("🆔 User ID"),
+                "user_screen_name": st.column_config.TextColumn("@يوزر"),
+                "user_name": st.column_config.TextColumn("الاسم"),
+                "region_flag": st.column_config.TextColumn("🚩", width="small"),
+                "region_name_ar": st.column_config.TextColumn("الدولة"),
+                "region_confidence": st.column_config.ProgressColumn(
+                    "ثقة", min_value=0, max_value=100, format="%d%%",
+                ),
+                "favorite_count": st.column_config.NumberColumn("❤️", format="%d"),
+                "conversation_count": st.column_config.NumberColumn("💬", format="%d"),
+                "media_count": st.column_config.NumberColumn("🖼️", format="%d"),
+                "text": st.column_config.TextColumn("📝 النص", width="large"),
+                "created_at": st.column_config.TextColumn("📅 التاريخ"),
+            },
+        )
+
+        # تصدير
+        st.markdown("#### 📥 تصدير")
+        ts_x = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ex1, ex2, ex3 = st.columns(3)
+        csv_x = df_x.to_csv(index=False).encode("utf-8-sig")
+        ex1.download_button("⬇️ CSV", data=csv_x,
+                            file_name=f"x_tweets_{ts_x}.csv",
+                            mime="text/csv", use_container_width=True)
+        json_x = df_x.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
+        ex2.download_button("⬇️ JSON", data=json_x,
+                            file_name=f"x_tweets_{ts_x}.json",
+                            mime="application/json", use_container_width=True)
+        excel_x = results_to_excel(df_x.to_dict("records"))
+        ex3.download_button("⬇️ Excel", data=excel_x,
+                            file_name=f"x_tweets_{ts_x}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True)
+
+        # بطاقات بصرية للتغريدات
+        successful_x = [r for r in x_results if r.get("status") == "✅ نجح"][:9]
+        if successful_x:
+            st.markdown("#### 🎴 بطاقات التغريدات")
+            cols = st.columns(3)
+            for i, t in enumerate(successful_x):
+                with cols[i % 3]:
+                    with st.container(border=True):
+                        # الرأس: صورة + الاسم
+                        col_img, col_info = st.columns([1, 3])
+                        with col_img:
+                            if t.get("user_profile_image"):
+                                try:
+                                    st.image(t["user_profile_image"], width=50)
+                                except Exception:
+                                    pass
+                        with col_info:
+                            verified = " ✓" if t.get("user_blue_verified") else ""
+                            vtype = f" ({t['user_verified_type']})" if t.get("user_verified_type") else ""
+                            st.markdown(f"**{t.get('user_name', '')}{verified}**{vtype}")
+                            flag = t.get("region_flag", "")
+                            st.caption(f"@{t.get('user_screen_name', '')} {flag}")
+                        # النص
+                        if t.get("text"):
+                            st.markdown(t["text"][:280])
+                        # الوسائط
+                        if t.get("media_count", 0) > 0 and t.get("media_urls"):
+                            first_media = t["media_urls"].split(" | ")[0]
+                            if first_media and "video" not in first_media:
+                                try:
+                                    st.image(first_media, width=200)
+                                except Exception:
+                                    pass
+                        # الإحصائيات
+                        st.caption(
+                            f"❤️ {t.get('favorite_count_formatted', '0')} | "
+                            f"💬 {t.get('conversation_count_formatted', '0')} | "
+                            f"📅 {t.get('created_at', '')[:10]}"
+                        )
+                        if t.get("region_name_ar") and t.get("region_confidence", 0) >= 30:
+                            st.caption(
+                                f"🌍 {t['region_name_ar']} "
+                                f"({t['region_confidence']}% - {t['region_source']})"
+                            )
+                        st.markdown(f"[🔗 فتح في X]({t.get('tweet_url', '')})")
 
 # ============ تبويب الإدخال اليدوي ============
 with tab_manual:
