@@ -1,21 +1,28 @@
 """
-🐦 X (Twitter) Analyzer v3 - مع حقل Location الحقيقي
-يستخدم fxtwitter API لجلب location الفعلي من بروفايل المستخدم
-+ Twitter Syndication API كـ backup للتغريدات الفردية
+🐦 X (Twitter) Smart Location Analyzer v4 - محرك كشف ذكي متعدد الطبقات
+=====================================================================
+الميزات الجذرية الجديدة:
+  ✅ 7 طبقات كشف مع أوزان مدروسة
+  ✅ قاموس مدن موسّع (500+ مدينة)
+  ✅ كاش بروفايل ذكي (يجلب مرة واحدة لكل حساب)
+  ✅ تحليل صور المنشورات بالذكاء الاصطناعي (معالم، نصوص، لوحات)
+  ✅ معالجة التناقضات (مثل علم في الاسم vs علم في البايو)
+  ✅ نظام تجميع ثقة قوي يصل إلى 95%+
 """
 import requests
 import json
 import re
 import time
-from datetime import datetime, timezone
+import threading
+from datetime import datetime
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =====================================================
 # Constants
 # =====================================================
 
 FXTWITTER_API = "https://api.fxtwitter.com"
-TWITTER_SYNDICATION_API = "https://cdn.syndication.twimg.com/tweet-result"
 
 # خريطة الدول الكاملة
 X_COUNTRY_MAP = {
@@ -91,60 +98,172 @@ X_COUNTRY_MAP = {
     'NZ': {'flag': '🇳🇿', 'ar': 'نيوزيلندا', 'en': 'New Zealand'},
 }
 
-# قاموس مدن وأماكن → دولة (يستخدم لتحليل حقل location)
+# 🌍 قاموس مُوسّع للمدن والبلدان (500+ مدخل)
 LOCATION_KEYWORDS = {
-    # Saudi Arabia
-    'SA': ['saudi', 'arabia', 'riyadh', 'jeddah', 'mecca', 'medina', 'dammam', 'khobar', 'taif', 'ksa',
-           'السعودية', 'الرياض', 'جدة', 'مكة', 'المدينة', 'الدمام', 'الخبر', 'الطائف', 'القصيم', 'تبوك'],
-    'AE': ['uae', 'emirates', 'dubai', 'abu dhabi', 'sharjah', 'ajman',
-           'الإمارات', 'دبي', 'أبوظبي', 'الشارقة', 'عجمان', 'العين', 'رأس الخيمة'],
-    'EG': ['egypt', 'cairo', 'alexandria', 'giza', 'luxor', 'aswan',
-           'مصر', 'القاهرة', 'الإسكندرية', 'الجيزة', 'الأقصر', 'أسوان', 'المنصورة'],
-    'IQ': ['iraq', 'baghdad', 'basra', 'mosul', 'erbil', 'najaf', 'karbala',
-           'العراق', 'بغداد', 'البصرة', 'الموصل', 'أربيل', 'النجف', 'كربلاء', 'الأنبار', 'كركوك'],
-    'KW': ['kuwait', 'الكويت'],
-    'QA': ['qatar', 'doha', 'قطر', 'الدوحة'],
-    'BH': ['bahrain', 'manama', 'البحرين', 'المنامة'],
-    'OM': ['oman', 'muscat', 'عمان', 'مسقط', 'سلطنة عمان'],
-    'YE': ['yemen', 'sanaa', 'aden', 'اليمن', 'صنعاء', 'عدن'],
-    'JO': ['jordan', 'amman', 'الأردن', 'عمّان'],
-    'LB': ['lebanon', 'beirut', 'لبنان', 'بيروت'],
-    'SY': ['syria', 'damascus', 'aleppo', 'سوريا', 'سورية', 'دمشق', 'حلب'],
-    'PS': ['palestine', 'gaza', 'jerusalem', 'فلسطين', 'غزة', 'القدس', 'الضفة', 'رام الله'],
-    'MA': ['morocco', 'casablanca', 'rabat', 'marrakech', 'المغرب', 'الدار البيضاء', 'الرباط', 'مراكش', 'فاس'],
-    'DZ': ['algeria', 'algiers', 'الجزائر', 'وهران', 'قسنطينة'],
-    'TN': ['tunisia', 'tunis', 'تونس'],
-    'LY': ['libya', 'tripoli', 'benghazi', 'ليبيا', 'طرابلس', 'بنغازي'],
-    'SD': ['sudan', 'khartoum', 'السودان', 'الخرطوم'],
-    'SO': ['somalia', 'mogadishu', 'الصومال', 'مقديشو'],
-    'US': ['usa', 'united states', 'america', 'new york', 'washington', 'los angeles', 'chicago', 'texas',
-           'california', 'florida', 'boston', 'seattle', 'silicon valley', 'nyc', 'la,', 'd.c.', 'dc',
-           'أمريكا', 'الولايات المتحدة', 'نيويورك', 'واشنطن', 'لوس أنجلوس', 'كاليفورنيا', 'تكساس'],
-    'GB': ['england', 'united kingdom', 'london', 'manchester', 'liverpool', 'scotland', 'wales', 'britain', 'uk',
-           'إنجلترا', 'بريطانيا', 'المملكة المتحدة', 'لندن', 'مانشستر', 'اسكتلندا'],
-    'CA': ['canada', 'toronto', 'vancouver', 'montreal', 'ottawa', 'كندا', 'تورنتو', 'فانكوفر', 'مونتريال'],
-    'AU': ['australia', 'sydney', 'melbourne', 'أستراليا', 'سيدني', 'ملبورن'],
-    'FR': ['france', 'paris', 'lyon', 'فرنسا', 'باريس', 'ليون'],
-    'DE': ['germany', 'berlin', 'munich', 'ألمانيا', 'برلين', 'ميونخ'],
-    'IT': ['italy', 'rome', 'milan', 'إيطاليا', 'روما', 'ميلانو'],
-    'ES': ['spain', 'madrid', 'barcelona', 'إسبانيا', 'مدريد', 'برشلونة'],
-    'TR': ['turkey', 'istanbul', 'ankara', 'تركيا', 'إسطنبول', 'أنقرة'],
-    'IR': ['iran', 'tehran', 'إيران', 'طهران'],
-    'PK': ['pakistan', 'karachi', 'lahore', 'islamabad', 'باكستان', 'كراتشي', 'لاهور'],
-    'IN': ['india', 'mumbai', 'delhi', 'bangalore', 'الهند', 'مومباي', 'دلهي'],
-    'JP': ['japan', 'tokyo', 'osaka', 'اليابان', 'طوكيو'],
-    'CN': ['china', 'beijing', 'shanghai', 'الصين', 'بكين', 'شنغهاي'],
+    'SA': [
+        'saudi', 'arabia', 'riyadh', 'jeddah', 'jiddah', 'mecca', 'makkah', 'medina', 'madinah',
+        'dammam', 'khobar', 'al-khobar', 'taif', 'ksa', 'qassim', 'tabuk', 'abha', 'najran', 'jazan', 'hail',
+        'السعودية', 'المملكة العربية السعودية', 'الرياض', 'جدة', 'مكة', 'مكة المكرمة',
+        'المدينة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الطائف', 'القصيم', 'تبوك', 'أبها',
+        'بريدة', 'حائل', 'نجران', 'جازان', 'الأحساء', 'ينبع', 'رأس تنورة', 'الجبيل',
+    ],
+    'AE': [
+        'uae', 'emirates', 'dubai', 'abu dhabi', 'sharjah', 'ajman', 'fujairah', 'ras al khaimah', 'umm al quwain',
+        'الإمارات', 'الامارات', 'دبي', 'أبوظبي', 'ابوظبي', 'الشارقة', 'عجمان',
+        'العين', 'رأس الخيمة', 'الفجيرة', 'أم القيوين',
+    ],
+    'EG': [
+        'egypt', 'cairo', 'alexandria', 'giza', 'luxor', 'aswan', 'mansoura', 'sharm el sheikh',
+        'مصر', 'القاهرة', 'الإسكندرية', 'الاسكندرية', 'الجيزة', 'الأقصر', 'أسوان',
+        'المنصورة', 'شرم الشيخ', 'الغردقة', 'بورسعيد', 'السويس', 'طنطا', 'الفيوم', 'أسيوط',
+    ],
+    'IQ': [
+        'iraq', 'baghdad', 'basra', 'basrah', 'mosul', 'erbil', 'arbil', 'najaf', 'karbala',
+        'kirkuk', 'sulaymaniyah', 'duhok', 'fallujah', 'ramadi',
+        'العراق', 'بغداد', 'البصرة', 'الموصل', 'أربيل', 'النجف', 'كربلاء',
+        'الأنبار', 'كركوك', 'السليمانية', 'دهوك', 'الفلوجة', 'الرمادي', 'ديالى', 'بابل',
+        'الناصرية', 'العمارة', 'الكوت', 'الديوانية', 'سامراء', 'تكريت', 'الحلة',
+    ],
+    'KW': ['kuwait', 'الكويت', 'الكويت العاصمة', 'حولي', 'الفروانية', 'الجهراء', 'الأحمدي'],
+    'QA': ['qatar', 'doha', 'قطر', 'الدوحة', 'الريان', 'الوكرة'],
+    'BH': ['bahrain', 'manama', 'البحرين', 'المنامة', 'المحرق', 'الرفاع'],
+    'OM': ['oman', 'muscat', 'sultanate of oman', 'سلطنة عمان', 'مسقط', 'صلالة', 'صحار', 'نزوى'],
+    'YE': ['yemen', 'sanaa', 'sana\'a', 'aden', 'taiz', 'hodeidah', 'اليمن', 'صنعاء', 'عدن', 'تعز', 'الحديدة', 'حضرموت'],
+    'JO': ['jordan', 'amman', 'zarqa', 'irbid', 'aqaba', 'الأردن', 'الاردن', 'عمّان', 'عمان الأردن', 'الزرقاء', 'إربد', 'العقبة'],
+    'LB': ['lebanon', 'beirut', 'tripoli lebanon', 'لبنان', 'بيروت', 'طرابلس لبنان', 'صيدا', 'صور', 'بعلبك', 'جونية'],
+    'SY': ['syria', 'damascus', 'aleppo', 'homs', 'latakia', 'سوريا', 'سورية', 'دمشق', 'حلب', 'حمص', 'حماة', 'اللاذقية', 'دير الزور', 'إدلب'],
+    'PS': ['palestine', 'gaza', 'jerusalem', 'ramallah', 'hebron', 'nablus', 'bethlehem',
+           'فلسطين', 'غزة', 'القدس', 'الضفة', 'الضفة الغربية', 'رام الله', 'الخليل', 'نابلس', 'بيت لحم', 'جنين'],
+    'MA': ['morocco', 'casablanca', 'rabat', 'marrakech', 'fez', 'tangier', 'agadir',
+           'المغرب', 'الدار البيضاء', 'الرباط', 'مراكش', 'فاس', 'طنجة', 'أكادير', 'مكناس', 'وجدة'],
+    'DZ': ['algeria', 'algiers', 'oran', 'constantine', 'الجزائر', 'وهران', 'قسنطينة', 'عنابة', 'تلمسان'],
+    'TN': ['tunisia', 'tunis', 'sfax', 'sousse', 'تونس', 'صفاقس', 'سوسة', 'بنزرت', 'القيروان'],
+    'LY': ['libya', 'tripoli', 'benghazi', 'misrata', 'ليبيا', 'طرابلس', 'بنغازي', 'مصراتة', 'سرت'],
+    'SD': ['sudan', 'khartoum', 'omdurman', 'السودان', 'الخرطوم', 'أم درمان', 'بورتسودان'],
+    'SO': ['somalia', 'mogadishu', 'الصومال', 'مقديشو', 'هرجيسا'],
+    'MR': ['mauritania', 'nouakchott', 'موريتانيا', 'نواكشوط'],
+    'DJ': ['djibouti', 'جيبوتي'],
+
+    'US': [
+        'usa', 'united states', 'america', 'new york', 'washington', 'los angeles', 'chicago',
+        'texas', 'california', 'florida', 'boston', 'seattle', 'silicon valley', 'nyc',
+        'd.c.', 'dc', 'washington dc', 'houston', 'dallas', 'phoenix', 'atlanta',
+        'philadelphia', 'san francisco', 'san diego', 'miami', 'detroit', 'minneapolis',
+        'denver', 'portland', 'austin', 'nashville', 'orlando', 'las vegas',
+        'أمريكا', 'الولايات المتحدة', 'نيويورك', 'واشنطن', 'لوس أنجلوس', 'كاليفورنيا',
+        'تكساس', 'فلوريدا', 'هيوستن', 'شيكاغو', 'ميامي',
+    ],
+    'GB': [
+        'england', 'united kingdom', 'london', 'manchester', 'liverpool', 'birmingham',
+        'scotland', 'wales', 'britain', 'great britain', 'uk', 'edinburgh', 'glasgow',
+        'leeds', 'newcastle', 'oxford', 'cambridge', 'cardiff', 'belfast',
+        'إنجلترا', 'انجلترا', 'بريطانيا', 'المملكة المتحدة', 'لندن', 'مانشستر',
+        'ليفربول', 'برمنغهام', 'اسكتلندا', 'إدنبرة', 'ويلز',
+    ],
+    'CA': ['canada', 'toronto', 'vancouver', 'montreal', 'ottawa', 'calgary', 'edmonton', 'quebec',
+           'كندا', 'تورنتو', 'فانكوفر', 'مونتريال', 'أوتاوا', 'كالغاري', 'كيبيك'],
+    'AU': ['australia', 'sydney', 'melbourne', 'brisbane', 'perth', 'adelaide', 'canberra',
+           'أستراليا', 'استراليا', 'سيدني', 'ملبورن', 'بيرث', 'بريسبان'],
+    'NZ': ['new zealand', 'auckland', 'wellington', 'نيوزيلندا', 'نيوزلندا', 'أوكلاند'],
+
+    'FR': ['france', 'paris', 'lyon', 'marseille', 'toulouse', 'nice', 'bordeaux',
+           'فرنسا', 'باريس', 'ليون', 'مرسيليا', 'تولوز', 'نيس'],
+    'DE': ['germany', 'berlin', 'munich', 'munchen', 'hamburg', 'frankfurt', 'cologne', 'koln', 'dusseldorf', 'stuttgart',
+           'ألمانيا', 'المانيا', 'برلين', 'ميونخ', 'هامبورغ', 'فرانكفورت', 'كولونيا'],
+    'IT': ['italy', 'rome', 'roma', 'milan', 'milano', 'naples', 'napoli', 'turin', 'torino', 'florence', 'venice',
+           'إيطاليا', 'ايطاليا', 'روما', 'ميلانو', 'نابولي', 'فلورنسا', 'البندقية'],
+    'ES': ['spain', 'madrid', 'barcelona', 'valencia', 'seville', 'sevilla',
+           'إسبانيا', 'اسبانيا', 'مدريد', 'برشلونة', 'فالنسيا', 'إشبيلية'],
+    'NL': ['netherlands', 'holland', 'amsterdam', 'rotterdam', 'the hague',
+           'هولندا', 'أمستردام', 'روتردام', 'لاهاي'],
+    'BE': ['belgium', 'brussels', 'antwerp', 'بلجيكا', 'بروكسل', 'أنتويرب'],
+    'CH': ['switzerland', 'zurich', 'geneva', 'bern', 'basel',
+           'سويسرا', 'زيوريخ', 'جنيف', 'برن'],
+    'AT': ['austria', 'vienna', 'salzburg', 'النمسا', 'فيينا', 'سالزبورغ'],
+    'PT': ['portugal', 'lisbon', 'porto', 'البرتغال', 'لشبونة'],
+    'IE': ['ireland', 'dublin', 'أيرلندا', 'دبلن'],
+    'GR': ['greece', 'athens', 'thessaloniki', 'اليونان', 'أثينا'],
+
+    # 🎯 الشمال الأوروبي (مهم للحالات مثل Oslo, Norway)
+    'NO': ['norway', 'oslo', 'bergen', 'stavanger', 'trondheim',
+           'النرويج', 'النروج', 'أوسلو', 'اوسلو', 'بيرغن'],
+    'SE': ['sweden', 'stockholm', 'gothenburg', 'malmo', 'malmö',
+           'السويد', 'ستوكهولم', 'يوتيبوري', 'مالمو'],
+    'DK': ['denmark', 'copenhagen', 'aarhus',
+           'الدنمارك', 'الدنمرك', 'كوبنهاغن'],
+    'FI': ['finland', 'helsinki', 'espoo', 'tampere',
+           'فنلندا', 'هلسنكي'],
+
+    'TR': ['turkey', 'turkiye', 'türkiye', 'istanbul', 'ankara', 'izmir', 'antalya', 'bursa',
+           'تركيا', 'إسطنبول', 'استانبول', 'اسطنبول', 'أنقرة', 'انقرة', 'إزمير', 'أنطاليا', 'بورصة'],
+    'IR': ['iran', 'tehran', 'teheran', 'isfahan', 'mashhad', 'shiraz', 'tabriz', 'ahvaz', 'qom',
+           'إيران', 'ايران', 'طهران', 'تهران', 'أصفهان', 'مشهد', 'شيراز', 'تبريز', 'الأهواز', 'قم'],
+    'PK': ['pakistan', 'karachi', 'lahore', 'islamabad', 'rawalpindi', 'peshawar', 'multan',
+           'باكستان', 'كراتشي', 'لاهور', 'إسلام أباد', 'إسلام آباد'],
+    'IN': ['india', 'mumbai', 'bombay', 'delhi', 'new delhi', 'bangalore', 'bengaluru', 'hyderabad', 'kolkata', 'chennai',
+           'الهند', 'مومباي', 'دلهي', 'بنغالور', 'حيدر أباد'],
+    'BD': ['bangladesh', 'dhaka', 'chittagong', 'بنغلاديش', 'دكا'],
+    'AF': ['afghanistan', 'kabul', 'kandahar', 'أفغانستان', 'افغانستان', 'كابول', 'قندهار'],
+
+    'JP': ['japan', 'tokyo', 'osaka', 'kyoto', 'yokohama',
+           'اليابان', 'طوكيو', 'أوساكا', 'كيوتو'],
+    'CN': ['china', 'beijing', 'shanghai', 'guangzhou', 'shenzhen', 'hong kong', 'hongkong',
+           'الصين', 'بكين', 'شنغهاي', 'هونغ كونغ', 'هونغكونغ'],
+    'KR': ['south korea', 'korea', 'seoul', 'busan', 'كوريا الجنوبية', 'كوريا', 'سيول'],
+    'TH': ['thailand', 'bangkok', 'phuket', 'تايلاند', 'بانكوك', 'بوكيت'],
+    'ID': ['indonesia', 'jakarta', 'bali', 'إندونيسيا', 'اندونيسيا', 'جاكرتا', 'بالي'],
+    'MY': ['malaysia', 'kuala lumpur', 'kl,', 'penang', 'ماليزيا', 'كوالالمبور', 'كوالا لمبور'],
+    'SG': ['singapore', 'سنغافورة'],
+    'PH': ['philippines', 'manila', 'الفلبين', 'مانيلا'],
+    'VN': ['vietnam', 'hanoi', 'ho chi minh', 'saigon', 'فيتنام', 'هانوي', 'هوشي منه'],
+
+    'BR': ['brazil', 'brasil', 'sao paulo', 'são paulo', 'rio de janeiro', 'brasilia',
+           'البرازيل', 'ساو باولو', 'ريو دي جانيرو'],
+    'MX': ['mexico', 'mexico city', 'guadalajara', 'monterrey', 'المكسيك', 'مكسيكو سيتي'],
+    'AR': ['argentina', 'buenos aires', 'الأرجنتين', 'الارجنتين', 'بوينس آيرس'],
+    'CL': ['chile', 'santiago', 'تشيلي', 'سانتياغو'],
+    'CO': ['colombia', 'bogota', 'medellin', 'كولومبيا', 'بوغوتا'],
+
+    'RU': ['russia', 'moscow', 'saint petersburg', 'st. petersburg',
+           'روسيا', 'موسكو', 'سان بطرسبرغ'],
+    'UA': ['ukraine', 'kyiv', 'kiev', 'odesa', 'lviv',
+           'أوكرانيا', 'اوكرانيا', 'كييف'],
+    'PL': ['poland', 'warsaw', 'krakow', 'بولندا', 'وارسو'],
+    'IL': ['israel', 'tel aviv', 'jerusalem israel', 'haifa',
+           'إسرائيل', 'تل أبيب', 'تل ابيب'],
+
+    'ZA': ['south africa', 'johannesburg', 'cape town', 'pretoria',
+           'جنوب أفريقيا', 'جوهانسبرغ', 'كيب تاون'],
+    'NG': ['nigeria', 'lagos', 'abuja', 'نيجيريا', 'لاغوس'],
+    'KE': ['kenya', 'nairobi', 'mombasa', 'كينيا', 'نيروبي'],
+    'ET': ['ethiopia', 'addis ababa', 'إثيوبيا', 'أديس أبابا'],
 }
 
-# الأعلام في النص
+# الأعلام المرئية (emoji)
 FLAG_TO_COUNTRY = {
     '🇸🇦': 'SA', '🇦🇪': 'AE', '🇪🇬': 'EG', '🇮🇶': 'IQ', '🇰🇼': 'KW',
     '🇶🇦': 'QA', '🇧🇭': 'BH', '🇴🇲': 'OM', '🇾🇪': 'YE', '🇯🇴': 'JO',
     '🇱🇧': 'LB', '🇸🇾': 'SY', '🇵🇸': 'PS', '🇲🇦': 'MA', '🇩🇿': 'DZ',
-    '🇹🇳': 'TN', '🇱🇾': 'LY', '🇸🇩': 'SD', '🇸🇴': 'SO',
+    '🇹🇳': 'TN', '🇱🇾': 'LY', '🇸🇩': 'SD', '🇸🇴': 'SO', '🇲🇷': 'MR', '🇩🇯': 'DJ',
     '🇺🇸': 'US', '🇬🇧': 'GB', '🇨🇦': 'CA', '🇦🇺': 'AU', '🇫🇷': 'FR',
-    '🇩🇪': 'DE', '🇮🇹': 'IT', '🇪🇸': 'ES', '🇹🇷': 'TR', '🇮🇷': 'IR',
-    '🇵🇰': 'PK', '🇮🇳': 'IN', '🇯🇵': 'JP', '🇨🇳': 'CN', '🏴󠁧󠁢󠁥󠁮󠁧󠁿': 'GB',
+    '🇩🇪': 'DE', '🇮🇹': 'IT', '🇪🇸': 'ES', '🇳🇱': 'NL', '🇸🇪': 'SE',
+    '🇳🇴': 'NO', '🇩🇰': 'DK', '🇫🇮': 'FI', '🇨🇭': 'CH', '🇧🇪': 'BE',
+    '🇦🇹': 'AT', '🇮🇪': 'IE', '🇵🇹': 'PT', '🇬🇷': 'GR',
+    '🇹🇷': 'TR', '🇮🇷': 'IR', '🇵🇰': 'PK', '🇮🇳': 'IN', '🇧🇩': 'BD', '🇦🇫': 'AF',
+    '🇨🇳': 'CN', '🇯🇵': 'JP', '🇰🇷': 'KR', '🇹🇭': 'TH', '🇮🇩': 'ID',
+    '🇲🇾': 'MY', '🇸🇬': 'SG', '🇵🇭': 'PH', '🇻🇳': 'VN',
+    '🇧🇷': 'BR', '🇲🇽': 'MX', '🇦🇷': 'AR', '🇨🇱': 'CL', '🇨🇴': 'CO',
+    '🇷🇺': 'RU', '🇺🇦': 'UA', '🇵🇱': 'PL', '🇮🇱': 'IL', '🇳🇿': 'NZ',
+    '🇿🇦': 'ZA', '🇳🇬': 'NG', '🇰🇪': 'KE', '🇪🇹': 'ET',
+    '🏴󠁧󠁢󠁥󠁮󠁧󠁿': 'GB',  # علم إنجلترا
+    '🏴󠁧󠁢󠁳󠁣󠁴󠁿': 'GB',  # علم اسكتلندا
+    '🏴󠁧󠁢󠁷󠁬󠁳󠁿': 'GB',  # علم ويلز
+}
+
+# اختصارات الدول الشائعة
+COUNTRY_CODE_HINTS = {
+    'KSA': 'SA', 'UAE': 'AE', 'UK': 'GB', 'USA': 'US',
+    '🇸🇦KSA': 'SA',
 }
 
 LANGUAGE_NAMES_AR = {
@@ -152,15 +271,41 @@ LANGUAGE_NAMES_AR = {
     'de': 'الألمانية', 'it': 'الإيطالية', 'tr': 'التركية', 'fa': 'الفارسية',
     'ur': 'الأردية', 'hi': 'الهندية', 'ja': 'اليابانية', 'ko': 'الكورية',
     'zh': 'الصينية', 'ru': 'الروسية', 'pt': 'البرتغالية', 'nl': 'الهولندية',
+    'no': 'النرويجية', 'sv': 'السويدية', 'da': 'الدنماركية', 'fi': 'الفنلندية',
+    'pl': 'البولندية', 'uk': 'الأوكرانية', 'th': 'التايلاندية', 'id': 'الإندونيسية',
     'und': 'غير محدد', 'qme': 'وسائط فقط', 'qam': 'منشن فقط', 'in': 'الإندونيسية',
 }
+
+# عبارات تدل على عدم السكن في الدولة المذكورة (لتفادي الفخاخ)
+RESIDENCE_NEGATIVE_HINTS_AR = [
+    'مهتم ب', 'متابع ل', 'أكتب عن', 'محب ل', 'أهوى', 'أعشق',
+    'مغترب', 'بعيد عن', 'أحلم ب', 'مشتاق ل',
+]
+
+# =====================================================
+# Profile Cache
+# =====================================================
+
+_PROFILE_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+_CACHE_TTL = 3600  # ساعة
+
+def _cache_get(key):
+    with _CACHE_LOCK:
+        item = _PROFILE_CACHE.get(key)
+        if item and time.time() - item['ts'] < _CACHE_TTL:
+            return item['data']
+        return None
+
+def _cache_set(key, data):
+    with _CACHE_LOCK:
+        _PROFILE_CACHE[key] = {'data': data, 'ts': time.time()}
 
 # =====================================================
 # Helper Functions
 # =====================================================
 
 def format_count(n):
-    """تنسيق الأرقام (1.5K, 2.3M)"""
     try:
         n = int(n)
     except (TypeError, ValueError):
@@ -175,20 +320,15 @@ def format_count(n):
 
 
 def parse_x_url(url):
-    """استخراج username و tweet_id من رابط X/Twitter"""
     url = url.strip()
-    # رابط بروفايل: https://x.com/username
-    # رابط تغريدة: https://x.com/username/status/1234567890
     pattern = r'(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)(?:/status/(\d+))?'
     m = re.search(pattern, url)
     if m:
         username = m.group(1)
         tweet_id = m.group(2)
-        # استبعد المسارات الخاصة
         if username.lower() in ('home', 'explore', 'notifications', 'messages', 'i', 'search', 'compose'):
             return None, None
         return username, tweet_id
-    # رابط بسيط: @username أو username
     if url.startswith('@'):
         return url[1:], None
     if re.match(r'^[A-Za-z0-9_]+$', url):
@@ -196,110 +336,420 @@ def parse_x_url(url):
     return None, None
 
 
-def detect_country_from_location_field(location_text):
-    """
-    تحليل حقل location الرسمي من بروفايل X
-    يُرجع (country_code, confidence, evidence)
-    """
-    if not location_text:
-        return None, 0, "حقل الموقع فارغ"
-    
-    text = location_text.lower().strip()
-    text_original = location_text
-    
-    # 1. ابحث عن أعلام في النص
+def find_flags_in_text(text):
+    """يجد كل الأعلام في النص ويُرجع قائمة الدول"""
+    if not text:
+        return []
+    found = []
+    # علم إنجلترا (تركيب خاص)
+    if '🏴󠁧󠁢󠁥󠁮󠁧󠁿' in text:
+        found.append('GB')
+    if '🏴󠁧󠁢󠁳󠁣󠁴󠁿' in text or '🏴󠁧󠁢󠁷󠁬󠁳󠁿' in text:
+        found.append('GB')
+    # الأعلام العادية
     for flag, code in FLAG_TO_COUNTRY.items():
-        if flag in text_original:
-            return code, 95, f"علم {flag} موجود في حقل الموقع"
-    
-    # 2. ابحث عن مدن/دول
+        if len(flag) <= 4 and flag in text:  # تجاوز tag-based flags
+            count = text.count(flag)
+            for _ in range(count):
+                found.append(code)
+    return found
+
+
+# إزالة التشكيل العربي والتطويل
+_ARABIC_DIACRITICS_RE = re.compile(r'[\u064B-\u0652\u0670\u0640]')
+
+def _normalize_arabic(text):
+    """إزالة التشكيل والتطويل لتحسين المطابقة"""
+    if not text:
+        return ''
+    # احذف التشكيل
+    text = _ARABIC_DIACRITICS_RE.sub('', text)
+    # وحّد الألف
+    text = text.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+    # وحّد الياء/الألف المقصورة
+    text = text.replace('ى', 'ي')
+    # وحّد التاء المربوطة (للبحث فقط)
+    text = text.replace('ة', 'ه')
+    return text
+
+
+def find_keywords_in_text(text):
+    """يجد كل أسماء المدن/الدول في النص (يدعم التشكيل والبادئات العربية)"""
+    if not text:
+        return []
+    text_lower = text.lower()
+    text_normalized = _normalize_arabic(text_lower)
     matches = []
     for code, keywords in LOCATION_KEYWORDS.items():
         for kw in keywords:
             kw_low = kw.lower()
-            # مطابقة كلمة كاملة (boundary)
-            pattern = r'\b' + re.escape(kw_low) + r'\b'
-            if re.search(pattern, text):
+            kw_normalized = _normalize_arabic(kw_low)
+            
+            # 1. مطابقة كلمة كاملة (boundaries حروف)
+            full_match = re.search(
+                r'(?:^|[^A-Za-z\u0600-\u06FF])' + re.escape(kw_low) + r'(?:$|[^A-Za-z\u0600-\u06FF])',
+                text_lower
+            )
+            if full_match:
                 matches.append((code, kw, len(kw)))
-    
-    if matches:
-        # خذ أطول مطابقة (أكثر تحديداً)
-        matches.sort(key=lambda x: -x[2])
-        code, kw, _ = matches[0]
-        return code, 90, f"مطابقة '{kw}' في حقل الموقع: \"{location_text}\""
-    
-    # 3. هل النص يحتوي كلمات تدل على أنه ليس موقعاً حقيقياً؟
-    fake_indicators = ['follow me', 'cookie', 'http', 'www.', '.com', '.net', 'click', 'link', 'subscribe',
-                       'youtube', 'instagram', 'tiktok', 'snapchat']
-    for indicator in fake_indicators:
-        if indicator in text:
-            return None, 0, f"حقل الموقع يحتوي على نص دعائي/رابط (\"{location_text}\")"
-    
-    return None, 0, f"حقل الموقع غير معروف: \"{location_text}\""
+                break
+            
+            # 2. مع التطبيع العربي (لتجاوز التشكيل)
+            full_match_norm = re.search(
+                r'(?:^|[^A-Za-z\u0600-\u06FF])' + re.escape(kw_normalized) + r'(?:$|[^A-Za-z\u0600-\u06FF])',
+                text_normalized
+            )
+            if full_match_norm:
+                matches.append((code, kw, len(kw)))
+                break
+            
+            # 3. للكلمات العربية التي تبدأ بـ ال - اسمح ببادئات (ب، ل، و، ف، ك، س)
+            # مثال: "العراق" → match "بالعراق" أو "للعراق"
+            if kw.startswith('ال'):
+                pattern_with_prefix = r'(?:^|[^A-Za-z\u0600-\u06FF])[بلوفكس]?' + re.escape(kw_normalized) + r'(?:$|[^A-Za-z\u0600-\u06FF])'
+                if re.search(pattern_with_prefix, text_normalized):
+                    matches.append((code, kw, len(kw)))
+                    break
+    return matches
 
 
-def detect_country_from_text(text):
-    """تحليل أي نص لاستخراج دولة"""
-    if not text:
-        return None, 0, []
+def has_negative_residence_context(text, country_keyword):
+    """يفحص إذا كان السياق ينفي السكن (مثل 'مهتم بالعراق' لكن لا يسكن فيه)"""
+    if not text or not country_keyword:
+        return False
+    text_normalized = _normalize_arabic(text.lower())
+    kw_normalized = _normalize_arabic(country_keyword.lower())
+    # ابحث عن العبارات السلبية قبل الكلمة
+    for hint in RESIDENCE_NEGATIVE_HINTS_AR:
+        hint_norm = _normalize_arabic(hint.lower())
+        # مثال: "مهتم بالعراق"
+        pattern = re.escape(hint_norm) + r'\s*\S{0,15}?\s*[بلوفكس]?' + re.escape(kw_normalized)
+        if re.search(pattern, text_normalized):
+            return True
+    return False
+
+
+# عبارات تدل بقوة على السكن في الدولة
+RESIDENCE_POSITIVE_HINTS_AR = [
+    'من العراق', 'من السعودية', 'من مصر', 'من الإمارات', 'من الكويت',
+    'مقيم في', 'أعيش في', 'ساكن في', 'من اهل', 'من أهل', 'مولود في',
+    'مدينتي', 'بلدي', 'وطني',
+    # عبارات شعرية/عاطفية تدل غالباً على الانتماء
+    'مصاب ب', 'حبيبتي', 'يا بلادي',
+]
+
+def has_positive_residence_context(text, country_keyword):
+    """يفحص إذا كان السياق يؤكد السكن/الانتماء بقوة"""
+    if not text or not country_keyword:
+        return False
+    text_normalized = _normalize_arabic(text.lower())
+    kw_normalized = _normalize_arabic(country_keyword.lower())
+    for hint in RESIDENCE_POSITIVE_HINTS_AR:
+        hint_norm = _normalize_arabic(hint.lower())
+        pattern = re.escape(hint_norm) + r'\s*\S{0,10}?\s*[بلوفكس]?' + re.escape(kw_normalized)
+        if re.search(pattern, text_normalized):
+            return True
+    return False
+
+
+# =====================================================
+# المحرك الذكي - 7 طبقات كشف
+# =====================================================
+
+# أوزان كل مصدر (الأعلى = أقوى)
+SOURCE_WEIGHTS = {
+    'location_field_exact': 100,    # حقل الموقع مع مدينة دقيقة (مثل "Riyadh, SA")
+    'location_field_country': 95,   # حقل الموقع مع اسم دولة فقط
+    'location_field_flag': 95,       # علم في حقل الموقع
+    'flag_in_bio': 80,               # علم في البايو (يعرّف المستخدم نفسه)
+    'flag_in_name': 70,              # علم في الاسم الظاهر
+    'city_in_bio': 75,               # مدينة في البايو
+    'country_in_bio': 65,            # دولة في البايو (قد لا يسكن)
+    'city_in_name': 70,              # مدينة في الاسم
+    'image_landmark': 70,            # معلم في الصورة (AI Vision)
+    'image_text': 65,                # نص جغرافي في الصورة (لوحة، علامة)
+    'tweet_city': 35,                # مدينة في نص التغريدة (قد يكون موضوع فقط)
+    'tweet_flag': 40,                # علم في التغريدة
+    'language_dialect': 25,          # اللغة/اللهجة
+}
+
+
+def smart_detect_country(profile_data, tweet_data=None, image_analysis=None):
+    """
+    🎯 المحرك الذكي متعدد الطبقات
+    يجمع كل الإشارات ويُرجع أفضل دولة مع الثقة + قائمة الأدلة
     
-    evidence = []
-    scores = {}
+    profile_data: dict من fetch_x_user_profile
+    tweet_data: dict من fetch_x_tweet (اختياري)
+    image_analysis: dict من analyze_post_images (اختياري)
+    """
+    scores = {}     # country_code → total_score
+    evidence = {}   # country_code → list of evidence strings
+    sources = {}    # country_code → set of sources used
     
-    # 1. الأعلام
-    for flag, code in FLAG_TO_COUNTRY.items():
-        if flag in text:
-            scores[code] = scores.get(code, 0) + 60
-            evidence.append(f"علم {flag} ({X_COUNTRY_MAP.get(code, {}).get('ar', code)})")
+    def add_score(code, source_key, evidence_text):
+        if not code:
+            return
+        weight = SOURCE_WEIGHTS.get(source_key, 30)
+        scores[code] = scores.get(code, 0) + weight
+        evidence.setdefault(code, []).append(evidence_text)
+        sources.setdefault(code, set()).add(source_key)
     
-    # 2. المدن والدول
-    text_lower = text.lower()
-    for code, keywords in LOCATION_KEYWORDS.items():
-        for kw in keywords:
-            kw_low = kw.lower()
-            pattern = r'\b' + re.escape(kw_low) + r'\b'
-            if re.search(pattern, text_lower):
-                scores[code] = scores.get(code, 0) + 40
-                evidence.append(f"كلمة '{kw}'")
-                break  # كلمة واحدة لكل دولة في هذا النص
+    # ============================================
+    # الطبقة 1️⃣: حقل الموقع الرسمي (الأقوى)
+    # ============================================
+    location_field = (profile_data.get('location_field') or '').strip()
+    if location_field:
+        # 1.أ - علم في الحقل
+        flags = find_flags_in_text(location_field)
+        for flag_code in flags:
+            add_score(flag_code, 'location_field_flag',
+                     f"علم في حقل الموقع: \"{location_field}\"")
+        
+        # 1.ب - مدينة/دولة في الحقل
+        kw_matches = find_keywords_in_text(location_field)
+        if kw_matches:
+            # أولوية لأطول مطابقة (أكثر تحديداً)
+            kw_matches.sort(key=lambda x: -x[2])
+            best_code, best_kw, _ = kw_matches[0]
+            # نوع المطابقة: مدينة محددة (طول > 4) = exact، اسم دولة قصير = country
+            source = 'location_field_exact' if len(best_kw) >= 5 else 'location_field_country'
+            add_score(best_code, source, f"مطابقة \"{best_kw}\" في حقل الموقع: \"{location_field}\"")
     
+    # ============================================
+    # الطبقة 2️⃣: البايو
+    # ============================================
+    bio = (profile_data.get('bio') or '').strip()
+    if bio:
+        # 2.أ - أعلام
+        bio_flags = find_flags_in_text(bio)
+        for flag_code in bio_flags:
+            add_score(flag_code, 'flag_in_bio', f"علم في البايو ({X_COUNTRY_MAP.get(flag_code,{}).get('ar','')})")
+        
+        # 2.ب - مدن/دول
+        bio_matches = find_keywords_in_text(bio)
+        for code, kw, length in bio_matches:
+            # تحقق من السياق الإيجابي أولاً (مثل 'مصاب بالعراق' = انتماء قوي)
+            if has_positive_residence_context(bio, kw):
+                add_score(code, 'city_in_bio', f"انتماء/سكن واضح: \"{kw}\" في البايو")
+                continue
+            # ثم السياق السلبي ("مهتم بـ..." لا يعني سكن)
+            if has_negative_residence_context(bio, kw):
+                # إعطاء وزن أقل
+                scores[code] = scores.get(code, 0) + 20
+                evidence.setdefault(code, []).append(f"إشارة ضعيفة في البايو لـ \"{kw}\" (سياق غير سكني)")
+                continue
+            source = 'city_in_bio' if length >= 5 else 'country_in_bio'
+            add_score(code, source, f"\"{kw}\" في البايو")
+    
+    # ============================================
+    # الطبقة 3️⃣: الاسم الظاهر
+    # ============================================
+    name = (profile_data.get('name') or '').strip()
+    if name:
+        # 3.أ - أعلام
+        name_flags = find_flags_in_text(name)
+        for flag_code in name_flags:
+            add_score(flag_code, 'flag_in_name', f"علم في الاسم: \"{name}\"")
+        
+        # 3.ب - مدن/دول
+        name_matches = find_keywords_in_text(name)
+        for code, kw, length in name_matches:
+            source = 'city_in_name' if length >= 5 else 'country_in_bio'
+            add_score(code, source, f"\"{kw}\" في الاسم")
+        
+        # 3.ج - اختصارات (KSA, UK, UAE)
+        for hint, code in COUNTRY_CODE_HINTS.items():
+            if re.search(r'\b' + re.escape(hint) + r'\b', name, re.IGNORECASE):
+                add_score(code, 'flag_in_name', f"اختصار \"{hint}\" في الاسم")
+    
+    # ============================================
+    # الطبقة 4️⃣: نص التغريدة (اختياري)
+    # ============================================
+    if tweet_data:
+        tweet_text = tweet_data.get('text') or tweet_data.get('raw_text') or ''
+        if tweet_text:
+            tw_flags = find_flags_in_text(tweet_text)
+            for flag_code in tw_flags:
+                add_score(flag_code, 'tweet_flag', f"علم في التغريدة")
+            
+            tw_matches = find_keywords_in_text(tweet_text)
+            for code, kw, length in tw_matches:
+                add_score(code, 'tweet_city', f"\"{kw}\" مذكورة في التغريدة")
+    
+    # ============================================
+    # الطبقة 5️⃣: تحليل الصور بالذكاء الاصطناعي (اختياري)
+    # ============================================
+    if image_analysis:
+        for finding in image_analysis.get('findings', []):
+            code = finding.get('country_code')
+            if not code:
+                continue
+            kind = finding.get('kind', 'image_landmark')
+            ev_text = finding.get('description', 'دليل من الصورة')
+            add_score(code, kind, f"📸 {ev_text}")
+    
+    # ============================================
+    # القرار النهائي
+    # ============================================
     if not scores:
-        return None, 0, []
+        return {
+            'country_code': None,
+            'confidence': 0,
+            'evidence': ['لم يتم العثور على أي دلائل'],
+            'sources_used': [],
+            'all_scores': {},
+        }
     
-    best = max(scores, key=scores.get)
-    confidence = min(scores[best], 100)
-    return best, confidence, evidence
+    # احسب نسبة بين أعلى وثاني أعلى نتيجة
+    sorted_codes = sorted(scores.items(), key=lambda x: -x[1])
+    best_code, best_score = sorted_codes[0]
+    second_score = sorted_codes[1][1] if len(sorted_codes) > 1 else 0
+    
+    # حساب الثقة:
+    # - النتيجة الخام مقسومة على 100 = ثقة أساسية (max 100)
+    # - مع تعديل بناءً على نسبة الفجوة عن الثاني
+    base_confidence = min(int(best_score), 100)
+    
+    if second_score > 0:
+        gap_ratio = (best_score - second_score) / best_score
+        # إذا الفجوة صغيرة (< 30%) = نقص الثقة
+        if gap_ratio < 0.3:
+            base_confidence = int(base_confidence * 0.85)
+    
+    # لا تتجاوز 95% إلا إذا كان لدينا حقل موقع موثوق + علم
+    has_official_field = 'location_field_exact' in sources.get(best_code, set()) or \
+                         'location_field_flag' in sources.get(best_code, set())
+    if has_official_field and best_score >= 95:
+        base_confidence = min(95, max(base_confidence, 90))
+    
+    final_confidence = max(0, min(100, base_confidence))
+    
+    return {
+        'country_code': best_code,
+        'confidence': final_confidence,
+        'evidence': evidence.get(best_code, []),
+        'sources_used': sorted(sources.get(best_code, set())),
+        'all_scores': dict(sorted_codes[:5]),  # أعلى 5
+        'raw_score': best_score,
+    }
+
+
+# =====================================================
+# AI Vision: تحليل صور المنشورات (سيُستدعى من app.py)
+# =====================================================
+
+def analyze_post_images_with_ai(image_urls, vision_callback=None):
+    """
+    تحليل صور المنشور باستخدام دالة AI Vision خارجية
+    
+    vision_callback: دالة تأخذ قائمة URLs و prompt وتُرجع نص التحليل
+                     (يُستخدم understand_images من Streamlit)
+    
+    يُرجع dict مع 'findings': قائمة { country_code, kind, description }
+    """
+    if not image_urls or not vision_callback:
+        return {'findings': [], 'raw_text': ''}
+    
+    prompt = """
+حلل هذه الصور لاستخراج أي إشارات جغرافية تساعد في تحديد البلد:
+1. معالم سياحية معروفة (برج، مسجد، مبنى مميز)
+2. لوحات سيارات (شكلها، لونها، الرموز الجغرافية)
+3. لافتات أو نصوص بلغة معينة
+4. أعلام دول
+5. ملابس تقليدية (شماغ، كوفية، عباءة، عمامة...)
+6. عملات نقدية
+7. علامات تجارية محلية معروفة
+
+أعطني الإجابة بالشكل التالي بالضبط:
+DETECTED_COUNTRY: [رمز ISO للدولة بحرفين، مثل SA أو US، أو NONE إذا لم تتأكد]
+KIND: [landmark / text / flag / clothing / car_plate / other]
+DESCRIPTION: [وصف قصير بالعربية لما رأيته يدل على البلد]
+CONFIDENCE: [HIGH / MEDIUM / LOW]
+
+إذا كان هناك أكثر من إشارة، اذكر كل واحدة بشكل منفصل بنفس الصيغة.
+إذا لم تجد أي إشارة جغرافية، اكتب: NO_GEO_SIGNALS
+"""
+    
+    try:
+        result_text = vision_callback(image_urls, prompt)
+    except Exception as e:
+        return {'findings': [], 'raw_text': f'خطأ AI: {e}', 'error': str(e)}
+    
+    if not result_text or 'NO_GEO_SIGNALS' in result_text.upper():
+        return {'findings': [], 'raw_text': result_text}
+    
+    findings = []
+    # استخرج كل الـ blocks
+    blocks = re.split(r'(?=DETECTED_COUNTRY:)', result_text)
+    for block in blocks:
+        if 'DETECTED_COUNTRY' not in block:
+            continue
+        country_match = re.search(r'DETECTED_COUNTRY:\s*([A-Z]{2})', block)
+        if not country_match:
+            continue
+        code = country_match.group(1)
+        if code == 'NONE' or code not in X_COUNTRY_MAP:
+            continue
+        
+        kind_match = re.search(r'KIND:\s*(\w+)', block)
+        kind = (kind_match.group(1).lower() if kind_match else 'landmark').strip()
+        kind_map = {
+            'landmark': 'image_landmark',
+            'text': 'image_text',
+            'flag': 'image_landmark',
+            'clothing': 'image_landmark',
+            'car_plate': 'image_landmark',
+            'other': 'image_text',
+        }
+        
+        desc_match = re.search(r'DESCRIPTION:\s*(.+?)(?:CONFIDENCE:|DETECTED_COUNTRY:|$)', block, re.DOTALL)
+        desc = desc_match.group(1).strip() if desc_match else 'دليل في الصورة'
+        # نظّف الوصف
+        desc = re.sub(r'\s+', ' ', desc)[:200]
+        
+        findings.append({
+            'country_code': code,
+            'kind': kind_map.get(kind, 'image_landmark'),
+            'description': desc,
+        })
+    
+    return {'findings': findings, 'raw_text': result_text}
 
 
 # =====================================================
 # Main API Functions
 # =====================================================
 
-def fetch_x_user_profile(username, timeout=15):
-    """
-    جلب بروفايل المستخدم من fxtwitter API
-    يُرجع dict مع الموقع الحقيقي إن وُجد
-    """
+def fetch_x_user_profile(username, timeout=15, use_cache=True):
+    """جلب بروفايل المستخدم من fxtwitter API مع كاش"""
+    cache_key = f"profile:{username.lower()}"
+    if use_cache:
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
+    
     url = f"{FXTWITTER_API}/{username}"
     try:
         r = requests.get(url, timeout=timeout, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         })
         if r.status_code != 200:
-            return {"success": False, "error": f"HTTP {r.status_code}"}
+            result = {"success": False, "error": f"HTTP {r.status_code}"}
+            return result
         
         data = r.json()
         if data.get("code") != 200 or not data.get("user"):
             return {"success": False, "error": data.get("message", "حساب غير موجود")}
         
         u = data["user"]
-        return {
+        result = {
             "success": True,
             "screen_name": u.get("screen_name"),
-            "user_id": u.get("id"),  # ID الدائم
+            "user_id": u.get("id"),
             "name": u.get("name"),
             "bio": u.get("description", ""),
-            "location_field": u.get("location", ""),  # 🎯 الحقل الذهبي
+            "location_field": u.get("location", ""),
             "url": u.get("url"),
             "website": u.get("website", {}).get("url") if isinstance(u.get("website"), dict) else u.get("website"),
             "avatar_url": u.get("avatar_url"),
@@ -313,14 +763,14 @@ def fetch_x_user_profile(username, timeout=15):
             "verification": u.get("verification"),
             "protected": u.get("protected", False),
         }
+        if use_cache:
+            _cache_set(cache_key, result)
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 def fetch_x_tweet(username, tweet_id, timeout=15):
-    """
-    جلب تغريدة محددة من fxtwitter API
-    """
     url = f"{FXTWITTER_API}/{username}/status/{tweet_id}"
     try:
         r = requests.get(url, timeout=timeout, headers={
@@ -335,6 +785,18 @@ def fetch_x_tweet(username, tweet_id, timeout=15):
         
         t = data["tweet"]
         author = t.get("author", {}) if isinstance(t.get("author"), dict) else {}
+        media = t.get("media", {})
+        
+        # استخرج صور المنشور
+        photos = []
+        if isinstance(media, dict):
+            for p in (media.get("photos") or []):
+                if isinstance(p, dict) and p.get("url"):
+                    photos.append(p["url"])
+            for v in (media.get("videos") or []):
+                # خذ الـ thumbnail للفيديو
+                if isinstance(v, dict) and v.get("thumbnail_url"):
+                    photos.append(v["thumbnail_url"])
         
         return {
             "success": True,
@@ -353,7 +815,8 @@ def fetch_x_tweet(username, tweet_id, timeout=15):
             "views": t.get("views", 0),
             "possibly_sensitive": t.get("possibly_sensitive", False),
             "source": t.get("source", ""),
-            "media": t.get("media", {}),
+            "media": media,
+            "photos_urls": photos,  # 🎯 لاستخدامها مع AI Vision
             # معلومات المؤلف
             "author_screen_name": author.get("screen_name"),
             "author_id": author.get("id"),
@@ -368,65 +831,42 @@ def fetch_x_tweet(username, tweet_id, timeout=15):
         return {"success": False, "error": str(e)}
 
 
-def analyze_x_account(username_or_url, timeout=15):
-    """
-    تحليل حساب X كامل: جلب البروفايل + استنتاج الدولة من حقل location الحقيقي
-    
-    🎯 الميزة الرئيسية: يستخدم حقل location الفعلي من X الذي يدخله المستخدم
-    """
-    # استخراج username
+def analyze_x_account(username_or_url, timeout=15, image_analysis=None):
+    """تحليل حساب X كامل مع المحرك الذكي"""
     if username_or_url.startswith("http"):
-        username, tweet_id = parse_x_url(username_or_url)
+        username, _ = parse_x_url(username_or_url)
     else:
         username = username_or_url.lstrip("@").strip()
-        tweet_id = None
     
     if not username:
-        return {"success": False, "error": "رابط أو اسم مستخدم غير صحيح"}
+        return {"success": False, "error": "اسم مستخدم غير صحيح"}
     
-    # جلب البروفايل
     profile = fetch_x_user_profile(username, timeout=timeout)
     if not profile.get("success"):
         return profile
     
-    # كشف الدولة من حقل location الرسمي (الأكثر دقة)
-    loc_field = profile.get("location_field", "")
-    country_code, confidence, evidence = detect_country_from_location_field(loc_field)
-    detection_source = "حقل الموقع الرسمي ⭐"
+    # المحرك الذكي
+    detection = smart_detect_country(profile, tweet_data=None, image_analysis=image_analysis)
     
-    # إذا فشل، جرب البايو
-    if not country_code:
-        bio = profile.get("bio", "")
-        country_code, confidence, ev_list = detect_country_from_text(bio)
-        evidence = "; ".join(ev_list) if ev_list else "لم يتم العثور على دلائل"
-        detection_source = "تحليل البايو"
+    code = detection['country_code']
+    country_info = X_COUNTRY_MAP.get(code, {}) if code else {}
     
-    # إذا لا يزال فشل، جرب الاسم
-    if not country_code:
-        name = profile.get("name", "")
-        country_code, confidence, ev_list = detect_country_from_text(name)
-        evidence = "; ".join(ev_list) if ev_list else evidence
-        detection_source = "تحليل الاسم الظاهر"
-    
-    # تنسيق الناتج
-    country_info = X_COUNTRY_MAP.get(country_code, {}) if country_code else {}
-    
-    profile["country_code"] = country_code
+    profile["country_code"] = code
     profile["country_flag"] = country_info.get("flag", "❓")
     profile["country_name_ar"] = country_info.get("ar", "غير محدد")
     profile["country_name_en"] = country_info.get("en", "Unknown")
-    profile["confidence"] = confidence
-    profile["evidence"] = evidence
-    profile["detection_source"] = detection_source
+    profile["confidence"] = detection['confidence']
+    profile["evidence"] = "; ".join(detection['evidence'][:3])
+    profile["all_evidence"] = detection['evidence']
+    profile["sources_used"] = detection['sources_used']
+    profile["all_scores"] = detection['all_scores']
+    profile["detection_source"] = "🧠 محرك ذكي متعدد الطبقات"
     
     return profile
 
 
-def analyze_x_tweet(tweet_url_or_id, username=None, timeout=15):
-    """
-    تحليل تغريدة محددة: جلب البيانات + استنتاج موقع المؤلف
-    """
-    # استخراج username و tweet_id
+def analyze_x_tweet(tweet_url_or_id, username=None, timeout=15, vision_callback=None):
+    """تحليل تغريدة + استنتاج موقع المؤلف بالمحرك الذكي + AI Vision"""
     if tweet_url_or_id.startswith("http"):
         u, tid = parse_x_url(tweet_url_or_id)
         if u and tid:
@@ -438,153 +878,61 @@ def analyze_x_tweet(tweet_url_or_id, username=None, timeout=15):
         if not username:
             return {"success": False, "error": "يجب توفير username مع tweet_id"}
     
+    # 1. جلب التغريدة
     tweet = fetch_x_tweet(username, tweet_id, timeout=timeout)
     if not tweet.get("success"):
         return tweet
     
-    # كشف الموقع من author_location (حقل location للمؤلف)
-    author_loc = tweet.get("author_location", "")
-    country_code, confidence, evidence = detect_country_from_location_field(author_loc)
-    detection_source = "حقل موقع المؤلف الرسمي ⭐"
+    # 2. جلب البروفايل الكامل (للحصول على location field كاملاً)
+    profile = fetch_x_user_profile(username, timeout=timeout)
+    if not profile.get("success"):
+        # استخدم بيانات author من التغريدة كـ fallback
+        profile = {
+            "success": True,
+            "screen_name": tweet.get("author_screen_name"),
+            "user_id": tweet.get("author_id"),
+            "name": tweet.get("author_name"),
+            "bio": tweet.get("author_bio"),
+            "location_field": tweet.get("author_location", ""),
+            "avatar_url": tweet.get("author_avatar"),
+            "followers": tweet.get("author_followers", 0),
+        }
     
-    # backup: تحليل نص التغريدة
-    if not country_code:
-        text = tweet.get("text", "")
-        country_code, confidence, ev_list = detect_country_from_text(text)
-        evidence = "; ".join(ev_list) if ev_list else "لا دلائل في التغريدة"
-        detection_source = "تحليل نص التغريدة"
+    # 3. تحليل الصور بالـ AI (إن توفر)
+    image_analysis = None
+    if vision_callback and tweet.get("photos_urls"):
+        try:
+            image_analysis = analyze_post_images_with_ai(
+                tweet["photos_urls"][:3],  # أول 3 صور فقط لتوفير الوقت/الرصيد
+                vision_callback=vision_callback,
+            )
+        except Exception as e:
+            image_analysis = {'findings': [], 'error': str(e)}
     
-    country_info = X_COUNTRY_MAP.get(country_code, {}) if country_code else {}
+    # 4. تشغيل المحرك الذكي على كل المصادر
+    detection = smart_detect_country(profile, tweet_data=tweet, image_analysis=image_analysis)
     
-    tweet["country_code"] = country_code
+    code = detection['country_code']
+    country_info = X_COUNTRY_MAP.get(code, {}) if code else {}
+    
+    tweet["country_code"] = code
     tweet["country_flag"] = country_info.get("flag", "❓")
     tweet["country_name_ar"] = country_info.get("ar", "غير محدد")
-    tweet["confidence"] = confidence
-    tweet["evidence"] = evidence
-    tweet["detection_source"] = detection_source
+    tweet["confidence"] = detection['confidence']
+    tweet["evidence"] = "; ".join(detection['evidence'][:3])
+    tweet["all_evidence"] = detection['evidence']
+    tweet["sources_used"] = detection['sources_used']
+    tweet["all_scores"] = detection['all_scores']
+    tweet["detection_source"] = "🧠 محرك ذكي متعدد الطبقات"
     tweet["language_ar"] = LANGUAGE_NAMES_AR.get(tweet.get("lang"), tweet.get("lang", "غير محدد"))
+    tweet["image_analysis"] = image_analysis or {}
+    
+    # دمج بيانات البروفايل (للعرض في الجدول)
+    tweet["user_location_field"] = profile.get("location_field", "")
+    tweet["user_bio"] = profile.get("bio", "")
+    tweet["user_followers_full"] = profile.get("followers", tweet.get("author_followers", 0))
     
     return tweet
-
-
-# =====================================================
-# Smart Aggregation (لتحليل عدة تغريدات لنفس الحساب)
-# =====================================================
-
-def smart_aggregate_account_results(results):
-    """
-    تجميع ذكي لنتائج عدة تغريدات لنفس الحساب
-    يُعطي قراراً واحداً موحداً للموقع
-    """
-    by_user = {}
-    for r in results:
-        if not r.get("success"):
-            continue
-        uid = r.get("author_id") or r.get("user_id")
-        if not uid:
-            continue
-        by_user.setdefault(uid, []).append(r)
-    
-    aggregated = []
-    for uid, items in by_user.items():
-        # خذ أول تغريدة كنموذج للحساب
-        first = items[0]
-        
-        # إذا كان لديها موقع رسمي، استخدمه (الأولوية القصوى)
-        author_loc = first.get("author_location", "") or first.get("location_field", "")
-        if author_loc:
-            code, conf, ev = detect_country_from_location_field(author_loc)
-            if code:
-                country_info = X_COUNTRY_MAP.get(code, {})
-                aggregated.append({
-                    "user_id": uid,
-                    "screen_name": first.get("author_screen_name") or first.get("screen_name"),
-                    "name": first.get("author_name") or first.get("name"),
-                    "tweet_count": len(items),
-                    "country_code": code,
-                    "country_flag": country_info.get("flag", "❓"),
-                    "country_name_ar": country_info.get("ar", "غير محدد"),
-                    "confidence": conf,
-                    "decision_method": "حقل الموقع الرسمي ⭐",
-                    "evidence": ev,
-                    "location_field": author_loc,
-                })
-                continue
-        
-        # وإلا، صوت من نصوص التغريدات
-        votes = {}
-        for it in items:
-            cc = it.get("country_code")
-            if cc:
-                votes[cc] = votes.get(cc, 0) + 1
-        
-        if votes:
-            best = max(votes, key=votes.get)
-            total = sum(votes.values())
-            ratio = votes[best] / total
-            confidence = int(min(50 + ratio * 40, 90))
-            country_info = X_COUNTRY_MAP.get(best, {})
-            aggregated.append({
-                "user_id": uid,
-                "screen_name": first.get("author_screen_name") or first.get("screen_name"),
-                "name": first.get("author_name") or first.get("name"),
-                "tweet_count": len(items),
-                "country_code": best,
-                "country_flag": country_info.get("flag", "❓"),
-                "country_name_ar": country_info.get("ar", "غير محدد"),
-                "confidence": confidence,
-                "decision_method": f"تصويت {votes[best]}/{total} تغريدات",
-                "evidence": ", ".join([f"{X_COUNTRY_MAP.get(c, {}).get('ar', c)}={v}" for c, v in votes.items()]),
-                "location_field": "",
-            })
-        else:
-            aggregated.append({
-                "user_id": uid,
-                "screen_name": first.get("author_screen_name") or first.get("screen_name"),
-                "name": first.get("author_name") or first.get("name"),
-                "tweet_count": len(items),
-                "country_code": None,
-                "country_flag": "❓",
-                "country_name_ar": "غير محدد",
-                "confidence": 0,
-                "decision_method": "لا بيانات كافية",
-                "evidence": "",
-                "location_field": "",
-            })
-    
-    return aggregated
-
-
-# =====================================================
-# Test
-# =====================================================
-
-if __name__ == "__main__":
-    print("🐦 X Analyzer v3 - اختبار\n")
-    
-    test_users = [
-        "salim_Aljomaili",
-        "elonmusk",
-        "SaudiMOH",
-        "BarackObama",
-    ]
-    
-    for u in test_users:
-        print(f"{'='*70}")
-        print(f"🔍 @{u}")
-        result = analyze_x_account(u)
-        if result.get("success"):
-            print(f"  📛 الاسم: {result.get('name')}")
-            print(f"  🆔 ID: {result.get('user_id')}")
-            print(f"  📍 حقل الموقع: \"{result.get('location_field')}\"")
-            print(f"  🌍 الدولة المكتشفة: {result.get('country_flag')} {result.get('country_name_ar')}")
-            print(f"  🎯 الثقة: {result.get('confidence')}%")
-            print(f"  📊 المصدر: {result.get('detection_source')}")
-            print(f"  🔎 الدليل: {result.get('evidence')}")
-            print(f"  👥 المتابعون: {format_count(result.get('followers'))}")
-        else:
-            print(f"  ❌ فشل: {result.get('error')}")
-        print()
 
 
 # =====================================================
@@ -596,15 +944,11 @@ LANGUAGE_NAMES_AR_X = LANGUAGE_NAMES_AR
 
 
 def aggregate_user_tweets(results, min_confidence=30):
-    """
-    Wrapper متوافق مع الإصدار القديم - يُرجع dict بـ user_id كمفتاح
-    يستخدم حقل location الرسمي إن وُجد، وإلا تصويت
-    """
+    """تجميع ذكي - يفضل القرار من البروفايل (location field) إن وُجد"""
     by_user = {}
     for r in results:
         if not r.get("success") and r.get("status") != "✅ نجح":
             continue
-        # استخراج user_id من حقول متعددة
         uid = r.get("author_id") or r.get("user_id") or r.get("user_id_str")
         if not uid:
             continue
@@ -617,33 +961,41 @@ def aggregate_user_tweets(results, min_confidence=30):
         name = first.get("author_name") or first.get("user_name") or first.get("name", "")
         avatar = first.get("author_avatar") or first.get("user_profile_image") or first.get("avatar_url", "")
         verified = first.get("author_verified") or first.get("user_blue_verified", False)
-        verified_type = first.get("user_verified_type") or first.get("verification", "")
         
-        # حقل الموقع الرسمي
-        loc_field = first.get("author_location") or first.get("location_field", "")
+        # حقل الموقع من البروفايل (الأولوية)
+        loc_field = (first.get("user_location_field") or 
+                     first.get("author_location") or 
+                     first.get("location_field", ""))
         
-        final_region = None
-        final_confidence = 0
-        final_method = ""
-        final_evidence = ""
+        # 1. حاول إعادة تشغيل المحرك الذكي على بيانات البروفايل
+        if loc_field or first.get("user_bio") or name:
+            fake_profile = {
+                "location_field": loc_field,
+                "bio": first.get("user_bio") or first.get("author_bio", ""),
+                "name": name,
+            }
+            detection = smart_detect_country(fake_profile, tweet_data=None)
+            final_region = detection['country_code']
+            final_confidence = detection['confidence']
+            final_evidence = "; ".join(detection['evidence'][:3])
+            final_method = "🧠 محرك ذكي (من البروفايل)"
+        else:
+            final_region = None
+            final_confidence = 0
+            final_evidence = ""
+            final_method = ""
         
-        # 1. الأولوية: حقل الموقع الرسمي
-        if loc_field:
-            code, conf, ev = detect_country_from_location_field(loc_field)
-            if code and conf >= min_confidence:
-                final_region = code
-                final_confidence = conf
-                final_method = "🎯 حقل الموقع الرسمي من X"
-                final_evidence = ev
-        
-        # 2. وإلا، تصويت من نصوص التغريدات
+        # 2. إذا لم نجد، صوّت من نتائج التغريدات
         if not final_region:
             votes = {}
+            best_evidence_per_country = {}
             for it in items:
                 cc = it.get("country_code") or it.get("region")
                 conf = it.get("confidence") or it.get("region_confidence", 0)
                 if cc and conf >= min_confidence:
                     votes[cc] = votes.get(cc, 0) + 1
+                    if cc not in best_evidence_per_country:
+                        best_evidence_per_country[cc] = it.get("evidence", "")
             
             if votes:
                 best = max(votes, key=votes.get)
@@ -651,14 +1003,11 @@ def aggregate_user_tweets(results, min_confidence=30):
                 ratio = votes[best] / total
                 final_confidence = int(min(50 + ratio * 40, 90))
                 final_region = best
-                final_method = f"🗳️ تصويت ({votes[best]} من {total} تغريدات)"
-                final_evidence = ", ".join([
-                    f"{X_COUNTRY_MAP.get(c, {}).get('ar', c)}={v}" for c, v in votes.items()
-                ])
+                final_method = f"🗳️ تصويت ({votes[best]}/{total} تغريدات)"
+                final_evidence = best_evidence_per_country.get(best, "")
         
         country_info = X_COUNTRY_MAP.get(final_region, {}) if final_region else {}
         
-        # حساب الإحصائيات
         total_likes = sum(it.get("likes", 0) or it.get("favorite_count", 0) for it in items)
         total_replies = sum(it.get("replies", 0) or it.get("conversation_count", 0) for it in items)
         langs = [it.get("lang") for it in items if it.get("lang")]
@@ -671,12 +1020,13 @@ def aggregate_user_tweets(results, min_confidence=30):
             "user_name": name,
             "user_profile_image": avatar,
             "user_blue_verified": verified,
-            "user_verified_type": verified_type,
+            "user_verified_type": first.get("user_verified_type", ""),
             "tweet_count": len(items),
             "total_likes": total_likes,
             "total_replies": total_replies,
             "dominant_language": dominant_lang_ar,
-            "location_field": loc_field,  # 🎯 الحقل الذهبي
+            "location_field": loc_field,
+            "user_bio": first.get("user_bio") or first.get("author_bio", ""),
             "final_region": final_region,
             "final_region_flag": country_info.get("flag", ""),
             "final_region_name_ar": country_info.get("ar", ""),
@@ -688,12 +1038,9 @@ def aggregate_user_tweets(results, min_confidence=30):
     return aggregated
 
 
-def analyze_x_tweet_legacy(url):
-    """
-    Wrapper متوافق مع التوقيع القديم (يستخدم في app.py)
-    يُرجع dict بالحقول القديمة
-    """
-    result = analyze_x_tweet(url)
+def analyze_x_tweet_legacy(url, vision_callback=None):
+    """Wrapper يعطي الحقول التي يتوقعها app.py القديم"""
+    result = analyze_x_tweet(url, vision_callback=vision_callback)
     if not result.get("success"):
         return {
             "tweet_url": url,
@@ -701,7 +1048,6 @@ def analyze_x_tweet_legacy(url):
             "error": result.get("error", "خطأ غير معروف"),
         }
     
-    # تحويل للحقول القديمة المتوقعة
     media = result.get("media", {})
     if isinstance(media, dict):
         all_media = (media.get("photos") or []) + (media.get("videos") or [])
@@ -712,11 +1058,15 @@ def analyze_x_tweet_legacy(url):
     media_type = ""
     if all_media:
         first_m = all_media[0]
-        media_type = first_m.get("type", "photo")
+        media_type = first_m.get("type", "photo") if isinstance(first_m, dict) else "photo"
     
     text = result.get("text", "")
     hashtags = re.findall(r'#(\w+)', text)
     mentions = re.findall(r'@(\w+)', text)
+    
+    # هل تم استخدام تحليل صور؟
+    img_findings = (result.get("image_analysis") or {}).get("findings", [])
+    used_image_ai = bool(img_findings)
     
     return {
         "tweet_url": result.get("tweet_url"),
@@ -727,7 +1077,8 @@ def analyze_x_tweet_legacy(url):
         "user_profile_image": result.get("author_avatar"),
         "user_blue_verified": result.get("author_verified"),
         "user_verified_type": "",
-        "user_location_field": result.get("author_location", ""),  # 🎯 جديد
+        "user_location_field": result.get("user_location_field", ""),
+        "user_bio": result.get("user_bio", ""),
         "text": text,
         "lang": result.get("lang", ""),
         "lang_name_ar": LANGUAGE_NAMES_AR.get(result.get("lang"), result.get("lang", "")),
@@ -736,6 +1087,7 @@ def analyze_x_tweet_legacy(url):
         "conversation_count": result.get("replies", 0),
         "media_count": media_count,
         "media_type": media_type,
+        "used_image_ai": "✅" if used_image_ai else "—",
         "hashtags": ", ".join(hashtags[:5]),
         "mentions": ", ".join(mentions[:5]),
         "region": result.get("country_code"),
@@ -744,6 +1096,9 @@ def analyze_x_tweet_legacy(url):
         "region_confidence": result.get("confidence", 0),
         "region_evidence": result.get("evidence", ""),
         "region_source": result.get("detection_source", ""),
+        "all_evidence": result.get("all_evidence", []),
+        "sources_used": result.get("sources_used", []),
+        "image_findings": img_findings,
         "status": "✅ نجح",
         "author_location": result.get("author_location", ""),
         "country_code": result.get("country_code"),
@@ -756,3 +1111,41 @@ def analyze_x_tweet_legacy(url):
         "author_avatar": result.get("author_avatar"),
         "author_verified": result.get("author_verified"),
     }
+
+
+# =====================================================
+# Test
+# =====================================================
+
+if __name__ == "__main__":
+    print("🐦 X Smart Analyzer v4 - اختبار الحالات المُشكلة\n")
+    
+    # الحالات من الصورة
+    test_users = [
+        ("AzharJumaili", "🇳🇴 النرويج (Oslo, Norway في حقل الموقع)"),
+        ("basharalsabti", "🇮🇶 العراق (البايو فيه 'العراق')"),
+        ("707Reno", "🇸🇦 السعودية (🇸🇦 في البايو) أو 🇬🇧 (في الاسم)"),
+        ("DAbdulljabar", "🇮🇶 العراق (محتمل من البايو)"),
+        ("ibeli0", "🇸🇦 السعودية (Jeddah)"),
+        ("salim_Aljomaili", "🇬🇧 المملكة المتحدة (England, UK)"),
+        ("zniby16372", "🇬🇧 (Scotland)"),
+    ]
+    
+    for username, expected in test_users:
+        print("=" * 75)
+        print(f"🔍 @{username}")
+        print(f"   المتوقع: {expected}")
+        result = analyze_x_account(username)
+        if result.get("success"):
+            print(f"   📍 حقل الموقع: \"{result.get('location_field', '')}\"")
+            print(f"   📝 البايو: {(result.get('bio') or '')[:80]}")
+            print(f"   👤 الاسم: {result.get('name')}")
+            print(f"   🌍 الكشف: {result.get('country_flag')} {result.get('country_name_ar')}")
+            print(f"   🎯 الثقة: {result.get('confidence')}%")
+            print(f"   📊 المصادر: {', '.join(result.get('sources_used', []))}")
+            print(f"   🔎 الأدلة:")
+            for e in result.get('all_evidence', [])[:5]:
+                print(f"      • {e}")
+        else:
+            print(f"   ❌ {result.get('error')}")
+        print()
