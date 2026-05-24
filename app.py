@@ -28,9 +28,11 @@ from tiktok_analyzer import (
     format_count as tt_format_count,
 )
 
-# استيراد محلل X (Twitter)
+# استيراد محلل X (Twitter) v3 - مع حقل location الرسمي ⭐
 from x_analyzer import (
-    analyze_x_tweet,
+    analyze_x_tweet_legacy as analyze_x_tweet,
+    analyze_x_account,
+    aggregate_user_tweets,
     X_REGION_MAP,
     LANGUAGE_NAMES_AR_X,
 )
@@ -819,19 +821,33 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
 
 # ============ تبويب تحليل تغريدات X ============
 with tab_x:
-    st.markdown("### 🐦 محلل تغريدات X (Twitter) - بيانات كاملة!")
+    st.markdown("### 🐦 محلل تغريدات X (Twitter) v3 - مع حقل الموقع الرسمي! ⭐")
     st.markdown(
         """
         <div class="info-box">
-        <strong>🔥 يستخدم Twitter Syndication API العام</strong> (بدون مصادقة!)<br>
-        يستخرج بدقة 100%:<br>
-        • 🆔 Tweet ID + User ID (الدائم)<br>
-        • 📝 نص التغريدة كاملاً<br>
-        • 📅 تاريخ النشر بدقة الثانية<br>
-        • ❤️ عدد الإعجابات + الردود<br>
-        • 🖼️ الصور والفيديوهات (URLs مباشرة)<br>
-        • ✓ التوثيق ونوعه (Government / Business / News)<br>
-        • 🌍 كشف الدولة بالتحليل الذكي
+        <strong>🔥 الجديد: يستخرج حقل الموقع الفعلي الذي يدخله المستخدم في بروفايله!</strong><br>
+        يستخدم <code>fxtwitter API</code> العام (بدون مصادقة) لجلب:<br>
+        • 📍 <strong>حقل location الرسمي من البروفايل</strong> (مثل: "الرياض", "England, UK")<br>
+        • 🆔 Tweet ID + User ID الدائم<br>
+        • 📝 نص التغريدة + التاريخ + اللغة<br>
+        • ❤️ الإعجابات + الردود + المشاهدات<br>
+        • 🖼️ الصور والفيديوهات بأعلى جودة<br>
+        • 👤 صورة البروفايل + التوثيق + المتابعون<br>
+        • 🌍 كشف الدولة من 3 مصادر: حقل الموقع → البايو → النص
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    # تحذير دقة الموقع
+    st.markdown(
+        """
+        <div class="warn-box">
+        ⚠️ <strong>ملاحظة مهمة عن دقة الموقع:</strong><br>
+        • <strong>حقل الموقع الرسمي</strong> = أدق طريقة (يدخله المستخدم بنفسه) — دقة 90-95%<br>
+        • <strong>تحليل نص التغريدة</strong> = قد يخطئ إذا تكلم المستخدم عن دولة أخرى<br>
+        • ميزة "About this account" من X (نوفمبر 2025) قد تظهر منطقة عامة (مثل "North America") بناءً على IP<br>
+        • مثال: حساب @salim_Aljomaili → الموقع الرسمي "England, UK" 🇬🇧 (عراقي مغترب)
         </div>
         """,
         unsafe_allow_html=True,
@@ -914,19 +930,71 @@ https://twitter.com/elonmusk/status/2007910921914769832
         c5.metric("❤️ إجمالي الإعجابات", tt_format_count(total_likes))
         c6.metric("💬 إجمالي الردود", tt_format_count(total_replies))
 
-        # توزيع الدول
+        # 🎯 الميزة الذهبية: تجميع ذكي لنفس المستخدم
+        users_aggregated = aggregate_user_tweets(x_results, min_confidence=30)
+        
+        if len(users_aggregated) > 0:
+            st.markdown("#### 🎯 تحليل موحد حسب الحساب (تصويت ذكي)")
+            st.info(
+                "💡 عندما تحلل عدة تغريدات لنفس الحساب، نستخدم نظام التصويت لتحديد موقعه الفعلي. "
+                "الدولة الأكثر تكراراً = موقع المستخدم. الذكر العابر لدولة في تغريدة واحدة = تجاهل."
+            )
+            
+            for key, ud in users_aggregated.items():
+                with st.container(border=True):
+                    cu1, cu2 = st.columns([1, 4])
+                    with cu1:
+                        if ud.get("user_profile_image"):
+                            try:
+                                st.image(ud["user_profile_image"], width=80)
+                            except Exception:
+                                pass
+                    with cu2:
+                        verified = " ✓" if ud.get("user_blue_verified") else ""
+                        vtype = f" ({ud['user_verified_type']})" if ud.get("user_verified_type") else ""
+                        st.markdown(f"### {ud.get('user_name', '')}{verified}{vtype}")
+                        st.caption(f"@{ud.get('user_screen_name', '')} • ID: `{ud.get('user_id', '')}`")
+                        
+                        # القرار النهائي
+                        if ud.get("final_region"):
+                            flag = ud.get("final_region_flag", "")
+                            name = ud.get("final_region_name_ar", "")
+                            conf = ud.get("final_confidence", 0)
+                            method = ud.get("final_method", "")
+                            st.success(
+                                f"### {flag} **{name}** — ثقة {conf}%"
+                            )
+                            st.caption(f"📝 {method}")
+                            if ud.get("final_evidence"):
+                                st.caption(f"🔍 {ud['final_evidence']}")
+                        else:
+                            st.warning("❓ لم يتم تحديد دولة بثقة كافية")
+                            if ud.get("final_evidence"):
+                                st.caption(f"📝 الأدلة المتوفرة: {ud['final_evidence']}")
+                        
+                        # إحصائيات سريعة
+                        cs1, cs2, cs3, cs4 = st.columns(4)
+                        cs1.metric("🐦 تغريدات", ud.get("tweet_count", 0))
+                        cs2.metric("❤️ إجمالي", tt_format_count(ud.get("total_likes", 0)))
+                        cs3.metric("💬 ردود", tt_format_count(ud.get("total_replies", 0)))
+                        cs4.metric("🌐 لغة", ud.get("dominant_language", "-"))
+            
+            st.markdown("---")
+        
+        # توزيع الدول (التغريدات الفردية)
         countries_x = [
             f"{r['region_flag']} {r['region_name_ar']}" for r in x_results
             if r.get("region") and r.get("region_confidence", 0) >= 30
         ]
         if countries_x:
-            st.markdown("#### 🌍 توزيع الدول")
+            st.markdown("#### 🌍 توزيع الدول في التغريدات الفردية")
+            st.caption("⚠️ هذه الدول لمواضيع التغريدات، ليس بالضرورة موقع المستخدم")
             x_country_counts = pd.Series(countries_x).value_counts()
             cl, cr = st.columns([2, 1])
             with cl:
                 st.bar_chart(x_country_counts)
             with cr:
-                st.markdown("**أكثر الدول:**")
+                st.markdown("**الدول المذكورة:**")
                 for c, n in x_country_counts.head(10).items():
                     st.markdown(f"- {c}: **{n}**")
 
@@ -934,10 +1002,12 @@ https://twitter.com/elonmusk/status/2007910921914769832
         st.markdown("#### 📋 جدول التغريدات")
         x_cols = [
             "user_screen_name", "user_name", "user_id",
+            "user_location_field",  # 🎯 جديد: حقل الموقع الرسمي
             "region_flag", "region_name_ar", "region_confidence",
-            "lang", "lang_name_ar", "created_at",
+            "region_source",
+            "lang_name_ar", "created_at",
             "favorite_count", "conversation_count", "media_count", "media_type",
-            "user_blue_verified", "user_verified_type",
+            "user_blue_verified",
             "text", "hashtags", "mentions", "tweet_url", "status",
         ]
         x_cols = [c for c in x_cols if c in df_x.columns]
@@ -950,6 +1020,8 @@ https://twitter.com/elonmusk/status/2007910921914769832
                 "user_id": st.column_config.TextColumn("🆔 User ID"),
                 "user_screen_name": st.column_config.TextColumn("@يوزر"),
                 "user_name": st.column_config.TextColumn("الاسم"),
+                "user_location_field": st.column_config.TextColumn("📍 حقل الموقع الرسمي", width="medium"),
+                "region_source": st.column_config.TextColumn("📊 مصدر الكشف", width="medium"),
                 "region_flag": st.column_config.TextColumn("🚩", width="small"),
                 "region_name_ar": st.column_config.TextColumn("الدولة"),
                 "region_confidence": st.column_config.ProgressColumn(
