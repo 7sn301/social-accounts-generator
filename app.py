@@ -1,5 +1,5 @@
 """
-مولد معلومات حسابات التواصل الاجتماعي - النسخة v4
+مولد معلومات حسابات التواصل الاجتماعي v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
 - 🌐 14+ منصة أخرى
 - 🆔 ID دائم + موقع جغرافي + تحليل عميق
@@ -17,7 +17,7 @@ import math
 import socket
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, quote
 
 # استيراد محلل TikTok المتخصص
 from tiktok_analyzer import (
@@ -47,6 +47,20 @@ except ImportError:
 
 import os
 import base64
+import html
+import xml.etree.ElementTree as ET
+
+try:
+    import streamlit.components.v1 as components
+except Exception:
+    components = None
+
+try:
+    import feedparser
+    FEEDPARSER_AVAILABLE = True
+except ImportError:
+    feedparser = None
+    FEEDPARSER_AVAILABLE = False
 
 
 # =====================================================
@@ -98,7 +112,7 @@ def get_vision_callback():
 
 # ============ إعدادات الصفحة ============
 st.set_page_config(
-    page_title="مولد معلومات حسابات التواصل الاجتماعي",
+    page_title="مولد معلومات حسابات التواصل الاجتماعي v5",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -162,14 +176,57 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
 HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
 }
 
+COUNTRY_COORDS = {
+    "SA": [24.7136, 46.6753], "AE": [25.2048, 55.2708], "EG": [30.0444, 31.2357],
+    "KW": [29.3759, 47.9774], "QA": [25.2854, 51.5310], "BH": [26.2235, 50.5876],
+    "OM": [23.5880, 58.3829], "JO": [31.9539, 35.9106], "LB": [33.8938, 35.5018],
+    "SY": [33.5138, 36.2765], "IQ": [33.3152, 44.3661], "YE": [15.3694, 44.1910],
+    "PS": [31.9522, 35.2332], "MA": [33.5731, -7.5898], "DZ": [36.7538, 3.0588],
+    "TN": [36.8065, 10.1815], "LY": [32.8872, 13.1913], "SD": [15.5007, 32.5599],
+    "SO": [2.0469, 45.3182], "MR": [18.0790, -15.9650], "US": [38.9072, -77.0369],
+    "GB": [51.5074, -0.1278], "FR": [48.8566, 2.3522], "DE": [52.5200, 13.4050],
+    "IT": [41.9028, 12.4964], "ES": [40.4168, -3.7038], "NL": [52.3676, 4.9041],
+    "BE": [50.8503, 4.3517], "CH": [46.9480, 7.4474], "SE": [59.3293, 18.0686],
+    "NO": [59.9139, 10.7522], "DK": [55.6761, 12.5683], "FI": [60.1699, 24.9384],
+    "PT": [38.7223, -9.1393], "AT": [48.2082, 16.3738], "PL": [52.2297, 21.0122],
+    "GR": [37.9838, 23.7275], "TR": [41.0082, 28.9784], "IR": [35.6892, 51.3890],
+    "PK": [24.8607, 67.0011], "IN": [28.6139, 77.2090], "BD": [23.8103, 90.4125],
+    "AF": [34.5553, 69.2075], "CN": [39.9042, 116.4074], "JP": [35.6762, 139.6503],
+    "KR": [37.5665, 126.9780], "ID": [-6.2088, 106.8456], "MY": [3.1390, 101.6869],
+    "SG": [1.3521, 103.8198], "TH": [13.7563, 100.5018], "VN": [21.0278, 105.8342],
+    "PH": [14.5995, 120.9842], "RU": [55.7558, 37.6173], "UA": [50.4501, 30.5234],
+    "BR": [-23.5505, -46.6333], "AR": [-34.6037, -58.3816], "MX": [19.4326, -99.1332],
+    "CA": [45.4215, -75.6972], "AU": [-33.8688, 151.2093], "NZ": [-36.8485, 174.7633],
+    "NG": [9.0765, 7.3986], "ZA": [-26.2041, 28.0473], "KE": [-1.2921, 36.8219],
+    "ET": [8.9806, 38.7578], "IL": [31.7683, 35.2137]
+}
+
+BUFFIN_PLATFORMS = {
+    "twitter": {"label": "Twitter", "icon": "🐦", "url": "https://x.com/{}"},
+    "instagram": {"label": "Instagram", "icon": "📷", "url": "https://www.instagram.com/{}/"},
+    "tiktok": {"label": "TikTok", "icon": "🎵", "url": "https://www.tiktok.com/@{}"},
+    "youtube": {"label": "YouTube", "icon": "▶️", "url": "https://www.youtube.com/@{}"},
+    "github": {"label": "GitHub", "icon": "💻", "url": "https://github.com/{}"},
+    "linkedin": {"label": "LinkedIn", "icon": "💼", "url": "https://www.linkedin.com/in/{}"},
+    "snapchat": {"label": "Snapchat", "icon": "👻", "url": "https://www.snapchat.com/add/{}"},
+    "reddit": {"label": "Reddit", "icon": "🤖", "url": "https://www.reddit.com/user/{}"},
+    "twitch": {"label": "Twitch", "icon": "🎮", "url": "https://www.twitch.tv/{}"},
+    "pinterest": {"label": "Pinterest", "icon": "📌", "url": "https://www.pinterest.com/{}/"},
+    "telegram": {"label": "Telegram", "icon": "✈️", "url": "https://t.me/{}"},
+    "threads": {"label": "Threads", "icon": "🧵", "url": "https://www.threads.net/@{}"},
+    "facebook": {"label": "Facebook", "icon": "👥", "url": "https://www.facebook.com/{}"},
+}
+
 
 # ============ دوال المساعدة العامة (للمنصات الأخرى) ============
+
 def parse_url_to_platform(url: str):
     url = url.strip()
     if not url:
@@ -422,6 +479,7 @@ def create_sample_excel():
     return output.getvalue()
 
 
+
 def results_to_excel(results):
     df = pd.DataFrame(results)
     output = io.BytesIO()
@@ -430,14 +488,461 @@ def results_to_excel(results):
     return output.getvalue()
 
 
+def safe_int(value, default=0):
+    try:
+        if value in (None, "", "nan"):
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def get_country_coords(country_code: str):
+    if not country_code:
+        return None
+    return COUNTRY_COORDS.get(str(country_code).upper())
+
+
+def create_country_map(records, country_key, confidence_key, title, popup_builder, map_key, threshold=30):
+    if not FOLIUM_AVAILABLE:
+        st.info("💡 لتفعيل الخريطة التفاعلية ثبّت: folium + streamlit-folium")
+        return
+
+    valid_records = []
+    for record in records:
+        code = (record.get(country_key) or "").upper()
+        coords = get_country_coords(code)
+        confidence = safe_int(record.get(confidence_key, 0))
+        if coords and confidence >= threshold:
+            valid_records.append((record, coords))
+
+    if not valid_records:
+        st.info("ℹ️ لا توجد نتائج كافية لعرضها على الخريطة")
+        return
+
+    st.markdown(f"#### {title}")
+    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB positron")
+    for record, coords in valid_records:
+        popup_html = popup_builder(record)
+        folium.Marker(
+            coords,
+            popup=folium.Popup(popup_html, max_width=300),
+            tooltip=record.get("username") or record.get("user_screen_name") or record.get("nickname") or "حساب",
+            icon=folium.Icon(color="red", icon="info-sign"),
+        ).add_to(m)
+    st_folium(m, width=None, height=420, key=map_key)
+
+
+def _build_tiktok_report_results(tt_results, min_conf=30):
+    export_results = []
+    for r in tt_results:
+        if r.get("status") != "✅ نجح":
+            continue
+        confidence = safe_int(r.get("region_confidence", 0))
+        country_name = r.get("region_name_ar", "") if confidence >= min_conf else ""
+        export_results.append({
+            "success": True,
+            "url": r.get("profile_url", ""),
+            "tweet": {
+                "user_screen_name": r.get("username", ""),
+                "user_name": r.get("nickname", ""),
+                "user_id": r.get("user_id", ""),
+                "user_blue_verified": bool(r.get("verified")),
+                "created_at": r.get("create_date", ""),
+                "lang": r.get("language", ""),
+                "lang_name_ar": r.get("language_name_ar", ""),
+                "favorite_count": safe_int(r.get("heart_count", 0)),
+                "conversation_count": safe_int(r.get("video_count", 0)),
+                "user_profile_image": r.get("avatar_medium", ""),
+                "text": r.get("signature", ""),
+                "user_location_field": country_name or r.get("region_source", ""),
+                "region_flag": r.get("region_flag", ""),
+                "region_name_ar": country_name,
+                "region_confidence": confidence,
+            },
+            "photos": [r.get("avatar_medium")] if r.get("avatar_medium") else [],
+            "image_analysis": {
+                "aggregate": {
+                    "country_name": country_name,
+                    "confidence_score": confidence,
+                }
+            },
+            "vpn_check": {
+                "verdict_ar": "تحليل TikTok",
+                "icon": "🎵",
+            },
+            "post_country": country_name,
+        })
+    return export_results
+
+
+def _format_datetime_text(value):
+    if not value:
+        return ""
+    text_val = str(value).strip()
+    for fmt in (
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%d %H:%M:%S",
+    ):
+        try:
+            dt = datetime.strptime(text_val.replace("Z", "+0000"), fmt)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            continue
+    return text_val[:19]
+
+
+def _clean_summary(value, limit=240):
+    if value is None:
+        return ""
+    txt = re.sub(r"<[^>]+>", " ", str(value))
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt[:limit] + ("…" if len(txt) > limit else "")
+
+
+def _extract_json_feed_items(payload):
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        items = payload.get("items") or payload.get("entries") or []
+    else:
+        items = []
+
+    normalized = []
+    for item in items[:10]:
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            "published": _format_datetime_text(
+                item.get("date_published") or item.get("published") or item.get("pubDate") or item.get("date_modified")
+            ),
+            "title": item.get("title") or item.get("summary") or item.get("content_text") or "بدون عنوان",
+            "link": item.get("url") or item.get("external_url") or item.get("link") or item.get("id") or "",
+            "summary": _clean_summary(
+                item.get("summary") or item.get("content_text") or item.get("content_html") or item.get("description") or ""
+            ),
+        })
+    return normalized
+
+
+def _extract_xml_feed_items(xml_text):
+    if not xml_text.strip():
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+
+    items = []
+    channel_items = root.findall(".//item")
+    if channel_items:
+        for item in channel_items[:10]:
+            items.append({
+                "published": _format_datetime_text(item.findtext("pubDate") or item.findtext("published") or ""),
+                "title": item.findtext("title") or "بدون عنوان",
+                "link": item.findtext("link") or item.findtext("guid") or "",
+                "summary": _clean_summary(item.findtext("description") or item.findtext("summary") or ""),
+            })
+        return items
+
+    atom_ns = {"atom": "http://www.w3.org/2005/Atom"}
+    entries = root.findall(".//atom:entry", atom_ns)
+    for entry in entries[:10]:
+        link_tag = entry.find("atom:link", atom_ns)
+        items.append({
+            "published": _format_datetime_text(entry.findtext("atom:published", default="", namespaces=atom_ns) or entry.findtext("atom:updated", default="", namespaces=atom_ns)),
+            "title": entry.findtext("atom:title", default="بدون عنوان", namespaces=atom_ns),
+            "link": (link_tag.get("href") if link_tag is not None else ""),
+            "summary": _clean_summary(entry.findtext("atom:summary", default="", namespaces=atom_ns) or entry.findtext("atom:content", default="", namespaces=atom_ns)),
+        })
+    return items
+
+
+def _fetch_single_feed(feed_url, limit=10):
+    try:
+        response = requests.get(
+            feed_url,
+            headers={**HEADERS, "Accept": "application/json, application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8"},
+            timeout=15,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"فشل الاتصال: {e}", "items": []}
+
+    if response.status_code != 200:
+        return {"ok": False, "error": f"HTTP {response.status_code}", "items": []}
+
+    content_type = (response.headers.get("Content-Type") or "").lower()
+    text_payload = response.text or ""
+
+    if "json" in content_type or feed_url.lower().endswith(".json"):
+        try:
+            payload = response.json()
+            items = _extract_json_feed_items(payload)[:limit]
+            return {"ok": bool(items), "error": "لا توجد عناصر" if not items else "", "items": items}
+        except Exception as e:
+            return {"ok": False, "error": f"JSON غير صالح: {e}", "items": []}
+
+    if FEEDPARSER_AVAILABLE:
+        try:
+            parsed = feedparser.parse(text_payload)
+            items = []
+            for entry in parsed.entries[:limit]:
+                items.append({
+                    "published": _format_datetime_text(
+                        entry.get("published") or entry.get("updated") or entry.get("pubDate") or ""
+                    ),
+                    "title": entry.get("title") or "بدون عنوان",
+                    "link": entry.get("link") or entry.get("id") or "",
+                    "summary": _clean_summary(
+                        entry.get("summary") or entry.get("description") or entry.get("title") or ""
+                    ),
+                })
+            if items:
+                return {"ok": True, "error": "", "items": items}
+        except Exception:
+            pass
+
+    items = _extract_xml_feed_items(text_payload)[:limit]
+    return {"ok": bool(items), "error": "لا توجد عناصر" if not items else "", "items": items}
+
+
+def resolve_youtube_channel_id(value: str):
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if re.fullmatch(r"UC[\w-]{20,30}", raw):
+        return raw
+
+    if raw.startswith(("http://", "https://")):
+        parsed = urlparse(raw)
+        qs = parse_qs(parsed.query)
+        if qs.get("channel_id"):
+            return qs["channel_id"][0]
+        m = re.search(r"/channel/(UC[\w-]{20,30})", parsed.path)
+        if m:
+            return m.group(1)
+        page_url = raw
+    else:
+        handle = raw if raw.startswith("@") else f"@{raw}"
+        page_url = f"https://www.youtube.com/{handle}"
+
+    try:
+        resp = requests.get(page_url, headers=HEADERS, timeout=15)
+        if resp.status_code == 200:
+            html_text = resp.text
+            for pattern in [
+                r'"channelId":"(UC[\w-]{20,30})"',
+                r'"externalId":"(UC[\w-]{20,30})"',
+                r'"browseId":"(UC[\w-]{20,30})"',
+            ]:
+                m = re.search(pattern, html_text)
+                if m:
+                    return m.group(1)
+    except Exception:
+        return None
+    return None
+
+
+def build_rss_source(line: str):
+    raw = (line or "").strip()
+    if not raw:
+        return None
+
+    platform = None
+    username = None
+    display = raw
+    feed_urls = []
+
+    if raw.startswith(("http://", "https://")):
+        platform, username = parse_url_to_platform(raw)
+    else:
+        low = raw.lower()
+        if "reddit" in low:
+            platform = "reddit"
+        elif "youtube" in low or low.startswith("uc") or low.startswith("@"):
+            platform = "youtube"
+        elif "tiktok" in low:
+            platform = "tiktok"
+        else:
+            platform = "x"
+        username = raw.strip().replace("@", "")
+
+    if platform == "tiktok":
+        if not username:
+            if "tiktok.com/@" in raw:
+                username = raw.split("tiktok.com/@")[-1].split("/")[0].split("?")[0]
+        username = (username or "").replace("@", "").strip()
+        if username:
+            display = f"TikTok @{username}"
+            feed_urls = [
+                f"https://rss.app/feeds/v1.1/tiktok/@{quote(username)}.json",
+            ]
+    elif platform in ("x", "twitter"):
+        username = (username or "").replace("@", "").strip()
+        if username:
+            display = f"X @{username}"
+            feed_urls = [
+                f"https://nitter.net/{quote(username)}/rss",
+                f"https://rss.app/feeds/v1.1/twitter/{quote(username)}.json",
+            ]
+    elif platform == "youtube":
+        channel_id = resolve_youtube_channel_id(raw or username)
+        username = (username or raw).replace("@", "").strip()
+        display = f"YouTube {('@' + username) if username else channel_id or ''}".strip()
+        if channel_id:
+            feed_urls = [f"https://www.youtube.com/feeds/videos.xml?channel_id={quote(channel_id)}"]
+    elif platform == "reddit":
+        if "/user/" in raw:
+            username = raw.split("/user/")[-1].strip("/").split("/")[0]
+        username = (username or "").replace("@", "").strip()
+        if username:
+            display = f"Reddit u/{username}"
+            feed_urls = [f"https://www.reddit.com/user/{quote(username)}/.rss"]
+
+    if not feed_urls:
+        return {
+            "ok": False,
+            "source": raw,
+            "platform": platform or "غير معروف",
+            "display": raw,
+            "error": "تعذّر تحويل الرابط إلى RSS feed مدعوم",
+            "items": [],
+        }
+
+    errors = []
+    for feed_url in feed_urls:
+        result = _fetch_single_feed(feed_url, limit=10)
+        if result.get("ok") and result.get("items"):
+            return {
+                "ok": True,
+                "source": raw,
+                "platform": platform,
+                "display": display,
+                "feed_url": feed_url,
+                "items": result["items"],
+                "error": "",
+            }
+        errors.append(f"{feed_url} → {result.get('error', 'فشل غير معروف')}")
+
+    return {
+        "ok": False,
+        "source": raw,
+        "platform": platform or "غير معروف",
+        "display": display,
+        "feed_url": feed_urls[0],
+        "items": [],
+        "error": " | ".join(errors) if errors else "فشل جلب الـ feed",
+    }
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_rss_batch(lines):
+    results = []
+    for line in lines:
+        if not str(line).strip():
+            continue
+        results.append(build_rss_source(str(line).strip()))
+    return results
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def buffin_check_platform(platform_key: str, username: str):
+    info = BUFFIN_PLATFORMS[platform_key]
+    url = info["url"].format(username)
+    status_key = "blocked"
+    status_label = "🟡 محجوب"
+    code = None
+    error = ""
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True, stream=True)
+        code = resp.status_code
+        if code == 200:
+            status_key = "exists"
+            status_label = "🟢 موجود"
+        elif code == 404:
+            status_key = "missing"
+            status_label = "🔴 غير موجود"
+        else:
+            status_key = "blocked"
+            status_label = "🟡 محجوب"
+    except Exception as e:
+        error = str(e)[:120]
+        status_key = "blocked"
+        status_label = "🟡 محجوب"
+    return {
+        "platform": platform_key,
+        "label": info["label"],
+        "icon": info["icon"],
+        "url": url,
+        "username": username,
+        "http_status": code,
+        "status_key": status_key,
+        "status_label": status_label,
+        "error": error,
+    }
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def buffin_search_username(username: str):
+    username = (username or "").strip().lstrip("@")
+    if not username:
+        return []
+
+    order = list(BUFFIN_PLATFORMS.keys())
+    results = []
+    with ThreadPoolExecutor(max_workers=min(13, len(order))) as executor:
+        futures = {executor.submit(buffin_check_platform, key, username): key for key in order}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception as e:
+                key = futures[future]
+                info = BUFFIN_PLATFORMS[key]
+                results.append({
+                    "platform": key,
+                    "label": info["label"],
+                    "icon": info["icon"],
+                    "url": info["url"].format(username),
+                    "username": username,
+                    "http_status": None,
+                    "status_key": "blocked",
+                    "status_label": "🟡 محجوب",
+                    "error": str(e)[:120],
+                })
+    results.sort(key=lambda x: order.index(x["platform"]))
+    return results
+
+
+def render_buffin_open_all(results):
+    existing_urls = [r["url"] for r in results if r.get("status_key") == "exists"]
+    if not existing_urls:
+        st.caption("لا توجد حسابات موجودة لفتحها")
+        return
+    if components is None:
+        st.caption("components غير متاح — استخدم الروابط أدناه")
+        return
+    js_calls = "".join([f"window.open('{u}', '_blank');" for u in existing_urls])
+    html_block = f"""
+    <div dir="rtl" style="margin:0 0 12px 0;">
+      <button onclick="{js_calls}" style="width:100%;padding:12px 18px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff;font-weight:700;cursor:pointer;font-family:Cairo,sans-serif;">
+        🔗 فتح الكل ({len(existing_urls)})
+      </button>
+    </div>
+    """
+    components.html(html_block, height=70)
+
+
 # ============ الواجهة ============
+
 st.markdown(
     """
     <div style="text-align: center; padding: 1.5rem; background: linear-gradient(135deg, #ff0050 0%, #00f2ea 100%); 
                 border-radius: 15px; margin-bottom: 2rem; color: white;">
-        <h1 style="color: white; margin: 0;">🌐 مولد معلومات حسابات التواصل الاجتماعي</h1>
+        <h1 style="color: white; margin: 0;">🌐 مولد معلومات حسابات التواصل الاجتماعي v5</h1>
         <p style="margin: 0.5rem 0 0 0; opacity: 0.95;">
-            🎵 تحليل TikTok عميق • 🆔 ID دائم • 🌍 موقع جغرافي • 14+ منصة
+            🎵 TikTok • 🐦 X • 📡 RSS • 🔍 BUFFIN • 🛰️ Geo-OSINT
         </p>
     </div>
     """,
@@ -578,13 +1083,15 @@ except ImportError as _e:
 
 # ============ التبويبات ============
 (tab_tt, tab_video, tab_x, tab_postloc, tab_geo, tab_osint,
- tab_manual, tab_excel, tab_help) = st.tabs([
+ tab_rss, tab_buffin, tab_manual, tab_excel, tab_help) = st.tabs([
     "🎵 محلل حسابات TikTok",
     "🎬 تحليل فيديو تيك توك",
     "🐦 تحليل تغريدات X (Twitter)",
     "🌍 موقع المنشور + كاشف VPN",
     "🛰️ Geo-Engine (GeoSpy + EXIF + Yandex)",
-    "🕵️ OSINT محقّق تويتر",  # الجديد
+    "🕵️ OSINT محقّق تويتر",
+    "📡 أداة RSS",
+    "🔍 BUFFIN - بحث المنصات",
     "📝 إدخال يدوي (كل المنصات)",
     "📂 رفع Excel",
     "ℹ️ التعليمات",
@@ -749,10 +1256,30 @@ zachking
             },
         )
 
+        # 🗺️ خريطة TikTok
+        tt_map_records = [
+            r for r in tt_results
+            if r.get("status") == "✅ نجح" and safe_int(r.get("region_confidence", 0)) >= 30 and get_country_coords(r.get("region"))
+        ]
+        if tt_map_records:
+            create_country_map(
+                tt_map_records,
+                country_key="region",
+                confidence_key="region_confidence",
+                title="🗺️ خريطة انتشار حسابات TikTok",
+                popup_builder=lambda r: (
+                    f"<div dir='rtl'><b>@{html.escape(str(r.get('username', '')))}</b><br>"
+                    f"{html.escape(str(r.get('region_flag', '')))} {html.escape(str(r.get('region_name_ar', '')))}<br>"
+                    f"👥 {html.escape(str(r.get('follower_count_formatted', r.get('follower_count', 0))))}</div>"
+                ),
+                map_key="tt_accounts_map",
+                threshold=30,
+            )
+
         # تصدير
         st.markdown("#### 📥 تصدير نتائج TikTok")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        e1, e2, e3 = st.columns(3)
+        e1, e2, e3, e4, e5 = st.columns(5)
         csv_data = df_display.to_csv(index=False).encode("utf-8-sig")
         e1.download_button("⬇️ CSV", data=csv_data,
                            file_name=f"tiktok_analysis_{timestamp}.csv",
@@ -766,6 +1293,56 @@ zachking
                            file_name=f"tiktok_analysis_{timestamp}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            use_container_width=True)
+
+        tt_export_results = _build_tiktok_report_results(tt_results, min_conf=min_confidence)
+        if REPORT_EXPORTER_AVAILABLE and tt_export_results:
+            with e4:
+                if st.button("⬇️ تقرير Word", use_container_width=True, key="tt_gen_word"):
+                    with st.spinner("⏳ جارٍ توليد تقرير Word لحسابات TikTok..."):
+                        try:
+                            st.session_state["_tt_docx_bytes"] = generate_word_report(
+                                tt_export_results,
+                                title="🎵 تقرير حسابات TikTok",
+                            )
+                            st.session_state["_tt_docx_ts"] = timestamp
+                            st.success("✅ تم تجهيز ملف Word")
+                        except Exception as e:
+                            st.error(f"❌ فشل التوليد: {e}")
+            with e5:
+                if st.button("⬇️ تقرير PowerPoint", use_container_width=True, key="tt_gen_pptx"):
+                    with st.spinner("⏳ جارٍ توليد PowerPoint لحسابات TikTok..."):
+                        try:
+                            st.session_state["_tt_pptx_bytes"] = generate_pptx_report(
+                                tt_export_results,
+                                title="🎵 عرض حسابات TikTok",
+                            )
+                            st.session_state["_tt_pptx_ts"] = timestamp
+                            st.success("✅ تم تجهيز PowerPoint")
+                        except Exception as e:
+                            st.error(f"❌ فشل التوليد: {e}")
+
+            if st.session_state.get("_tt_docx_bytes") or st.session_state.get("_tt_pptx_bytes"):
+                dl1, dl2 = st.columns(2)
+                if st.session_state.get("_tt_docx_bytes"):
+                    dl1.download_button(
+                        "⬇️ تحميل Word",
+                        data=st.session_state["_tt_docx_bytes"],
+                        file_name=f"tiktok_accounts_report_{st.session_state.get('_tt_docx_ts', timestamp)}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
+                        key="tt_dl_word",
+                    )
+                if st.session_state.get("_tt_pptx_bytes"):
+                    dl2.download_button(
+                        "⬇️ تحميل PowerPoint",
+                        data=st.session_state["_tt_pptx_bytes"],
+                        file_name=f"tiktok_accounts_report_{st.session_state.get('_tt_pptx_ts', timestamp)}.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        use_container_width=True,
+                        key="tt_dl_pptx",
+                    )
+        elif not REPORT_EXPORTER_AVAILABLE:
+            st.info("💡 لتفعيل Word وPowerPoint ثبّت: python-docx و python-pptx")
 
         # بطاقات تفصيلية للناجحين
         st.markdown("#### 🎴 بطاقات الحسابات الناجحة")
@@ -1238,6 +1815,26 @@ https://twitter.com/elonmusk/status/2007910921914769832
                 "created_at": st.column_config.TextColumn("📅 التاريخ"),
             },
         )
+
+        # 🗺️ خريطة X
+        x_map_records = [
+            r for r in x_results
+            if r.get("status") == "✅ نجح" and r.get("region") and safe_int(r.get("region_confidence", 0)) >= 30 and get_country_coords(r.get("region"))
+        ]
+        if x_map_records:
+            create_country_map(
+                x_map_records,
+                country_key="region",
+                confidence_key="region_confidence",
+                title="🗺️ خريطة نتائج X (Twitter)",
+                popup_builder=lambda r: (
+                    f"<div dir='rtl'><b>@{html.escape(str(r.get('user_screen_name', '')))}</b><br>"
+                    f"{html.escape(str(r.get('region_flag', '')))} {html.escape(str(r.get('region_name_ar', '')))}<br>"
+                    f"❤️ {html.escape(str(r.get('favorite_count', 0)))} • 💬 {html.escape(str(r.get('conversation_count', 0)))}</div>"
+                ),
+                map_key="x_tweets_map",
+                threshold=30,
+            )
 
         # تصدير
         st.markdown("#### 📥 تصدير")
@@ -2867,6 +3464,206 @@ with tab_osint:
                 st.rerun()
 
 
+# ============ تبويب RSS ============
+with tab_rss:
+    st.markdown("### 📡 أداة RSS")
+    st.markdown(
+        """
+        <div class="info-box" dir="rtl">
+        ألصق روابط الحسابات المدعومة سطرًا لكل رابط: <strong>TikTok / X / YouTube / Reddit</strong>.<br>
+        الأداة تحاول تحويل كل رابط إلى RSS feed مناسب ثم تجلب آخر 10 منشورات لكل حساب.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    rss_input = st.text_area(
+        "روابط الحسابات:",
+        value="""https://x.com/elonmusk
+https://www.tiktok.com/@khaby.lame
+https://www.youtube.com/@MrBeast
+https://www.reddit.com/user/spez
+""",
+        height=220,
+        key="rss_input",
+        help="رابط واحد في كل سطر",
+    )
+
+    rss_lines = [line.strip() for line in rss_input.splitlines() if line.strip()]
+    r1, r2 = st.columns([3, 1])
+    with r2:
+        st.metric("📎 عدد الروابط", len(rss_lines))
+
+    if st.button("🚀 جلب آخر المنشورات من RSS", type="primary", use_container_width=True, key="rss_fetch"):
+        if not rss_lines:
+            st.error("❌ أدخل رابطًا واحدًا على الأقل")
+        else:
+            with st.spinner("⏳ جارٍ تحويل الروابط وجلب آخر المنشورات..."):
+                rss_sources = fetch_rss_batch(rss_lines)
+            st.session_state["rss_sources"] = rss_sources
+
+            flat_rows = []
+            for src in rss_sources:
+                for item in src.get("items", [])[:10]:
+                    flat_rows.append({
+                        "platform": src.get("platform", ""),
+                        "source": src.get("display", src.get("source", "")),
+                        "feed_url": src.get("feed_url", ""),
+                        "date": item.get("published", ""),
+                        "title": item.get("title", ""),
+                        "link": item.get("link", ""),
+                        "summary": item.get("summary", ""),
+                    })
+            st.session_state["rss_rows"] = flat_rows
+            st.success(f"✅ تم جلب {len(flat_rows)} منشور من {len(rss_sources)} مصدر")
+
+    if st.session_state.get("rss_sources"):
+        rss_sources = st.session_state["rss_sources"]
+        rss_rows = st.session_state.get("rss_rows", [])
+
+        ok_count = sum(1 for src in rss_sources if src.get("ok"))
+        fail_count = sum(1 for src in rss_sources if not src.get("ok"))
+        stats = st.columns(4)
+        stats[0].metric("📡 المصادر", len(rss_sources))
+        stats[1].metric("✅ نجح", ok_count)
+        stats[2].metric("❌ فشل", fail_count)
+        stats[3].metric("📰 المنشورات", len(rss_rows))
+
+        with st.expander("📋 حالة كل Feed", expanded=fail_count > 0):
+            state_rows = []
+            for src in rss_sources:
+                state_rows.append({
+                    "المصدر": src.get("display", src.get("source", "")),
+                    "المنصة": src.get("platform", ""),
+                    "الحالة": "✅ نجح" if src.get("ok") else "❌ فشل",
+                    "Feed": src.get("feed_url", ""),
+                    "الخطأ": src.get("error", ""),
+                })
+            st.dataframe(pd.DataFrame(state_rows), use_container_width=True, height=240)
+
+        if rss_rows:
+            df_rss = pd.DataFrame(rss_rows)
+            st.markdown("#### 📰 آخر 10 منشورات من كل Feed")
+            st.dataframe(
+                df_rss[["date", "title", "link", "summary", "platform", "source"]],
+                use_container_width=True,
+                height=420,
+                column_config={
+                    "link": st.column_config.LinkColumn("🔗 الرابط"),
+                    "summary": st.column_config.TextColumn("الملخص", width="large"),
+                    "title": st.column_config.TextColumn("العنوان", width="medium"),
+                    "date": st.column_config.TextColumn("التاريخ"),
+                },
+            )
+
+            ts_rss = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_rss = df_rss.to_csv(index=False).encode("utf-8-sig")
+            json_rss = df_rss.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
+            er1, er2 = st.columns(2)
+            er1.download_button(
+                "⬇️ تصدير CSV",
+                data=csv_rss,
+                file_name=f"rss_posts_{ts_rss}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            er2.download_button(
+                "⬇️ تصدير JSON",
+                data=json_rss,
+                file_name=f"rss_posts_{ts_rss}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        else:
+            st.info("ℹ️ لم يتم العثور على منشورات قابلة للعرض")
+
+
+# ============ تبويب BUFFIN ============
+with tab_buffin:
+    st.markdown("### 🔍 BUFFIN - بحث المنصات")
+    st.markdown(
+        """
+        <div class="info-box" dir="rtl">
+        أدخل اسم مستخدم واحد وسنبحث عنه بالتوازي في 13 منصة مختلفة.<br>
+        القاعدة المستخدمة هنا بسيطة ومباشرة: <strong>HTTP 200 = موجود</strong>، <strong>404 = غير موجود</strong>، وما عدا ذلك يُعرض كمحجوب/مقيّد.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    buffin_username = st.text_input(
+        "اسم المستخدم:",
+        value="elonmusk",
+        key="buffin_username",
+        help="بدون @",
+    )
+
+    if st.button("🚀 ابدأ BUFFIN", type="primary", use_container_width=True, key="buffin_search"):
+        clean_username = (buffin_username or "").strip().lstrip("@")
+        if not clean_username:
+            st.error("❌ أدخل اسم مستخدم صحيح")
+        else:
+            with st.spinner("⏳ جارٍ فحص 13 منصة بشكل متوازٍ..."):
+                st.session_state["buffin_results"] = buffin_search_username(clean_username)
+
+    if st.session_state.get("buffin_results"):
+        buffin_results = st.session_state["buffin_results"]
+        existing = sum(1 for r in buffin_results if r.get("status_key") == "exists")
+        checked = len(buffin_results)
+        blocked = sum(1 for r in buffin_results if r.get("status_key") == "blocked")
+        missing = sum(1 for r in buffin_results if r.get("status_key") == "missing")
+
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("🟢 الحسابات الموجودة", existing)
+        s2.metric("📊 المنصات المفحوصة", checked)
+        s3.metric("🔴 غير موجود", missing)
+        s4.metric("🟡 محجوب", blocked)
+
+        render_buffin_open_all(buffin_results)
+
+        color_map = {
+            "exists": ("#dcfce7", "#166534", "#22c55e"),
+            "missing": ("#fee2e2", "#991b1b", "#ef4444"),
+            "blocked": ("#fef3c7", "#92400e", "#f59e0b"),
+        }
+        st.markdown("#### 🧩 بطاقات النتائج")
+        cols = st.columns(3)
+        for i, row in enumerate(buffin_results):
+            bg, fg, border = color_map.get(row.get("status_key"), ("#f3f4f6", "#111827", "#9ca3af"))
+            card = f"""
+            <div dir="rtl" style="background:{bg};color:{fg};border-right:6px solid {border};padding:14px;border-radius:12px;min-height:150px;">
+                <div style="font-size:20px;font-weight:700;">{row.get('icon','')} {row.get('label','')}</div>
+                <div style="margin-top:8px;font-size:18px;font-weight:700;">{row.get('status_label','')}</div>
+                <div style="margin-top:8px;"><code>@{html.escape(str(row.get('username','')))}</code></div>
+                <div style="margin-top:6px;">HTTP: {row.get('http_status') or '—'}</div>
+                <div style="margin-top:8px;"><a href="{row.get('url','')}" target="_blank">فتح الرابط ↗</a></div>
+            </div>
+            """
+            with cols[i % 3]:
+                st.markdown(card, unsafe_allow_html=True)
+
+        df_buffin = pd.DataFrame(buffin_results)
+        st.markdown("#### 📋 جدول النتائج")
+        st.dataframe(
+            df_buffin[["label", "status_label", "http_status", "url", "error"]],
+            use_container_width=True,
+            height=320,
+            column_config={
+                "url": st.column_config.LinkColumn("🔗 الرابط"),
+            },
+        )
+
+        ts_buffin = datetime.now().strftime("%Y%m%d_%H%M%S")
+        buffin_json = df_buffin.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
+        st.download_button(
+            "⬇️ تصدير JSON",
+            data=buffin_json,
+            file_name=f"buffin_{ts_buffin}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+
 # ============ تبويب الإدخال اليدوي ============
 with tab_manual:
     st.markdown("### 📝 إدخال يدوي - كل المنصات (300+ حساب)")
@@ -2973,7 +3770,7 @@ with tab_excel:
 # ============ تبويب التعليمات ============
 with tab_help:
     st.markdown("""
-    ### ℹ️ دليل الاستخدام - الإصدار v4
+    ### ℹ️ دليل الاستخدام - الإصدار v5
 
     #### 🎵 محلل TikTok المتقدم (جديد!)
     تم بناء محلل متخصص لـ TikTok يستخدم تقنية `__UNIVERSAL_DATA_FOR_REHYDRATION__` 
@@ -3013,6 +3810,18 @@ with tab_help:
     حتى لو غيّر المستخدم اسم حسابه (@username)، يبقى **User ID و secUid ثابتين**.
     يمكنك استخدامهما للوصول للحساب لاحقاً عبر:
     `https://www.tiktok.com/@username` أو عبر API الرسمي.
+
+    #### 📡 أداة RSS الجديدة
+    - تحويل روابط TikTok وX وYouTube وReddit إلى RSS feeds.
+    - جلب آخر 10 منشورات لكل حساب مع تصدير CSV وJSON.
+
+    #### 🔍 BUFFIN - بحث المنصات
+    - فحص اسم مستخدم واحد على 13 منصة بالتوازي.
+    - بطاقات حالة: موجود / غير موجود / محجوب + زر فتح الكل.
+
+    #### 🗺️ الخرائط التفاعلية
+    - تمت إضافة خرائط Folium لنتائج TikTok وX عندما تتوفر دولة بثقة كافية.
+    - تحتاج تثبيت `folium` و `streamlit-folium` لتعمل داخل Streamlit.
     """)
 
 # ============ عرض نتائج المنصات الأخرى ============
