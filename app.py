@@ -1086,6 +1086,150 @@ except ImportError as _e:
 from collections import Counter as _Counter
 import math as _math
 
+# ── فحص مباشر لـ author.region من صفحة الفيديو ──
+def fetch_region_from_video_page(username: str) -> dict:
+    """
+    استخراج author.region من metadata الفيديو مباشرة.
+    TikTok يخفي الموقع من الملف الشخصي لكنه يبقيه في metadata الفيديو.
+    """
+    result = {"region": "", "source": "video_metadata", "confidence": 0, "method": ""}
+    if not username:
+        return result
+    try:
+        import re as _re
+        _headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ar,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.tiktok.com/",
+        }
+        url = f"https://www.tiktok.com/@{username}"
+        resp = requests.get(url, headers=_headers, timeout=12, allow_redirects=True)
+        html = resp.text
+
+        # طريقة 1: البحث عن "region":"XX" في JSON المضمن
+        region_patterns = [
+            r'"region"\s*:\s*"([A-Z]{2})"',
+            r'"locationCreated"\s*:\s*"([A-Z]{2})"',
+            r'"createRegion"\s*:\s*"([A-Z]{2})"',
+            r'"author_region"\s*:\s*"([A-Z]{2})"',
+        ]
+        for i, pattern in enumerate(region_patterns):
+            matches = _re.findall(pattern, html)
+            # فلترة الكود العام وأخذ الأكثر تكراراً
+            valid = [m for m in matches if m not in ("US", "XX", "") and m in TIKTOK_REGION_MAP]
+            if not valid:
+                # قبول US إذا لم يوجد غيره
+                valid = [m for m in matches if m in TIKTOK_REGION_MAP]
+            if valid:
+                from collections import Counter as _C
+                most_common = _C(valid).most_common(1)[0][0]
+                sources = ["region_field", "locationCreated", "createRegion", "author_region"]
+                result["region"] = most_common
+                result["source"] = sources[i]
+                result["confidence"] = 80 if i == 0 else 75 if i == 1 else 65
+                result["method"] = f"video_page_{sources[i]}"
+                return result
+
+        # طريقة 2: البحث في SIGI_STATE JSON
+        sigi_match = _re.search(r'window\["SIGI_STATE"\]\s*=\s*(\{.+?\});\s*</script>', html, _re.DOTALL)
+        if not sigi_match:
+            sigi_match = _re.search(r'id="SIGI_STATE"[^>]*>(\{.+?\})</script>', html, _re.DOTALL)
+        if sigi_match:
+            try:
+                sigi = json.loads(sigi_match.group(1))
+                # تصفح البنية
+                for key in ["UserModule", "ItemModule", "VideoList"]:
+                    if key in sigi:
+                        data = sigi[key]
+                        for k, v in (data.items() if isinstance(data, dict) else {}):
+                            if isinstance(v, dict):
+                                r_val = v.get("region") or v.get("locationCreated") or v.get("createRegion")
+                                if r_val and r_val in TIKTOK_REGION_MAP:
+                                    result["region"] = r_val
+                                    result["source"] = "SIGI_STATE"
+                                    result["confidence"] = 85
+                                    result["method"] = "sigi_state_json"
+                                    return result
+            except Exception:
+                pass
+
+        # طريقة 3: الخيار الأخير - البيو/السيرة الذاتية
+        bio_region = _infer_region_from_bio(html)
+        if bio_region:
+            result["region"] = bio_region
+            result["source"] = "bio_text"
+            result["confidence"] = 40
+            result["method"] = "bio_inference"
+
+    except Exception:
+        pass
+    return result
+
+
+def _infer_region_from_bio(html: str) -> str:
+    """استنتاج الدولة من نص البايو عبر كلمات دلالية."""
+    import re as _re
+    # قاموس كلمات دلالية => رمز الدولة
+    country_hints = {
+        "SA": ["السعودية", "سعودي", "سعودية", "الرياض", "جدة", "مكة", "المدينة", "نجد", "حجاز", "saudi", "riyadh", "jeddah"],
+        "EG": ["مصر", "مصري", "مصرية", "القاهرة", "الإسكندرية", "egypt", "cairo", "egyptian"],
+        "AE": ["الإمارات", "إماراتي", "دبي", "أبوظبي", "الشارقة", "uae", "dubai", "emirates"],
+        "KW": ["الكويت", "كويتي", "kuwait"],
+        "QA": ["قطر", "قطري", "الدوحة", "qatar", "doha"],
+        "BH": ["البحرين", "بحريني", "bahrain"],
+        "OM": ["عُمان", "عمان", "عُماني", "مسقط", "oman", "muscat"],
+        "IQ": ["العراق", "عراقي", "بغداد", "البصرة", "iraq", "baghdad"],
+        "JO": ["الأردن", "أردني", "عمّان", "jordan", "amman"],
+        "SY": ["سوريا", "سوري", "دمشق", "syria", "damascus"],
+        "LB": ["لبنان", "لبناني", "بيروت", "lebanon", "beirut"],
+        "MA": ["المغرب", "مغربي", "الدار البيضاء", "morocco", "casablanca"],
+        "TN": ["تونس", "تونسي", "tunisia"],
+        "DZ": ["الجزائر", "جزائري", "algeria"],
+        "YE": ["اليمن", "يمني", "صنعاء", "yemen", "sanaa"],
+        "TR": ["تركيا", "تركي", "إسطنبول", "turkey", "istanbul"],
+        "PS": ["فلسطين", "فلسطيني", "غزة", "القدس", "palestine", "gaza"],
+        "SD": ["السودان", "سوداني", "الخرطوم", "sudan", "khartoum"],
+    }
+    html_lower = html.lower()
+    scores = {}
+    for code, hints in country_hints.items():
+        count = sum(1 for h in hints if h.lower() in html_lower)
+        if count > 0:
+            scores[code] = count
+    if scores:
+        return max(scores.items(), key=lambda x: x[1])[0]
+    return ""
+
+
+def enrich_tiktok_region(result: dict) -> dict:
+    """
+    إثراء نتيجة TikTok بمصادر إضافية إذا كانت الثقة منخفضة.
+    يستدعي fetch_region_from_video_page كاحتياطي.
+    """
+    username = result.get("username", "")
+    current_conf = safe_int(result.get("region_confidence", 0))
+
+    if current_conf >= 50 or not username:
+        return result  # لا حاجة للإثراء
+
+    # محاولة استخراج region من صفحة الفيديو
+    video_region = fetch_region_from_video_page(username)
+    new_region = video_region.get("region", "")
+    new_conf = video_region.get("confidence", 0)
+
+    if new_region and new_conf > current_conf:
+        flag, name_ar = TIKTOK_REGION_MAP.get(new_region, ("🌍", new_region))
+        result["region"] = new_region
+        result["region_flag"] = flag
+        result["region_name_ar"] = name_ar
+        result["region_confidence"] = new_conf
+        result["region_source"] = f"⚡ {video_region.get('method', 'video_meta')}"
+        result["region_enriched"] = True
+
+    return result
+
+
 TIKTOK_REGION_MAP = {
     "US": ("🇺🇸", "الولايات المتحدة"), "GB": ("🇬🇧", "المملكة المتحدة"),
     "SA": ("🇸🇦", "المملكة العربية السعودية"), "AE": ("🇦🇪", "الإمارات العربية المتحدة"),
@@ -1687,10 +1831,11 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
     c_count3.metric("🗺️ الخريطة", "Folium" if FOLIUM_AVAILABLE else "غير مفعلة")
     c_count4.metric("📍 الموقع", "متكامل")
 
-    b1, b2, b3 = st.columns(3)
+    b1, b2, b3, b4 = st.columns(4)
     analyze_accounts_btn = b1.button("🚀 تحليل الحسابات", type="primary", use_container_width=True, key="tt_integrated_analyze_accounts")
     analyze_videos_btn = b2.button("📍 تحليل الفيديوهات", use_container_width=True, key="tt_integrated_analyze_videos")
-    analyze_all_btn = b3.button("🧠 تشغيل التحليل المتكامل", use_container_width=True, key="tt_integrated_analyze_all")
+    analyze_all_btn = b3.button("🧠 التحليل المتكامل", use_container_width=True, key="tt_integrated_analyze_all")
+    enrich_region_btn = b4.button("🔍 تحسين الموقع", use_container_width=True, key="tt_enrich_region", help="يحاول تحديد الدولة للحسابات التي لم يُعثر على موقعها")
 
     if analyze_accounts_btn or analyze_all_btn:
         if not usernames:
@@ -1715,6 +1860,35 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
             st.session_state["tt_results"] = sorted(tt_results, key=lambda row: row.get("username", ""))
             st.session_state["tt_elapsed"] = time.time() - start
             st.success(f"✅ تم تحليل {len(tt_results)} حساب TikTok")
+
+    # ── زر تحسين الموقع ──
+    if enrich_region_btn:
+        existing = st.session_state.get("tt_results") or []
+        if not existing:
+            st.warning("⚠️ حلل الحسابات أولاً ثم اضغط تحسين الموقع")
+        else:
+            no_region = [r for r in existing if safe_int(r.get("region_confidence", 0)) < 50]
+            if not no_region:
+                st.success("✅ جميع الحسابات لديها موقع بثقة كافية")
+            else:
+                enrich_prog = st.progress(0)
+                enrich_status = st.empty()
+                enriched_count = 0
+                for idx, row in enumerate(existing):
+                    if safe_int(row.get("region_confidence", 0)) < 50:
+                        enrich_status.text(f"🔍 استخراج موقع @{row.get('username', '')} ({idx+1}/{len(no_region)})")
+                        enriched = enrich_tiktok_region(row)
+                        existing[idx] = enriched
+                        if enriched.get("region_enriched"):
+                            enriched_count += 1
+                    enrich_prog.progress((idx + 1) / len(existing))
+                enrich_prog.empty()
+                enrich_status.empty()
+                st.session_state["tt_results"] = existing
+                st.success(f"✅ تم تحسين الموقع لـ {enriched_count} حساب من أصل {len(no_region)} حساب بلا موقع")
+                if enriched_count < len(no_region):
+                    st.info(f"ℹ️ {len(no_region) - enriched_count} حساب لا يزال بلا موقع — يمكنك تحديده يدوياً أدناه")
+                st.rerun()
 
     if analyze_videos_btn or analyze_all_btn:
         if not video_urls:
@@ -1828,6 +2002,66 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                 use_container_width=True,
                 key="tt_integrated_accounts_csv",
             )
+
+            # ── تحديد الدولة يدوياً للحسابات بلا موقع ──
+            no_location_accs = [r for r in tt_results if safe_int(r.get("region_confidence", 0)) < 30 and r.get("status") == "✅ نجح"]
+            if no_location_accs:
+                st.markdown("---")
+                st.markdown("#### ✋ تحديد الدولة يدوياً للحسابات بلا موقع")
+                st.markdown(
+                    """<div style="background:#fff3cd;border-right:4px solid #ffc107;padding:8px 12px;border-radius:6px;font-size:0.85em" dir="rtl">
+                    هذه الحسابات لم يُعثر على دولتها تلقائياً. يمكنك تحديد دولتها يدوياً ليتم عرضها على الخريطة.
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+                country_options = ["— اختر —"] + [
+                    f"{flag} {name}" for code, (flag, name) in sorted(TIKTOK_REGION_MAP.items(), key=lambda x: x[1][1])
+                ]
+                country_code_lookup = {f"{flag} {name}": code for code, (flag, name) in TIKTOK_REGION_MAP.items()}
+
+                manual_overrides = st.session_state.get("tt_manual_region_overrides", {})
+                override_changed = False
+
+                for acc_row in no_location_accs[:15]:  # max 15 rows
+                    uname = acc_row.get("username", "")
+                    current_override = manual_overrides.get(uname, "— اختر —")
+                    cols_ov = st.columns([2, 3, 1])
+                    cols_ov[0].markdown(f"**@{uname}**")
+                    selected_country = cols_ov[1].selectbox(
+                        "الدولة",
+                        options=country_options,
+                        index=country_options.index(current_override) if current_override in country_options else 0,
+                        key=f"manual_country_{uname}",
+                        label_visibility="collapsed",
+                    )
+                    if selected_country != "— اختر —" and selected_country != current_override:
+                        manual_overrides[uname] = selected_country
+                        override_changed = True
+                    elif selected_country == "— اختر —" and uname in manual_overrides:
+                        del manual_overrides[uname]
+                        override_changed = True
+
+                if override_changed:
+                    st.session_state["tt_manual_region_overrides"] = manual_overrides
+
+                if manual_overrides:
+                    if st.button("💾 تطبيق التحديدات اليدوية على الخريطة", key="apply_manual_overrides", use_container_width=True):
+                        updated = st.session_state.get("tt_results") or []
+                        for idx, row in enumerate(updated):
+                            uname = row.get("username", "")
+                            if uname in manual_overrides:
+                                country_str = manual_overrides[uname]
+                                country_code = country_code_lookup.get(country_str, "")
+                                if country_code:
+                                    flag, name_ar = TIKTOK_REGION_MAP.get(country_code, ("🌍", country_code))
+                                    updated[idx]["region"] = country_code
+                                    updated[idx]["region_flag"] = flag
+                                    updated[idx]["region_name_ar"] = name_ar
+                                    updated[idx]["region_confidence"] = 60
+                                    updated[idx]["region_source"] = "✋ يدوي"
+                        st.session_state["tt_results"] = updated
+                        st.success(f"✅ تم تطبيق {len(manual_overrides)} تحديد يدوي على بيانات الحسابات")
+                        st.rerun()
             ex2.download_button(
                 "⬇️ JSON الحسابات",
                 data=df_display.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8"),
