@@ -1878,6 +1878,94 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                             if row.get("profile_url"):
                                 st.markdown(f"[فتح الحساب ↗]({row.get('profile_url')})")
 
+            # ═══════════════════════════════════════════════════════
+            # 🗺️ خريطة تفاعلية مدمجة داخل تبويب الحسابات
+            # ═══════════════════════════════════════════════════════
+            accounts_with_geo = [
+                r for r in tt_results
+                if r.get("status") == "✅ نجح"
+                and (r.get("region") or r.get("country_code"))
+                and safe_int(r.get("region_confidence", r.get("country_confidence", 0))) >= min_confidence
+            ]
+            if accounts_with_geo:
+                st.markdown("---")
+                st.markdown("### 🗺️ خريطة تفاعلية — مواقع الحسابات المحللة")
+                st.caption(f"يعرض {len(accounts_with_geo)} حساب تم تحديد دولتهم بثقة ≥ {min_confidence}%")
+
+                if FOLIUM_AVAILABLE:
+                    import folium as _folium
+                    from streamlit_folium import st_folium as _st_folium
+
+                    _fmap = _folium.Map(location=[25, 30], zoom_start=2,
+                                        tiles="CartoDB positron", control_scale=True)
+
+                    # Color-code markers by confidence
+                    for _r in accounts_with_geo:
+                        _code = (_r.get("region") or _r.get("country_code") or "").upper()
+                        _coords = get_tiktok_region_center(_code) or get_country_coords(_code)
+                        if not _coords:
+                            continue
+                        _lat, _lon = float(_coords[0]), float(_coords[1])
+                        _conf = safe_int(_r.get("region_confidence", _r.get("country_confidence", 0)))
+                        _flag, _name_ar = get_tiktok_country_meta(_code)
+                        _nick = _r.get("nickname") or _r.get("username", "")
+                        _followers = _r.get("follower_count_formatted") or tt_format_count(safe_int(_r.get("follower_count", 0)))
+                        _verified = "✅ موثّق" if _r.get("verified") else ""
+                        _private = "🔒 خاص" if _r.get("private_account") else ""
+                        _source = _r.get("region_source") or _r.get("country_source") or ""
+                        _profile_url = _r.get("profile_url") or f"https://www.tiktok.com/@{_r.get('username','')}"
+
+                        # Marker color by confidence
+                        if _conf >= 75:
+                            _color = "green"
+                        elif _conf >= 50:
+                            _color = "orange"
+                        else:
+                            _color = "red"
+
+                        _popup_html = (
+                            f"<div dir='rtl' style='min-width:240px;font-family:Arial;'>"
+                            f"<b style='font-size:15px'>@{html.escape(_r.get('username',''))}</b>"
+                            f"{'&nbsp;✅' if _r.get('verified') else ''}<br>"
+                            f"<span style='color:#555'>{html.escape(_nick)}</span><br><hr style='margin:4px 0'>"
+                            f"<b>📍 الدولة:</b> {html.escape(_flag)} {html.escape(_name_ar)}<br>"
+                            f"<b>🎯 الثقة:</b> {_conf}%<br>"
+                            f"<b>🔎 المصدر:</b> {html.escape(_source)}<br>"
+                            f"<b>👥 المتابعون:</b> {html.escape(_followers)}<br>"
+                            f"<b>🎬 الفيديوهات:</b> {safe_int(_r.get('video_count',0)):,}<br>"
+                            f"{_verified} {_private}<br>"
+                            f"<a href='{_profile_url}' target='_blank' "
+                            f"style='color:#ff0050;font-weight:bold;'>فتح الحساب ↗</a>"
+                            f"</div>"
+                        )
+                        _folium.Marker(
+                            location=[_lat, _lon],
+                            tooltip=f"@{_r.get('username','')} · {_flag} {_name_ar} ({_conf}%)",
+                            popup=_folium.Popup(_popup_html, max_width=300),
+                            icon=_folium.Icon(color=_color, icon="user", prefix="fa"),
+                        ).add_to(_fmap)
+
+                    _st_folium(_fmap, width=None, height=520, key="tt_accounts_inline_map")
+
+                    # Legend
+                    _leg1, _leg2, _leg3 = st.columns(3)
+                    _leg1.success("🟢 ثقة ≥ 75% — موثوق")
+                    _leg2.warning("🟠 ثقة 50–74% — محتمل")
+                    _leg3.error("🔴 ثقة < 50% — ضعيف")
+                else:
+                    # Fallback: show as st.map
+                    _map_rows = []
+                    for _r in accounts_with_geo:
+                        _code = (_r.get("region") or _r.get("country_code") or "").upper()
+                        _coords = get_tiktok_region_center(_code) or get_country_coords(_code)
+                        if _coords:
+                            _map_rows.append({"lat": float(_coords[0]), "lon": float(_coords[1])})
+                    if _map_rows:
+                        import pandas as _pd_map
+                        st.map(_pd_map.DataFrame(_map_rows), zoom=1)
+                    st.info("💡 ثبّت folium + streamlit-folium للحصول على خريطة تفاعلية كاملة")
+
+
     with sub_geo:
         if not geo_records:
             st.info("ℹ️ لا توجد إشارات كافية بعد. حلّل حسابات أو فيديوهات TikTok أولاً.")
