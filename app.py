@@ -1,8 +1,6 @@
-## Part 1
-```python
 # -*- coding: utf-8 -*-
 """
-امتداد v5
+مولد معلومات حسابات التواصل الاجتماعي v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
 - 🌐 14+ منصة أخرى
 - 🆔 ID دائم + موقع جغرافي + تحليل عميق
@@ -539,10 +537,6 @@ def create_country_map(records, country_key, confidence_key, title, popup_builde
 def _build_tiktok_report_results(tt_results, min_conf=30):
     export_results = []
     for r in tt_results:
-```
-
-## Part 2
-```python
         if r.get("status") != "✅ نجح":
             continue
         confidence = safe_int(r.get("region_confidence", 0))
@@ -2779,10 +2773,6 @@ https://twitter.com/elonmusk/status/2007910921914769832
                         st.markdown(f"[🔗 فتح في X]({t.get('tweet_url', '')})")
 
 
-```
-
-## Part 3
-```python
 # ============ 🌍 تبويب تحليل موقع المنشور + كاشف VPN — الأقوى! ============
 with tab_postloc:
     st.markdown("### 🌍 تحديد موقع المنشور + كاشف VPN — تحليل بصري عميق 🧠")
@@ -4781,5 +4771,3 @@ if "results" in st.session_state and st.session_state["results"]:
     e3.download_button("⬇️ Excel", xl, f"results_{timestamp}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        use_container_width=True)
-```
-
