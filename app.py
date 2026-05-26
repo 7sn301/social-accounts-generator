@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-مولد معلومات حسابات التواصل الاجتماعي v5
+تكوين v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
 - 🌐 14+ منصة أخرى
 - 🆔 ID دائم + موقع جغرافي + تحليل عميق
@@ -1768,10 +1768,9 @@ def render_tiktok_interactive_map(records, map_key="tt_integrated_geo_map"):
 
 
 # ============ التبويبات ============
-(tab_tt, tab_video, tab_x, tab_postloc, tab_geo, tab_osint,
+(tab_tt, tab_x, tab_postloc, tab_geo, tab_osint,
  tab_rss, tab_buffin, tab_manual, tab_excel, tab_help) = st.tabs([
-    "🎵 محلل حسابات TikTok المتكامل",
-    "🎬 تحليل فيديو تيك توك",
+    "محلل حسابات TikTok المتكامل",
     "🐦 تحليل تغريدات X (Twitter)",
     "🌍 موقع المنشور + كاشف VPN",
     "🛰️ Geo-Engine (GeoSpy + EXIF + Yandex)",
@@ -1786,7 +1785,7 @@ def render_tiktok_interactive_map(records, map_key="tt_integrated_geo_map"):
 
 # ============ تبويب TikTok المتكامل ============
 with tab_tt:
-    st.markdown("### 🎵 محلل حسابات TikTok المتكامل")
+    st.markdown("### محلل حسابات TikTok المتكامل")
     st.markdown(
         """
         <div class="info-box">
@@ -1831,11 +1830,11 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
     c_count3.metric("🗺️ الخريطة", "Folium" if FOLIUM_AVAILABLE else "غير مفعلة")
     c_count4.metric("📍 الموقع", "متكامل")
 
-    b1, b2, b3, b4 = st.columns(4)
+    b1, b2, b3 = st.columns(3)
     analyze_accounts_btn = b1.button("🚀 تحليل الحسابات", type="primary", use_container_width=True, key="tt_integrated_analyze_accounts")
-    analyze_videos_btn = b2.button("📍 تحليل الفيديوهات", use_container_width=True, key="tt_integrated_analyze_videos")
-    analyze_all_btn = b3.button("🧠 التحليل المتكامل", use_container_width=True, key="tt_integrated_analyze_all")
-    enrich_region_btn = b4.button("🔍 تحسين الموقع", use_container_width=True, key="tt_enrich_region", help="يحاول تحديد الدولة للحسابات التي لم يُعثر على موقعها")
+    analyze_videos_btn = False  # محذوف
+    analyze_all_btn = b2.button("🧠 التحليل المتكامل", use_container_width=True, key="tt_integrated_analyze_all")
+    enrich_region_btn = b3.button("🔍 تحسين الموقع", use_container_width=True, key="tt_enrich_region", help="يحاول تحديد الدولة للحسابات التي لم يُعثر على موقعها")
 
     if analyze_accounts_btn or analyze_all_btn:
         if not usernames:
@@ -1919,12 +1918,9 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
     geo_records = build_tiktok_geo_records(tt_results, video_results)
     st.session_state["tt_geo_records"] = geo_records
 
-    sub_accounts, sub_geo, sub_map, sub_verify, sub_osint = st.tabs([
+    sub_accounts, sub_geo = st.tabs([
         "👤 تحليل الحسابات",
         "📍 استنتاج الموقع",
-        "🗺️ الخريطة التفاعلية",
-        "🔗 روابط التحقق",
-        "🕵️ تحقيق TikTok",
     ])
 
     with sub_accounts:
@@ -2112,6 +2108,35 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                             if row.get("profile_url"):
                                 st.markdown(f"[فتح الحساب ↗]({row.get('profile_url')})")
 
+
+        st.markdown("---")
+        st.markdown("#### 🗺️ الخريطة التفاعلية")
+        if not geo_records:
+            st.info("ℹ️ لا توجد بيانات كافية لرسم الخريطة بعد")
+        else:
+            st.markdown("#### 🗺️ خريطة TikTok التفاعلية")
+            render_tiktok_interactive_map(
+                [record for record in geo_records if record.get("final_country_code") and record.get("final_confidence", 0) >= max(20, min_confidence)],
+                map_key="tt_integrated_map_view",
+            )
+
+            fallback_rows = []
+            for record in geo_records:
+                point = record.get("geo_point")
+                if not point:
+                    continue
+                fallback_rows.append({
+                    "المستخدم": record.get("username", ""),
+                    "النتيجة": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
+                    "الثقة": record.get("final_confidence", 0),
+                    "الإحداثيات": f"{point['lat']:.5f}, {point['lon']:.5f}",
+                    "المصدر": point.get("resolved_from", ""),
+                })
+            if fallback_rows:
+                st.markdown("#### 📋 نقاط الخريطة")
+                st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
+
+
     with sub_geo:
         if not geo_records:
             st.info("ℹ️ لا توجد إشارات كافية بعد. حلّل حسابات أو فيديوهات TikTok أولاً.")
@@ -2218,660 +2243,6 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                 use_container_width=True,
                 key="tt_integrated_geo_json",
             )
-
-    with sub_map:
-        if not geo_records:
-            st.info("ℹ️ لا توجد بيانات كافية لرسم الخريطة بعد")
-        else:
-            st.markdown("#### 🗺️ خريطة TikTok التفاعلية")
-            render_tiktok_interactive_map(
-                [record for record in geo_records if record.get("final_country_code") and record.get("final_confidence", 0) >= max(20, min_confidence)],
-                map_key="tt_integrated_map_view",
-            )
-
-            fallback_rows = []
-            for record in geo_records:
-                point = record.get("geo_point")
-                if not point:
-                    continue
-                fallback_rows.append({
-                    "المستخدم": record.get("username", ""),
-                    "النتيجة": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
-                    "الثقة": record.get("final_confidence", 0),
-                    "الإحداثيات": f"{point['lat']:.5f}, {point['lon']:.5f}",
-                    "المصدر": point.get("resolved_from", ""),
-                })
-            if fallback_rows:
-                st.markdown("#### 📋 نقاط الخريطة")
-                st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
-
-    with sub_verify:
-        available_usernames = []
-        seen_verify = set()
-        for source in tt_results:
-            username = normalize_tiktok_username(source.get("username"))
-            if username and username.lower() not in seen_verify:
-                seen_verify.add(username.lower())
-                available_usernames.append(username)
-        for source in video_results:
-            username = normalize_tiktok_username(source.get("username"))
-            if username and username.lower() not in seen_verify:
-                seen_verify.add(username.lower())
-                available_usernames.append(username)
-
-        selected_username = st.selectbox(
-            "اختر حساباً لروابط التحقق",
-            options=[""] + available_usernames,
-            key="tt_integrated_verify_select",
-        )
-        manual_verify_username = st.text_input("أو أدخل اسم مستخدم يدوياً", key="tt_integrated_verify_manual")
-        verification_username = normalize_tiktok_username(manual_verify_username or selected_username)
-
-        if verification_username:
-            verification_links = build_tiktok_verification_links(verification_username)
-            st.markdown(f"### 🔗 روابط التحقق لـ @{verification_username}")
-            v1, v2, v3, v4, v5 = st.columns(5)
-            with v1:
-                st.link_button("TikTok", verification_links["tiktok_profile"], use_container_width=True)
-            with v2:
-                st.link_button("Wayback", verification_links["wayback"], use_container_width=True)
-            with v3:
-                st.link_button("Google", verification_links["google"], use_container_width=True)
-            with v4:
-                st.link_button("Yandex", verification_links["yandex"], use_container_width=True)
-            with v5:
-                st.link_button("Urlebird", verification_links["urlebird"], use_container_width=True)
-
-            matching_record = next((record for record in geo_records if record.get("username", "").lower() == verification_username.lower()), None)
-            if matching_record and matching_record.get("map_links"):
-                st.markdown("#### 🗺️ روابط التحقق الجغرافي")
-                map_links = matching_record["map_links"]
-                ml1, ml2, ml3, ml4 = st.columns(4)
-                with ml1:
-                    st.link_button("Google Maps", map_links["google_maps"], use_container_width=True)
-                with ml2:
-                    st.link_button("Yandex Maps", map_links["yandex_maps"], use_container_width=True)
-                with ml3:
-                    st.link_button("OpenStreetMap", map_links["openstreetmap"], use_container_width=True)
-                with ml4:
-                    st.link_button("Apple Maps", map_links["apple_maps"], use_container_width=True)
-        else:
-            st.info("ℹ️ اختر حساباً أو أدخل اسم مستخدم لإظهار روابط التحقق")
-
-    with sub_osint:
-        st.markdown("### 🕵️ أدوات TikTok OSINT المدمجة")
-
-        st.markdown(
-            """
-            <div class="info-box" dir="rtl">
-            <b>🔎 ثلاثة أوضاع للتحقيق:</b><br>
-            &nbsp;&nbsp;1️⃣ <b>بحث موضوعي</b> — ابحث عن حسابات تحدثت عن موضوع معين (مثل: العاطلين، الأسعار، الإسكان) مع فلترة حسب الدولة والتاريخ.<br>
-            &nbsp;&nbsp;2️⃣ <b>تحقيق مكاني</b> — ابحث عن فيديوهات مصورة في مكان جغرافي محدد (مثل: بوليفار الرياض، ميدان التحرير).<br>
-            &nbsp;&nbsp;3️⃣ <b>تحقيق حساب</b> — <u>اليوزرنيم هنا</u> يُستخدم للتحقق من حساب بعينه: تاريخه، موقعه، روابط التحقق.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        osint_mode_tt = st.radio(
-            "📡 وضع التحقيق:",
-            ["🔍 بحث موضوعي (كلمات دلالية)", "📍 تحقيق مكاني (مكان جغرافي)", "👤 تحقيق حساب (يوزرنيم)"],
-            horizontal=True,
-            key="tt_osint_mode_select",
-        )
-
-        # ═══════════════════════════════
-        # وضع 1: البحث الموضوعي
-        # ═══════════════════════════════
-        if osint_mode_tt.startswith("🔍"):
-            st.markdown("#### 🔍 البحث الموضوعي — تجميع الحسابات حول موضوع")
-            st.markdown(
-                """<div style="background:#fff3cd;border-right:4px solid #ffc107;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:0.9em" dir="rtl">
-                💡 <b>كيف يعمل:</b> أدخل كلمة مثل <b>العاطلين</b> أو <b>غلاء الأسعار</b>، اختر الدولة والفترة الزمنية،
-                وسيتم تجميع <b>روابط البحث المباشر</b> على TikTok وأدوات خارجية ترصد الحسابات التي تناولت الموضوع.
-                </div>""",
-                unsafe_allow_html=True,
-            )
-
-            t1, t2, t3 = st.columns([2, 1, 1])
-            with t1:
-                topic_keyword = st.text_input(
-                    "🗝️ الكلمة أو الموضوع",
-                    placeholder="مثال: العاطلين  أو  غلاء الأسعار  أو  البطالة",
-                    key="tt_osint_topic_kw",
-                )
-            with t2:
-                topic_country = st.selectbox(
-                    "🌍 الدولة",
-                    options=[
-                        "🇸🇦 السعودية", "🇪🇬 مصر", "🇦🇪 الإمارات", "🇯🇴 الأردن",
-                        "🇮🇶 العراق", "🇾🇪 اليمن", "🇲🇦 المغرب", "🇹🇳 تونس",
-                        "🇩🇿 الجزائر", "🇱🇧 لبنان", "🇸🇩 السودان", "🌐 كل الدول",
-                    ],
-                    key="tt_osint_topic_country",
-                )
-            with t3:
-                topic_lang = st.selectbox(
-                    "🗣️ اللغة",
-                    options=["العربية", "الإنجليزية", "كلاهما"],
-                    key="tt_osint_topic_lang",
-                )
-
-            td1, td2, td3 = st.columns(3)
-            with td1:
-                topic_date_from = st.date_input("📅 من تاريخ", value=None, key="tt_osint_date_from")
-            with td2:
-                topic_date_to = st.date_input("📅 إلى تاريخ", value=None, key="tt_osint_date_to")
-            with td3:
-                topic_min_views = st.number_input("👁️ حد أدنى للمشاهدات", min_value=0, value=0, step=1000, key="tt_osint_min_views")
-
-            ta, tb = st.columns(2)
-            run_topic = ta.button("🚀 ابحث عن الحسابات الآن", type="primary", use_container_width=True, key="tt_osint_run_topic")
-            clear_topic = tb.button("🗑️ مسح النتائج", use_container_width=True, key="tt_osint_clear_topic")
-
-            if clear_topic:
-                st.session_state["tt_osint_topic_result"] = None
-                st.rerun()
-
-            if run_topic:
-                if not topic_keyword.strip():
-                    st.error("❌ أدخل كلمة أو موضوع للبحث أولاً")
-                else:
-                    from urllib.parse import quote as _q
-                    import datetime as _dt
-                    kw = topic_keyword.strip()
-                    _country_map = {
-                        "🇸🇦 السعودية": ("SA", "Saudi Arabia", "السعودية"),
-                        "🇪🇬 مصر": ("EG", "Egypt", "مصر"),
-                        "🇦🇪 الإمارات": ("AE", "UAE", "الإمارات"),
-                        "🇯🇴 الأردن": ("JO", "Jordan", "الأردن"),
-                        "🇮🇶 العراق": ("IQ", "Iraq", "العراق"),
-                        "🇾🇪 اليمن": ("YE", "Yemen", "اليمن"),
-                        "🇲🇦 المغرب": ("MA", "Morocco", "المغرب"),
-                        "🇹🇳 تونس": ("TN", "Tunisia", "تونس"),
-                        "🇩🇿 الجزائر": ("DZ", "Algeria", "الجزائر"),
-                        "🇱🇧 لبنان": ("LB", "Lebanon", "لبنان"),
-                        "🇸🇩 السودان": ("SD", "Sudan", "السودان"),
-                        "🌐 كل الدول": ("", "All", ""),
-                    }
-                    cc, ce, ca = _country_map.get(topic_country, ("", "All", ""))
-                    search_kw_ar = f"{kw} {ca}".strip() if ca else kw
-                    search_kw_en = f"{kw} {ce}".strip() if ce and ce != "All" else kw
-                    hashtag_kw = kw.replace(" ", "").replace("ال", "")
-                    date_filter_str = ""
-                    if topic_date_from:
-                        date_filter_str += f" after:{str(topic_date_from)}"
-                    if topic_date_to:
-                        date_filter_str += f" before:{str(topic_date_to)}"
-                    topic_links = {
-                        "tiktok_keyword": f"https://www.tiktok.com/search?q={_q(search_kw_ar)}",
-                        "tiktok_hashtag": f"https://www.tiktok.com/tag/{_q(hashtag_kw)}",
-                        "tiktok_discover": "https://www.tiktok.com/discover?lang=ar",
-                        "google_tiktok": f"https://www.google.com/search?q=site:tiktok.com+{_q(search_kw_ar+date_filter_str)}",
-                        "google_tiktok_en": f"https://www.google.com/search?q=site:tiktok.com+{_q(search_kw_en+date_filter_str)}",
-                        "urlebird_search": f"https://urlebird.com/search/{_q(kw)}/",
-                        "exolyt": "https://exolyt.com/",
-                        "tikmeta": "https://tikmeta.com/",
-                        "pentos": "https://pentos.co/",
-                        "twitter_cross": f"https://twitter.com/search?q={_q(search_kw_ar+date_filter_str)}&src=typed_query&f=top",
-                        "youtube_cross": f"https://www.youtube.com/results?search_query={_q(search_kw_ar)}",
-                    }
-                    st.session_state["tt_osint_topic_result"] = {
-                        "keyword": kw, "country": topic_country, "country_code": cc,
-                        "date_from": str(topic_date_from) if topic_date_from else None,
-                        "date_to": str(topic_date_to) if topic_date_to else None,
-                        "min_views": topic_min_views, "links": topic_links, "search_kw_ar": search_kw_ar,
-                    }
-
-            topic_result = st.session_state.get("tt_osint_topic_result")
-            if topic_result:
-                kw_r = topic_result["keyword"]
-                links_r = topic_result["links"]
-                st.markdown("---")
-                st.markdown(f"#### 📊 نتائج البحث الموضوعي: **{kw_r}** — {topic_result['country']}")
-                f1, f2, f3, f4 = st.columns(4)
-                f1.metric("🗝️ الموضوع", kw_r)
-                f2.metric("🌍 الدولة", topic_result["country"].split(" ", 1)[-1])
-                f3.metric("📅 من", topic_result["date_from"] or "بلا حد")
-                f4.metric("📅 إلى", topic_result["date_to"] or "بلا حد")
-
-                st.markdown("##### 🔗 روابط البحث المباشرة على TikTok")
-                rc1, rc2, rc3 = st.columns(3)
-                with rc1:
-                    st.link_button(f"🎵 TikTok: «{kw_r}»", links_r["tiktok_keyword"], use_container_width=True)
-                with rc2:
-                    st.link_button(f"#️⃣ هاشتاق: #{kw_r[:20]}", links_r["tiktok_hashtag"], use_container_width=True)
-                with rc3:
-                    st.link_button("🌍 اكتشف TikTok عربي", links_r["tiktok_discover"], use_container_width=True)
-
-                st.markdown("##### 🔍 بحث Google داخل TikTok (يرصد الحسابات)")
-                gc1, gc2 = st.columns(2)
-                with gc1:
-                    st.link_button("🔎 Google (عربي) + تاريخ", links_r["google_tiktok"], use_container_width=True)
-                with gc2:
-                    st.link_button("🔎 Google (إنجليزي) + تاريخ", links_r["google_tiktok_en"], use_container_width=True)
-
-                st.markdown("##### 📡 أدوات OSINT خارجية لرصد الحسابات")
-                st.markdown(
-                    """<div style="background:#e8f4fd;border-right:4px solid #1da1f2;padding:10px 14px;border-radius:8px;font-size:0.85em" dir="rtl">
-                    <b>كيف تجمع الحسابات؟</b> افتح Urlebird وابحث بالكلمة ← يظهر قائمة الفيديوهات والحسابات.
-                    افتح Exolyt أو TikMeta وابحث بالهاشتاق ← إحصاءات وقائمة حسابات.
-                    أدخل الحسابات المكتشفة في تبويب <b>تحليل الحسابات</b> لتحليلها جغرافياً وعرضها على الخريطة.
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-                ex1, ex2, ex3, ex4 = st.columns(4)
-                with ex1:
-                    st.link_button("🕊️ Urlebird", links_r["urlebird_search"], use_container_width=True)
-                with ex2:
-                    st.link_button("📈 Exolyt", links_r["exolyt"], use_container_width=True)
-                with ex3:
-                    st.link_button("📊 TikMeta", links_r["tikmeta"], use_container_width=True)
-                with ex4:
-                    st.link_button("🔬 Pentos", links_r["pentos"], use_container_width=True)
-
-                st.markdown("##### 🔄 تحقق متقاطع عبر منصات أخرى")
-                tw1, tw2 = st.columns(2)
-                with tw1:
-                    st.link_button("🐦 Twitter/X نفس الموضوع", links_r["twitter_cross"], use_container_width=True)
-                with tw2:
-                    st.link_button("▶️ YouTube نفس الموضوع", links_r["youtube_cross"], use_container_width=True)
-
-                with st.expander("📋 دليل خطوة بخطوة: كيف تجمع الحسابات التي تحدثت عن الموضوع", expanded=False):
-                    st.markdown(
-                        f"""<div dir="rtl" style="font-size:0.9em;line-height:1.9">
-                        <b>🎯 هدفك:</b> جمع الحسابات التي تحدثت عن «{kw_r}» في {topic_result["country"].split(" ",1)[-1]}<br><br>
-                        <b>الخطوة 1 — البحث المباشر على TikTok:</b><br>
-                        &nbsp;&nbsp;• اضغط زر «TikTok: «{kw_r}»» ← سيفتح TikTok بنتائج الكلمة<br>
-                        &nbsp;&nbsp;• في TikTok فلتر: اختر <b>الأشخاص</b> ← سيظهر الحسابات المرتبطة<br>
-                        &nbsp;&nbsp;• أو فلتر: <b>الفيديوهات</b> ← ابحث يدوياً عن الحسابات في النتائج<br><br>
-                        <b>الخطوة 2 — رصد الهاشتاق:</b><br>
-                        &nbsp;&nbsp;• اضغط زر الهاشتاق ← سيظهر كل الفيديوهات بهذا الهاشتاق<br>
-                        &nbsp;&nbsp;• دوّن أسماء الحسابات الأكثر نشراً حول الموضوع<br><br>
-                        <b>الخطوة 3 — Urlebird (الأقوى لرصد الحسابات):</b><br>
-                        &nbsp;&nbsp;• ابحث بنفس الكلمة في Urlebird<br>
-                        &nbsp;&nbsp;• ستجد قائمة فيديوهات مع أسماء الحسابات وإحصاءاتها<br><br>
-                        <b>الخطوة 4 — تحليل جغرافي للحسابات المكتشفة:</b><br>
-                        &nbsp;&nbsp;• انسخ أسماء الحسابات (سطر لكل حساب)<br>
-                        &nbsp;&nbsp;• الصقها في تبويب «🎵 محلل حسابات TikTok المتكامل»<br>
-                        &nbsp;&nbsp;• ستحصل على <b>خريطة تفاعلية</b> تُظهر مواقعهم الجغرافية ومعلوماتهم
-                        </div>""",
-                        unsafe_allow_html=True,
-                    )
-
-                st.download_button(
-                    "📥 تنزيل نتيجة البحث الموضوعي JSON",
-                    data=json.dumps(topic_result, ensure_ascii=False, indent=2).encode("utf-8"),
-                    file_name=f"tiktok_topic_{kw_r[:20]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json",
-                    use_container_width=True,
-                    key="tt_osint_topic_download",
-                )
-
-        # ═══════════════════════════════
-        # وضع 2: التحقيق المكاني
-        # ═══════════════════════════════
-        elif osint_mode_tt.startswith("📍"):
-            st.markdown("#### 📍 التحقيق المكاني — ابحث عن فيديوهات في موقع معين")
-            preset_place = st.selectbox(
-                "📌 مواقع مشهورة جاهزة",
-                options=[""] + FAMOUS_LOCATIONS_TT,
-                key="tt_osint_preset_place",
-            )
-            os1, os2 = st.columns(2)
-            with os1:
-                place_query = st.text_input(
-                    "📍 اسم المكان أو المعلم",
-                    value=st.session_state.get("tt_osint_place_query", ""),
-                    key="tt_osint_place_query_input",
-                    placeholder="مثال: Riyadh Boulevard أو Times Square",
-                )
-            with os2:
-                place_keywords = st.text_input(
-                    "🔎 كلمات مفتاحية إضافية",
-                    value=st.session_state.get("tt_osint_keywords", ""),
-                    key="tt_osint_keywords_input",
-                    placeholder="حفلة، مطعم، شارع، event",
-                )
-            active_place = (place_query or preset_place or "").strip()
-            active_keywords = (place_keywords or "").strip()
-            oa, ob = st.columns(2)
-            run_place_osint = oa.button("🚀 تشغيل تحقيق المكان", type="primary", use_container_width=True, key="tt_osint_run_place")
-            clear_place_osint = ob.button("🗑️ مسح نتيجة التحقيق", use_container_width=True, key="tt_osint_clear_place")
-            if preset_place and preset_place != st.session_state.get("tt_osint_place_query", ""):
-                st.session_state["tt_osint_place_query"] = preset_place
-            if clear_place_osint:
-                st.session_state["tt_osint_place_result"] = None
-                st.session_state["tt_osint_place_query"] = ""
-                st.session_state["tt_osint_keywords"] = ""
-                st.rerun()
-            if run_place_osint:
-                if not active_place:
-                    st.error("❌ أدخل اسم مكان أو اختر موقعاً جاهزاً أولاً")
-                else:
-                    geo_result = geocode_tiktok_place(active_place, lang="ar") or geocode_tiktok_place(active_place, lang="en")
-                    search_links = build_tiktok_search_links(active_place, active_keywords, geo_result)
-                    st.session_state["tt_osint_place_result"] = {
-                        "place": active_place, "keywords": active_keywords, "username": "",
-                        "geo_result": geo_result, "search_links": search_links,
-                        "verification_links": {},
-                        "map_links": build_tt_map_links(geo_result["lat"], geo_result["lon"]) if geo_result else {},
-                    }
-                    st.session_state["tt_osint_place_query"] = active_place
-                    st.session_state["tt_osint_keywords"] = active_keywords
-            tt_osint_result = st.session_state.get("tt_osint_place_result")
-            if tt_osint_result:
-                geo_result = tt_osint_result.get("geo_result") or {}
-                search_links = tt_osint_result.get("search_links") or {}
-                map_links = tt_osint_result.get("map_links") or {}
-                st.markdown(f"#### 📌 نتيجة التحقيق للمكان: {tt_osint_result.get('place', '')}")
-                r1, r2, r3 = st.columns(3)
-                r1.metric("📍 المكان", tt_osint_result.get("place", "—") or "—")
-                r2.metric("🧭 الإحداثيات", f"{geo_result.get('lat',0):.4f}, {geo_result.get('lon',0):.4f}" if geo_result else "غير متاح")
-                r3.metric("🌍 الدولة", geo_result.get("country", "غير معروفة") if geo_result else "غير معروفة")
-                st.markdown("#### 🔎 روابط البحث على TikTok")
-                lc1, lc2, lc3 = st.columns(3)
-                with lc1:
-                    st.link_button("TikTok Search", search_links.get("general_search", "https://www.tiktok.com/search"), use_container_width=True)
-                with lc2:
-                    st.link_button("Hashtag Search", search_links.get("hashtag_search", "https://www.tiktok.com/discover"), use_container_width=True)
-                with lc3:
-                    st.link_button("Google Site Search", search_links.get("regional_search", "https://www.google.com"), use_container_width=True)
-                if geo_result:
-                    st.markdown("#### 🗺️ روابط الخرائط")
-                    mc1, mc2, mc3, mc4 = st.columns(4)
-                    with mc1:
-                        st.link_button("Google Maps", map_links.get("google_maps", "https://www.google.com/maps"), use_container_width=True)
-                    with mc2:
-                        st.link_button("Yandex Maps", map_links.get("yandex_maps", "https://yandex.com/maps"), use_container_width=True)
-                    with mc3:
-                        st.link_button("OpenStreetMap", map_links.get("openstreetmap", "https://www.openstreetmap.org"), use_container_width=True)
-                    with mc4:
-                        st.link_button("Apple Maps", map_links.get("apple_maps", "https://maps.apple.com"), use_container_width=True)
-                    if FOLIUM_AVAILABLE:
-                        _place_map = folium.Map(location=[geo_result["lat"], geo_result["lon"]], zoom_start=12, tiles="CartoDB positron", control_scale=True)
-                        _popup_html = (
-                            f"<div dir='rtl' style='min-width:220px'>"
-                            f"<b>{html.escape(tt_osint_result.get('place',''))}</b><br>"
-                            f"🌍 {html.escape(str(geo_result.get('country','غير معروفة')))}<br>"
-                            f"📌 {html.escape(str(geo_result.get('display_name','')))}</div>"
-                        )
-                        folium.Marker(
-                            location=[geo_result["lat"], geo_result["lon"]],
-                            tooltip=tt_osint_result.get("place", "TikTok OSINT"),
-                            popup=folium.Popup(_popup_html, max_width=320),
-                            icon=folium.Icon(color="red", icon="info-sign"),
-                        ).add_to(_place_map)
-                        st_folium(_place_map, width=None, height=420, key="tt_osint_place_map")
-                    else:
-                        st.info("💡 لتفعيل الخريطة التفاعلية ثبّت: folium + streamlit-folium")
-                else:
-                    st.warning("⚠️ تعذّر تحديد إحداثيات المكان. ما زالت روابط البحث النصي متاحة.")
-                st.download_button(
-                    "📥 تنزيل نتيجة TikTok OSINT بصيغة JSON",
-                    data=json.dumps(tt_osint_result, ensure_ascii=False, indent=2).encode("utf-8"),
-                    file_name=f"tiktok_osint_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json", use_container_width=True, key="tt_osint_download_json",
-                )
-            else:
-                st.caption("ابدأ بإدخال مكان أو اختيار موقع مشهور ثم اضغط تشغيل تحقيق المكان.")
-
-        # ═══════════════════════════════
-        # وضع 3: تحقيق حساب (اليوزرنيم)
-        # ═══════════════════════════════
-        else:
-            st.markdown("#### 👤 تحقيق حساب — تحقق من يوزرنيم بعينه")
-            st.markdown(
-                """<div style="background:#d4edda;border-right:4px solid #28a745;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:0.9em" dir="rtl">
-                ✅ <b>متى تستخدم هذا الوضع؟</b> عندما تجد حساباً مثيراً للاهتمام أثناء البحث الموضوعي وتريد:<br>
-                &nbsp;&nbsp;• معرفة موقعه الجغرافي وتاريخه على TikTok<br>
-                &nbsp;&nbsp;• التحقق منه عبر Wayback Machine وGoogle وYandex وUrlebird<br>
-                &nbsp;&nbsp;• بناء ملف OSINT كامل عن الحساب وتحليله جغرافياً
-                </div>""",
-                unsafe_allow_html=True,
-            )
-            osint_available_usernames_v2 = []
-            osint_seen_v2 = set()
-            for _src in tt_results:
-                _uname = normalize_tiktok_username(_src.get("username"))
-                if _uname and _uname.lower() not in osint_seen_v2:
-                    osint_seen_v2.add(_uname.lower())
-                    osint_available_usernames_v2.append(_uname)
-            for _src in video_results:
-                _uname = normalize_tiktok_username(_src.get("username"))
-                if _uname and _uname.lower() not in osint_seen_v2:
-                    osint_seen_v2.add(_uname.lower())
-                    osint_available_usernames_v2.append(_uname)
-            ua, ub = st.columns(2)
-            with ua:
-                selected_osint_username = st.selectbox(
-                    "👤 اختر من الحسابات المحللة مسبقاً",
-                    options=[""] + osint_available_usernames_v2,
-                    key="tt_osint_username_select",
-                )
-            with ub:
-                manual_osint_username = st.text_input(
-                    "✏️ أو أدخل يوزرنيم جديد يدوياً",
-                    key="tt_osint_username_manual",
-                    placeholder="username (بدون @)",
-                )
-            active_username = normalize_tiktok_username(manual_osint_username or selected_osint_username)
-            ua2, ub2 = st.columns(2)
-            run_user_osint = ua2.button("🔍 تشغيل تحقيق الحساب", type="primary", use_container_width=True, key="tt_osint_run_user")
-            clear_user_osint = ub2.button("🗑️ مسح", use_container_width=True, key="tt_osint_clear_user")
-            if clear_user_osint:
-                st.session_state["tt_osint_user_result"] = None
-                st.rerun()
-            if run_user_osint:
-                if not active_username:
-                    st.error("❌ أدخل اسم مستخدم أولاً")
-                else:
-                    _vlinks = build_tiktok_verification_links(active_username)
-                    _ulinks = build_tiktok_user_search(active_username, "", "")
-                    st.session_state["tt_osint_user_result"] = {
-                        "username": active_username,
-                        "verification_links": _vlinks,
-                        "user_links": _ulinks,
-                    }
-            user_result = st.session_state.get("tt_osint_user_result")
-            if user_result:
-                _uname_r = user_result["username"]
-                _vl = user_result["verification_links"]
-                st.markdown(f"#### ✅ نتيجة تحقيق الحساب: @{_uname_r}")
-                vc1, vc2, vc3, vc4, vc5 = st.columns(5)
-                with vc1:
-                    st.link_button("🎵 TikTok Profile", _vl.get("tiktok_profile","https://www.tiktok.com"), use_container_width=True)
-                with vc2:
-                    st.link_button("🕰️ Wayback Machine", _vl.get("wayback","https://web.archive.org"), use_container_width=True)
-                with vc3:
-                    st.link_button("🔎 Google", _vl.get("google","https://www.google.com"), use_container_width=True)
-                with vc4:
-                    st.link_button("🔍 Yandex", _vl.get("yandex","https://yandex.com"), use_container_width=True)
-                with vc5:
-                    st.link_button("🐦 Urlebird", _vl.get("urlebird","https://urlebird.com"), use_container_width=True)
-                st.info("💡 لتحليل هذا الحساب جغرافياً بشكل كامل، أضف اسمه في تبويب «تحليل الحسابات» ثم اضغط تحليل.")
-                st.download_button(
-                    "📥 تنزيل ملف تحقيق الحساب JSON",
-                    data=json.dumps(user_result, ensure_ascii=False, indent=2).encode("utf-8"),
-                    file_name=f"tiktok_user_osint_{_uname_r}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json", use_container_width=True, key="tt_osint_user_download",
-                )
-            else:
-                st.caption("أدخل اسم مستخدم TikTok ثم اضغط «تشغيل تحقيق الحساب».")
-
-# ============ تبويب تحليل فيديو تيك توك (الجديد) ============
-with tab_video:
-    st.markdown("### 🎬 تحليل فيديو TikTok - الحل الذهبي للموقع!")
-    st.markdown(
-        """
-        <div class="info-box">
-        <strong>🔥 الحل الأفضل لمعرفة موقع حساب TikTok!</strong><br>
-        بدلاً من تحليل البروفايل (الذي يحجب الموقع)، ألصق <strong>روابط فيديو مباشرة</strong>.<br>
-        كل فيديو يحوي حقل <code>locationCreated</code> الذي يعكس <strong>مكان التصوير الفعلي</strong>.<br>
-        دقة النتيجة: <strong>عالية جداً!</strong> 🎯
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("#### 💡 كيف تستخدم هذه الميزة:")
-    st.markdown("""
-    1. افتح بروفايل الحساب على TikTok في المتصفح
-    2. اضغط على أي فيديو لفتحه
-    3. انسخ رابط الفيديو والصقه هنا (أو عدة روابط، سطر لكل فيديو)
-    4. دع المحلل يعمل عمله ✨
-    """)
-
-    video_urls_input = st.text_area(
-        "ألصق روابط فيديوهات TikTok (رابط لكل سطر):",
-        value="""https://www.tiktok.com/@noorstars/video/7518458932478725406
-https://www.tiktok.com/@khaby.lame/video/7402695860712164641
-""",
-        height=200,
-        key="video_urls_input",
-    )
-
-    col_v1, col_v2 = st.columns([3, 1])
-    with col_v2:
-        live_video_count = len([l for l in video_urls_input.splitlines() if l.strip() and 'tiktok.com' in l.lower()])
-        st.metric("🎬 عدد الفيديوهات", live_video_count)
-
-    if st.button("🚀 تحليل الفيديوهات + مواقعها", type="primary", use_container_width=True, key="video_analyze"):
-        # استخراج الروابط
-        video_urls = []
-        for line in video_urls_input.splitlines():
-            line = line.strip()
-            if line and 'tiktok.com' in line.lower() and '/video/' in line:
-                video_urls.append(line)
-
-        if not video_urls:
-            st.error("❌ لم يتم العثور على روابط فيديو صحيحة")
-        else:
-            st.info(f"🔄 جارٍ تحليل **{len(video_urls)}** فيديو...")
-            progress = st.progress(0)
-            status = st.empty()
-            start = time.time()
-
-            video_results = []
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = {ex.submit(analyze_tiktok_video, url): url for url in video_urls}
-                done = 0
-                for f in as_completed(futures):
-                    try:
-                        video_results.append(f.result())
-                    except Exception as e:
-                        video_results.append({"video_url": futures[f], "status": "❌", "error": str(e)})
-                    done += 1
-                    progress.progress(done / len(video_urls))
-                    status.text(f"⏳ {done}/{len(video_urls)}")
-
-            elapsed = time.time() - start
-            progress.empty()
-            status.empty()
-            st.session_state["video_results"] = video_results
-            st.success(f"✅ تم تحليل {len(video_results)} فيديو في {elapsed:.1f} ثانية!")
-
-    # عرض نتائج الفيديوهات
-    if "video_results" in st.session_state and st.session_state["video_results"]:
-        v_results = st.session_state["video_results"]
-        df_v = pd.DataFrame(v_results)
-
-        st.markdown("---")
-        st.markdown("## 📊 نتائج تحليل الفيديوهات")
-
-        # إحصائيات
-        total_v = len(v_results)
-        success_v = sum(1 for r in v_results if r.get("status") == "✅ نجح")
-        with_loc = sum(1 for r in v_results if r.get("location_created"))
-        total_views = sum(r.get("video_views", 0) for r in v_results if r.get("status") == "✅ نجح")
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🎬 الإجمالي", total_v)
-        c2.metric("✅ ناجح", success_v)
-        c3.metric("📍 له موقع", with_loc)
-        c4.metric("👁️ إجمالي المشاهدات", tt_format_count(total_views))
-
-        # توزيع المواقع
-        if with_loc > 0:
-            st.markdown("#### 🌍 توزيع أماكن التصوير")
-            loc_data = [f"{r['location_flag']} {r['location_name_ar']}" for r in v_results if r.get("location_created")]
-            if loc_data:
-                loc_counts = pd.Series(loc_data).value_counts()
-                col_chart, col_list = st.columns([2, 1])
-                with col_chart:
-                    st.bar_chart(loc_counts)
-                with col_list:
-                    st.markdown("**أكثر الأماكن:**")
-                    for loc, count in loc_counts.head(10).items():
-                        st.markdown(f"- {loc}: **{count}**")
-
-        # تجميع حسب الحساب - لرؤية موقع كل حساب
-        st.markdown("#### 👤 تجميع حسب الحساب (الموقع الأكثر تكراراً)")
-        if success_v > 0:
-            users_locations = {}
-            for r in v_results:
-                if r.get("status") == "✅ نجح":
-                    u = r.get("username", "")
-                    loc = r.get("location_created", "")
-                    if u not in users_locations:
-                        users_locations[u] = {"locations": [], "data": r}
-                    if loc:
-                        users_locations[u]["locations"].append(loc)
-
-            for u, info in users_locations.items():
-                if info["locations"]:
-                    locs = info["locations"]
-                    most_common = max(set(locs), key=locs.count)
-                    flag = TIKTOK_REGION_MAP.get(most_common, ("🌍", most_common))[0]
-                    name = TIKTOK_REGION_MAP.get(most_common, ("", most_common))[1]
-                    count = locs.count(most_common)
-                    st.markdown(f"**@{u}**: {flag} **{name}** ({count}/{len(locs)} فيديو)")
-                    if len(set(locs)) > 1:
-                        st.caption(f"أماكن أخرى: {', '.join(set(locs) - {most_common})}")
-
-        # جدول الفيديوهات
-        st.markdown("#### 📋 جدول الفيديوهات")
-        v_cols = [
-            "username", "author_nickname", "location_flag", "location_name_ar",
-            "location_created", "text_language", "create_date",
-            "video_views", "video_likes", "video_comments",
-            "author_id", "author_verified", "video_desc", "video_url", "status",
-        ]
-        v_cols = [c for c in v_cols if c in df_v.columns]
-
-        st.dataframe(
-            df_v[v_cols], use_container_width=True, height=400,
-            column_config={
-                "video_url": st.column_config.LinkColumn("🔗 الفيديو"),
-                "author_verified": st.column_config.CheckboxColumn("✓"),
-                "location_flag": st.column_config.TextColumn("🚩", width="small"),
-                "location_name_ar": st.column_config.TextColumn("🌍 الموقع"),
-                "location_created": st.column_config.TextColumn("رمز", width="small"),
-                "video_views": st.column_config.NumberColumn("👁️ مشاهدات", format="%d"),
-                "video_likes": st.column_config.NumberColumn("❤️ إعجابات", format="%d"),
-                "video_comments": st.column_config.NumberColumn("💬 تعليقات", format="%d"),
-                "author_id": st.column_config.TextColumn("🆔 ID المؤلف"),
-                "video_desc": st.column_config.TextColumn("📝 الوصف", width="large"),
-            },
-        )
-
-        # تصدير
-        timestamp_v = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ev1, ev2, ev3 = st.columns(3)
-        csv_v = df_v.to_csv(index=False).encode("utf-8-sig")
-        ev1.download_button("⬇️ CSV", data=csv_v,
-                            file_name=f"tiktok_videos_{timestamp_v}.csv",
-                            mime="text/csv", use_container_width=True)
-        json_v = df_v.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
-        ev2.download_button("⬇️ JSON", data=json_v,
-                            file_name=f"tiktok_videos_{timestamp_v}.json",
-                            mime="application/json", use_container_width=True)
-        excel_v = results_to_excel(df_v.to_dict("records"))
-        ev3.download_button("⬇️ Excel", data=excel_v,
-                            file_name=f"tiktok_videos_{timestamp_v}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True)
-
 
 # ============ تبويب تحليل تغريدات X ============
 with tab_x:
