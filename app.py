@@ -1089,11 +1089,13 @@ import math as _math
 # ── استخراج منطقة المستخدم بـ 4 طبقات متكاملة ──
 def fetch_region_from_video_page(username: str) -> dict:
     """
-    استخراج دولة حساب TikTok باستخدام 4 طبقات:
-    1. صفحة البروفايل: __UNIVERSAL_DATA_FOR_REHYDRATION__ → user.region
-    2. metadata الفيديو: author.region / locationCreated  
-    3. TikWM API (مجاني موثوق)
-    4. استنتاج من البايو
+    استخراج دولة حساب TikTok باستخدام طبقات متعددة (نسخة محسّنة v11):
+    L1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → user.region (دقيق 92%)
+    L1b: SIGI_STATE → UserModule.users[].region (دقيق 88%)
+    L2:  TikWM API (مجاني موثوق)
+    L3:  JSON parsing دقيق من صفحة الفيديو (locationCreated/author.region)
+    L4:  استنتاج من البايو
+    ملاحظة: تم حذف L1c (regex واسع) لأنه يلتقط "US" من ملفات JS ويعطي نتائج خاطئة
     """
     result = {"region": "", "source": "unknown", "confidence": 0, "method": ""}
     if not username:
@@ -1101,7 +1103,6 @@ def fetch_region_from_video_page(username: str) -> dict:
     username = username.strip().lstrip("@")
 
     import re as _re
-    import random as _random
 
     MULTI_HEADERS = [
         {
@@ -1127,7 +1128,9 @@ def fetch_region_from_video_page(username: str) -> dict:
         },
     ]
 
-    # ─── الطبقة 1: صفحة البروفايل HTML ───
+    _stored_html = ""
+
+    # ─── الطبقة 1: صفحة البروفايل HTML (JSON parsing دقيق فقط) ───
     try:
         url = f"https://www.tiktok.com/@{username}"
         for _headers in MULTI_HEADERS:
@@ -1136,8 +1139,9 @@ def fetch_region_from_video_page(username: str) -> dict:
                 if resp.status_code != 200:
                     continue
                 html = resp.text
+                _stored_html = html
 
-                # 1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → webapp.user-detail
+                # L1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → webapp.user-detail
                 m = _re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html, _re.DOTALL)
                 if m:
                     try:
@@ -1150,7 +1154,7 @@ def fetch_region_from_video_page(username: str) -> dict:
                     except Exception:
                         pass
 
-                # 1b: SIGI_STATE
+                # L1b: SIGI_STATE
                 m2 = _re.search(r'<script id="SIGI_STATE"[^>]*>(.*?)</script>', html, _re.DOTALL)
                 if m2:
                     try:
@@ -1164,56 +1168,45 @@ def fetch_region_from_video_page(username: str) -> dict:
                     except Exception:
                         pass
 
-                # 1c: Regex direct - search in full HTML
-                # Try to find region near author-related JSON keys
-                region_patterns_l1 = [
-                    r'"region"\s*:\s*"([A-Z]{2})"',
-                    r'"createRegion"\s*:\s*"([A-Z]{2})"',
-                    r'"authorRegion"\s*:\s*"([A-Z]{2})"',
-                ]
-                for pat in region_patterns_l1:
-                    matches = _re.findall(pat, html)
-                    valid = [m for m in matches if m in TIKTOK_REGION_MAP]
-                    if valid:
-                        from collections import Counter as _CC
-                        most_common = _CC(valid).most_common(1)[0][0]
-                        result.update({"region": most_common, "source": "profile_html_regex", "confidence": 78, "method": "L1c"})
-                        return result
+                # L1c مُحذوف: كان يستخدم regex واسع يلتقط "US" من ملفات JS الخارجية
+                # مما يتسبب في إرجاع "الولايات المتحدة" لجميع الحسابات بشكل خاطئ
 
-                # Store html for layer 2
-                _stored_html = html
                 break
             except Exception:
                 continue
     except Exception:
-        _stored_html = ""
+        pass
 
-    # ─── الطبقة 2: TikWM API (أكثر موثوقية) ───
+    # ─── الطبقة 2: TikWM API ───
     try:
         tikwm_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
         tikwm_url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
         resp_tm = requests.get(tikwm_url, headers=tikwm_headers, timeout=10)
         if resp_tm.status_code == 200:
-            tm_data = resp_tm.json()
-            # Try multiple paths
-            user_obj = None
             try:
-                user_obj = tm_data["data"]["user_info"]
-            except (KeyError, TypeError):
+                tm_data = resp_tm.json()
+                user_obj = None
                 try:
-                    user_obj = tm_data["data"]
+                    user_obj = tm_data["data"]["user_info"]
                 except (KeyError, TypeError):
-                    pass
-            if user_obj:
-                for key in ["region", "country", "location", "createRegion"]:
-                    r_val = user_obj.get(key)
-                    if r_val and isinstance(r_val, str) and len(r_val) in [2, 3]:
-                        result.update({"region": r_val.upper()[:2], "source": "tikwm_api", "confidence": 88, "method": "L2_tikwm"})
-                        return result
+                    try:
+                        user_obj = tm_data["data"]
+                    except (KeyError, TypeError):
+                        pass
+                if user_obj and isinstance(user_obj, dict):
+                    for key in ["region", "country", "location", "createRegion", "create_region"]:
+                        r_val = user_obj.get(key)
+                        if r_val and isinstance(r_val, str) and 2 <= len(r_val) <= 3 and r_val.isalpha():
+                            code = r_val.upper()[:2]
+                            if code in TIKTOK_REGION_MAP:
+                                result.update({"region": code, "source": "tikwm_api", "confidence": 88, "method": "L2_tikwm"})
+                                return result
+            except Exception:
+                pass
     except Exception:
         pass
 
-    # ─── الطبقة 3: metadata فيديو من صفحة الحساب ───
+    # ─── الطبقة 3: صفحة فيديو - JSON parsing دقيق فقط (بدون regex واسع) ───
     try:
         url3 = f"https://www.tiktok.com/@{username}"
         for _headers in MULTI_HEADERS[:2]:
@@ -1222,26 +1215,63 @@ def fetch_region_from_video_page(username: str) -> dict:
                 if resp3.status_code != 200:
                     continue
                 html3 = resp3.text
-                # Find video IDs
                 vid_ids = _re.findall(r'/video/(\d{15,20})', html3)
                 if vid_ids:
                     vid_url = f"https://www.tiktok.com/@{username}/video/{vid_ids[0]}"
                     resp_vid = requests.get(vid_url, headers=_headers, timeout=15)
                     if resp_vid.status_code == 200:
                         vid_html = resp_vid.text
-                        vid_patterns = [
-                            (r'"locationCreated"\s*:\s*"([A-Z]{2})"', "locationCreated", 85),
-                            (r'"region"\s*:\s*"([A-Z]{2})"', "region", 82),
-                            (r'"createRegion"\s*:\s*"([A-Z]{2})"', "createRegion", 78),
-                        ]
-                        for pat, name, conf in vid_patterns:
-                            matches = _re.findall(pat, vid_html)
-                            valid = [m for m in matches if m in TIKTOK_REGION_MAP]
-                            if valid:
-                                from collections import Counter as _CC2
-                                mc = _CC2(valid).most_common(1)[0][0]
-                                result.update({"region": mc, "source": f"video_meta_{name}", "confidence": conf, "method": f"L3_{name}"})
-                                return result
+
+                        # محاولة JSON parsing أولاً (الطريقة الأدق)
+                        region_from_json = ""
+                        # L3a: __UNIVERSAL_DATA_FOR_REHYDRATION__ على صفحة الفيديو
+                        mv = _re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', vid_html, _re.DOTALL)
+                        if mv:
+                            try:
+                                vdata = json.loads(mv.group(1))
+                                scope = vdata.get("__DEFAULT_SCOPE__", {})
+                                # مسار 1: webapp.video-detail
+                                vid_detail = scope.get("webapp.video-detail", {})
+                                item_struct = vid_detail.get("itemInfo", {}).get("itemStruct", {})
+                                loc_created = item_struct.get("locationCreated", "")
+                                author_region = item_struct.get("author", {}).get("region", "")
+                                for candidate in [loc_created, author_region]:
+                                    if candidate and len(candidate) == 2 and candidate.upper() in TIKTOK_REGION_MAP:
+                                        region_from_json = candidate.upper()
+                                        break
+                            except Exception:
+                                pass
+
+                        # L3b: SIGI_STATE على صفحة الفيديو
+                        if not region_from_json:
+                            mv2 = _re.search(r'<script id="SIGI_STATE"[^>]*>(.*?)</script>', vid_html, _re.DOTALL)
+                            if mv2:
+                                try:
+                                    vsigi = json.loads(mv2.group(1))
+                                    # البحث في ItemModule
+                                    item_module = vsigi.get("ItemModule", {})
+                                    for item in item_module.values():
+                                        loc = item.get("locationCreated", "")
+                                        auth_reg = item.get("author", "") 
+                                        # author قد يكون string (username) أو dict
+                                        if isinstance(auth_reg, dict):
+                                            auth_reg = auth_reg.get("region", "")
+                                        else:
+                                            # البحث في UserModule
+                                            umod = vsigi.get("UserModule", {}).get("users", {})
+                                            auth_reg = umod.get(auth_reg, {}).get("region", "") if auth_reg else ""
+                                        for candidate in [loc, auth_reg]:
+                                            if candidate and len(candidate) == 2 and candidate.upper() in TIKTOK_REGION_MAP:
+                                                region_from_json = candidate.upper()
+                                                break
+                                        if region_from_json:
+                                            break
+                                except Exception:
+                                    pass
+
+                        if region_from_json:
+                            result.update({"region": region_from_json, "source": "video_json_precise", "confidence": 87, "method": "L3_json"})
+                            return result
                 break
             except Exception:
                 continue
@@ -1249,16 +1279,15 @@ def fetch_region_from_video_page(username: str) -> dict:
         pass
 
     # ─── الطبقة 4: استنتاج من البايو ───
-    try:
-        if "_stored_html" in dir() and _stored_html:
+    if _stored_html:
+        try:
             bio_region = _infer_region_from_bio(_stored_html)
             if bio_region:
                 result.update({"region": bio_region, "source": "bio_inference", "confidence": 42, "method": "L4_bio"})
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     return result
-
 
 def _infer_region_from_bio(html: str) -> str:
     """استنتاج الدولة من نص البايو عبر كلمات دلالية."""
