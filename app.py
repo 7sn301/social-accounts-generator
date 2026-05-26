@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-تكوين v5
+مولد معلومات حسابات التواصل الاجتماعي v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
 - 🌐 14+ منصة أخرى
 - 🆔 ID دائم + موقع جغرافي + تحليل عميق
@@ -1086,84 +1086,177 @@ except ImportError as _e:
 from collections import Counter as _Counter
 import math as _math
 
-# ── فحص مباشر لـ author.region من صفحة الفيديو ──
+# ── استخراج منطقة المستخدم بـ 4 طبقات متكاملة ──
 def fetch_region_from_video_page(username: str) -> dict:
     """
-    استخراج author.region من metadata الفيديو مباشرة.
-    TikTok يخفي الموقع من الملف الشخصي لكنه يبقيه في metadata الفيديو.
+    استخراج دولة حساب TikTok باستخدام 4 طبقات:
+    1. صفحة البروفايل: __UNIVERSAL_DATA_FOR_REHYDRATION__ → user.region
+    2. metadata الفيديو: author.region / locationCreated  
+    3. TikWM API (مجاني موثوق)
+    4. استنتاج من البايو
     """
-    result = {"region": "", "source": "video_metadata", "confidence": 0, "method": ""}
+    result = {"region": "", "source": "unknown", "confidence": 0, "method": ""}
     if not username:
         return result
-    try:
-        import re as _re
-        _headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "ar,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    username = username.strip().lstrip("@")
+
+    import re as _re
+    import random as _random
+
+    MULTI_HEADERS = [
+        {
+            "Accept-Language": "en-US,en;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Cache-Control": "no-cache",
             "Referer": "https://www.tiktok.com/",
-        }
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+        },
+        {
+            "Accept-Language": "en-GB,en;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+        },
+        {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        },
+    ]
+
+    # ─── الطبقة 1: صفحة البروفايل HTML ───
+    try:
         url = f"https://www.tiktok.com/@{username}"
-        resp = requests.get(url, headers=_headers, timeout=12, allow_redirects=True)
-        html = resp.text
-
-        # طريقة 1: البحث عن "region":"XX" في JSON المضمن
-        region_patterns = [
-            r'"region"\s*:\s*"([A-Z]{2})"',
-            r'"locationCreated"\s*:\s*"([A-Z]{2})"',
-            r'"createRegion"\s*:\s*"([A-Z]{2})"',
-            r'"author_region"\s*:\s*"([A-Z]{2})"',
-        ]
-        for i, pattern in enumerate(region_patterns):
-            matches = _re.findall(pattern, html)
-            # فلترة الكود العام وأخذ الأكثر تكراراً
-            valid = [m for m in matches if m not in ("US", "XX", "") and m in TIKTOK_REGION_MAP]
-            if not valid:
-                # قبول US إذا لم يوجد غيره
-                valid = [m for m in matches if m in TIKTOK_REGION_MAP]
-            if valid:
-                from collections import Counter as _C
-                most_common = _C(valid).most_common(1)[0][0]
-                sources = ["region_field", "locationCreated", "createRegion", "author_region"]
-                result["region"] = most_common
-                result["source"] = sources[i]
-                result["confidence"] = 80 if i == 0 else 75 if i == 1 else 65
-                result["method"] = f"video_page_{sources[i]}"
-                return result
-
-        # طريقة 2: البحث في SIGI_STATE JSON
-        sigi_match = _re.search(r'window\["SIGI_STATE"\]\s*=\s*(\{.+?\});\s*</script>', html, _re.DOTALL)
-        if not sigi_match:
-            sigi_match = _re.search(r'id="SIGI_STATE"[^>]*>(\{.+?\})</script>', html, _re.DOTALL)
-        if sigi_match:
+        for _headers in MULTI_HEADERS:
             try:
-                sigi = json.loads(sigi_match.group(1))
-                # تصفح البنية
-                for key in ["UserModule", "ItemModule", "VideoList"]:
-                    if key in sigi:
-                        data = sigi[key]
-                        for k, v in (data.items() if isinstance(data, dict) else {}):
-                            if isinstance(v, dict):
-                                r_val = v.get("region") or v.get("locationCreated") or v.get("createRegion")
-                                if r_val and r_val in TIKTOK_REGION_MAP:
-                                    result["region"] = r_val
-                                    result["source"] = "SIGI_STATE"
-                                    result["confidence"] = 85
-                                    result["method"] = "sigi_state_json"
-                                    return result
+                resp = requests.get(url, headers=_headers, timeout=15, allow_redirects=True)
+                if resp.status_code != 200:
+                    continue
+                html = resp.text
+
+                # 1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → webapp.user-detail
+                m = _re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html, _re.DOTALL)
+                if m:
+                    try:
+                        data = json.loads(m.group(1))
+                        user_info = data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {}).get("userInfo", {})
+                        region = user_info.get("user", {}).get("region") or user_info.get("region")
+                        if region and len(region) == 2 and region.isalpha():
+                            result.update({"region": region.upper(), "source": "profile_UNIVERSAL_DATA", "confidence": 92, "method": "L1a"})
+                            return result
+                    except Exception:
+                        pass
+
+                # 1b: SIGI_STATE
+                m2 = _re.search(r'<script id="SIGI_STATE"[^>]*>(.*?)</script>', html, _re.DOTALL)
+                if m2:
+                    try:
+                        sigi = json.loads(m2.group(1))
+                        users = sigi.get("UserModule", {}).get("users", {})
+                        for u in users.values():
+                            r_val = u.get("region")
+                            if r_val and len(r_val) == 2 and r_val.isalpha():
+                                result.update({"region": r_val.upper(), "source": "profile_SIGI_STATE", "confidence": 88, "method": "L1b"})
+                                return result
+                    except Exception:
+                        pass
+
+                # 1c: Regex direct - search in full HTML
+                # Try to find region near author-related JSON keys
+                region_patterns_l1 = [
+                    r'"region"\s*:\s*"([A-Z]{2})"',
+                    r'"createRegion"\s*:\s*"([A-Z]{2})"',
+                    r'"authorRegion"\s*:\s*"([A-Z]{2})"',
+                ]
+                for pat in region_patterns_l1:
+                    matches = _re.findall(pat, html)
+                    valid = [m for m in matches if m in TIKTOK_REGION_MAP]
+                    if valid:
+                        from collections import Counter as _CC
+                        most_common = _CC(valid).most_common(1)[0][0]
+                        result.update({"region": most_common, "source": "profile_html_regex", "confidence": 78, "method": "L1c"})
+                        return result
+
+                # Store html for layer 2
+                _stored_html = html
+                break
             except Exception:
-                pass
+                continue
+    except Exception:
+        _stored_html = ""
 
-        # طريقة 3: الخيار الأخير - البيو/السيرة الذاتية
-        bio_region = _infer_region_from_bio(html)
-        if bio_region:
-            result["region"] = bio_region
-            result["source"] = "bio_text"
-            result["confidence"] = 40
-            result["method"] = "bio_inference"
-
+    # ─── الطبقة 2: TikWM API (أكثر موثوقية) ───
+    try:
+        tikwm_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
+        tikwm_url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
+        resp_tm = requests.get(tikwm_url, headers=tikwm_headers, timeout=10)
+        if resp_tm.status_code == 200:
+            tm_data = resp_tm.json()
+            # Try multiple paths
+            user_obj = None
+            try:
+                user_obj = tm_data["data"]["user_info"]
+            except (KeyError, TypeError):
+                try:
+                    user_obj = tm_data["data"]
+                except (KeyError, TypeError):
+                    pass
+            if user_obj:
+                for key in ["region", "country", "location", "createRegion"]:
+                    r_val = user_obj.get(key)
+                    if r_val and isinstance(r_val, str) and len(r_val) in [2, 3]:
+                        result.update({"region": r_val.upper()[:2], "source": "tikwm_api", "confidence": 88, "method": "L2_tikwm"})
+                        return result
     except Exception:
         pass
+
+    # ─── الطبقة 3: metadata فيديو من صفحة الحساب ───
+    try:
+        url3 = f"https://www.tiktok.com/@{username}"
+        for _headers in MULTI_HEADERS[:2]:
+            try:
+                resp3 = requests.get(url3, headers=_headers, timeout=15, allow_redirects=True)
+                if resp3.status_code != 200:
+                    continue
+                html3 = resp3.text
+                # Find video IDs
+                vid_ids = _re.findall(r'/video/(\d{15,20})', html3)
+                if vid_ids:
+                    vid_url = f"https://www.tiktok.com/@{username}/video/{vid_ids[0]}"
+                    resp_vid = requests.get(vid_url, headers=_headers, timeout=15)
+                    if resp_vid.status_code == 200:
+                        vid_html = resp_vid.text
+                        vid_patterns = [
+                            (r'"locationCreated"\s*:\s*"([A-Z]{2})"', "locationCreated", 85),
+                            (r'"region"\s*:\s*"([A-Z]{2})"', "region", 82),
+                            (r'"createRegion"\s*:\s*"([A-Z]{2})"', "createRegion", 78),
+                        ]
+                        for pat, name, conf in vid_patterns:
+                            matches = _re.findall(pat, vid_html)
+                            valid = [m for m in matches if m in TIKTOK_REGION_MAP]
+                            if valid:
+                                from collections import Counter as _CC2
+                                mc = _CC2(valid).most_common(1)[0][0]
+                                result.update({"region": mc, "source": f"video_meta_{name}", "confidence": conf, "method": f"L3_{name}"})
+                                return result
+                break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # ─── الطبقة 4: استنتاج من البايو ───
+    try:
+        if "_stored_html" in dir() and _stored_html:
+            bio_region = _infer_region_from_bio(_stored_html)
+            if bio_region:
+                result.update({"region": bio_region, "source": "bio_inference", "confidence": 42, "method": "L4_bio"})
+    except Exception:
+        pass
+
     return result
 
 
@@ -1204,19 +1297,19 @@ def _infer_region_from_bio(html: str) -> str:
 
 def enrich_tiktok_region(result: dict) -> dict:
     """
-    إثراء نتيجة TikTok بمصادر إضافية إذا كانت الثقة منخفضة.
-    يستدعي fetch_region_from_video_page كاحتياطي.
+    إثراء نتيجة TikTok بمصادر إضافية (4 طبقات شاملة).
+    يُستخدم لكل الحسابات بما فيها التي لها ثقة منخفضة.
     """
     username = result.get("username", "")
     current_conf = safe_int(result.get("region_confidence", 0))
 
-    if current_conf >= 50 or not username:
-        return result  # لا حاجة للإثراء
+    if current_conf >= 85 or not username:
+        return result  # الثقة عالية جداً - لا حاجة
 
-    # محاولة استخراج region من صفحة الفيديو
-    video_region = fetch_region_from_video_page(username)
-    new_region = video_region.get("region", "")
-    new_conf = video_region.get("confidence", 0)
+    # استدعاء الطبقات الأربع
+    enriched = fetch_region_from_video_page(username)
+    new_region = enriched.get("region", "")
+    new_conf = enriched.get("confidence", 0)
 
     if new_region and new_conf > current_conf:
         flag, name_ar = TIKTOK_REGION_MAP.get(new_region, ("🌍", new_region))
@@ -1224,8 +1317,13 @@ def enrich_tiktok_region(result: dict) -> dict:
         result["region_flag"] = flag
         result["region_name_ar"] = name_ar
         result["region_confidence"] = new_conf
-        result["region_source"] = f"⚡ {video_region.get('method', 'video_meta')}"
+        result["region_source"] = f"⚡ {enriched.get('source', 'multi_layer')}"
+        result["country_code"] = new_region
+        result["country_flag"] = flag
+        result["country_name_ar"] = name_ar
+        result["country_confidence"] = new_conf
         result["region_enriched"] = True
+        result["enrich_method"] = enriched.get("method", "")
 
     return result
 
@@ -1856,7 +1954,36 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                     status.text(f"⏳ تحليل الحسابات: {idx}/{len(usernames)}")
             progress.empty()
             status.empty()
-            st.session_state["tt_results"] = sorted(tt_results, key=lambda row: row.get("username", ""))
+            sorted_results = sorted(tt_results, key=lambda row: row.get("username", ""))
+            # ── تحسين تلقائي فوري للحسابات التي لا تملك موقعاً ──
+            no_region_count = sum(1 for r in sorted_results if safe_int(r.get("region_confidence", 0)) < 40)
+            if no_region_count > 0:
+                auto_enrich_prog = st.progress(0)
+                auto_enrich_status = st.empty()
+                auto_enrich_status.text(f"🔍 تحسين تلقائي للموقع لـ {no_region_count} حساب...")
+                auto_enriched = 0
+                for _idx, _row in enumerate(sorted_results):
+                    if safe_int(_row.get("region_confidence", 0)) < 40:
+                        _uname = _row.get("username", "")
+                        if _uname:
+                            _enriched = fetch_region_from_video_page(_uname)
+                            if _enriched.get("region") and _enriched.get("confidence", 0) >= 42:
+                                _flag, _name_ar = TIKTOK_REGION_MAP.get(_enriched["region"], ("🌍", _enriched["region"]))
+                                sorted_results[_idx]["region"] = _enriched["region"]
+                                sorted_results[_idx]["region_flag"] = _flag
+                                sorted_results[_idx]["region_name_ar"] = _name_ar
+                                sorted_results[_idx]["region_confidence"] = _enriched["confidence"]
+                                sorted_results[_idx]["region_source"] = f"⚡ {_enriched.get('source', 'auto')}"
+                                sorted_results[_idx]["country_code"] = _enriched["region"]
+                                sorted_results[_idx]["country_flag"] = _flag
+                                sorted_results[_idx]["country_name_ar"] = _name_ar
+                                auto_enriched += 1
+                    auto_enrich_prog.progress((_idx + 1) / len(sorted_results))
+                auto_enrich_prog.empty()
+                auto_enrich_status.empty()
+                if auto_enriched > 0:
+                    st.info(f"🎯 تم استخراج الموقع تلقائياً لـ {auto_enriched} حساب إضافي")
+            st.session_state["tt_results"] = sorted_results
             st.session_state["tt_elapsed"] = time.time() - start
             st.success(f"✅ تم تحليل {len(tt_results)} حساب TikTok")
 
