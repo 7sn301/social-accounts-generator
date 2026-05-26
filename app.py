@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 مولد معلومات حسابات التواصل الاجتماعي v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
@@ -598,7 +599,7 @@ def _clean_summary(value, limit=240):
     if value is None:
         return ""
     txt = re.sub(r"<[^>]+>", " ", str(value))
-   txt = re.sub(r"\s+", " ", txt).strip()
+    txt = re.sub(r"\s+", " ", txt).strip()
     return txt[:limit] + ("…" if len(txt) > limit else "")
 
 
@@ -997,7 +998,7 @@ with st.sidebar:
     st.markdown("### 📊 المنصات (14)")
     cols = st.columns(2)
     for i, (key, info) in enumerate(PLATFORMS.items()):
-        cols[i % 2].markdown(f"{info['icon']} **{info['name']}**")
+            cols[i % 2].markdown(f"{info['icon']} **{info['name']}**")
 
     st.markdown("---")
     st.download_button(
@@ -1198,7 +1199,7 @@ def infer_user_location_from_videos(video_results):
     author_counter = _Counter()
     total = len(video_results)
     videos_with_location = 0
-  videos_with_author_region = 0
+    videos_with_author_region = 0
 
     for v in video_results:
         loc = (v.get("location_created") or "").upper().strip()
@@ -1480,7 +1481,7 @@ def combine_tiktok_geo_signals(account_row=None, user_video_rows=None):
         scores[video_code] = scores.get(video_code, 0) + (max(video_conf, 40) * 1.35)
         video_flag, video_name = get_tiktok_country_meta(video_code)
         evidence.append(
-            f"الفيديوهات: {video_flag} {video_name} من locationCreated/author.region ب��قة {max(video_conf, 40)}%"
+            f"الفيديوهات: {video_flag} {video_name} من locationCreated/author.region بثقة {max(video_conf, 40)}%"
         )
 
     tz_report = analyze_timezone_from_videos(user_video_rows) if user_video_rows else {}
@@ -1798,7 +1799,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                 for col in ["region_flag", "region_name_ar", "region_source"]:
                     if col in df_display.columns:
                         df_display.loc[low_mask, col] = ""
-  
+
             st.dataframe(
                 df_display[display_cols],
                 use_container_width=True,
@@ -1997,7 +1998,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
             fallback_rows = []
             for record in geo_records:
                 point = record.get("geo_point")
-                if not point:
+                    if not point:
                     continue
                 fallback_rows.append({
                     "المستخدم": record.get("username", ""),
@@ -2398,7 +2399,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
             column_config={
                 "video_url": st.column_config.LinkColumn("🔗 الفيديو"),
                 "author_verified": st.column_config.CheckboxColumn("✓"),
-           "location_flag": st.column_config.TextColumn("🚩", width="small"),
+                "location_flag": st.column_config.TextColumn("🚩", width="small"),
                 "location_name_ar": st.column_config.TextColumn("🌍 الموقع"),
                 "location_created": st.column_config.TextColumn("رمز", width="small"),
                 "video_views": st.column_config.NumberColumn("👁️ مشاهدات", format="%d"),
@@ -2798,7 +2799,7 @@ with tab_postloc:
         [
             "🔗 روابط منشورات X (تحليل صور + كشف VPN)",
             "🖼️ رفع صورة مباشرة لتحديد موقعها",
-              "🔗 روابط صور مباشرة",
+            "🔗 روابط صور مباشرة",
         ],
         horizontal=False,
         key="pl_mode",
@@ -3125,7 +3126,7 @@ with tab_postloc:
                                         for o in partial_obs[:5]:
                                             st.markdown(f"• {o}")
                                     st.caption(
-                                        "💡 التحليل رصد هذه الإشارات لكنها غير كافية لتحديد دولة بدقة"
+                                        "�� التحليل رصد هذه الإشارات لكنها غير كافية لتحديد دولة بدقة"
                                     )
                         else:
                             st.info("📝 التغريدة بدون صور")
@@ -3198,7 +3199,7 @@ with tab_postloc:
                     if r.get("photos"):
                         with st.expander(f"🖼️ عرض صور التغريدة ({len(r['photos'])})", expanded=False):
                             img_cols = st.columns(min(len(r['photos']), 3))
-                             for j, pu in enumerate(r['photos'][:3]):
+                            for j, pu in enumerate(r['photos'][:3]):
                                 with img_cols[j]:
                                     try:
                                         st.image(pu, use_container_width=True)
@@ -3927,7 +3928,7 @@ with tab_osint:
                 st.session_state["osint_place_result"] = None
                 st.rerun()
 
-    # ═══════════════════════════════════════════════════════════
+    # ════════════════════════��══════════════════════════════════
     # 3️⃣ تحليل المنطقة الزمنية
     # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("⏰"):
@@ -3973,7 +3974,7 @@ with tab_osint:
             if R["candidate_countries"]:
                 st.success(" · ".join(R["candidate_countries"]))
             else:
-                st.info("لا توجد د��ل معروفة بهذا الفارق")
+                st.info("لا توجد دول معروفة بهذا الفارق")
 
             hist = R.get("histogram_local_hours") or {}
             if hist:
@@ -3997,7 +3998,7 @@ with tab_osint:
 
     # ═══════════════════════════════════════════════════════════
     # 4️⃣ المحقّق الشامل  —  كاشف VPN + موقع فعلي دقيق (8 إشارات)
-    # ═══════════════════════════════════════════════════════════
+        # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("🕵️"):
         if not VPN_DETECTOR_AVAILABLE:
             st.error("vpn_detector.py غير متوفر — أعد تثبيت v19+")
@@ -4398,7 +4399,7 @@ https://www.reddit.com/user/spez
         stats[0].metric("📡 المصادر", len(rss_sources))
         stats[1].metric("✅ نجح", ok_count)
         stats[2].metric("❌ فشل", fail_count)
-          stats[3].metric("📰 المنشورات", len(rss_rows))
+        stats[3].metric("📰 المنشورات", len(rss_rows))
 
         with st.expander("📋 حالة كل Feed", expanded=fail_count > 0):
             state_rows = []
