@@ -1,6 +1,8 @@
+## Part 1
+```python
 # -*- coding: utf-8 -*-
 """
-مولد معلومات حسابات التواصل الاجتماعي v5
+امتداد v5
 - 🎵 محلل TikTok متخصص (Universal Data + استنتاج ذكي)
 - 🌐 14+ منصة أخرى
 - 🆔 ID دائم + موقع جغرافي + تحليل عميق
@@ -537,6 +539,10 @@ def create_country_map(records, country_key, confidence_key, title, popup_builde
 def _build_tiktok_report_results(tt_results, min_conf=30):
     export_results = []
     for r in tt_results:
+```
+
+## Part 2
+```python
         if r.get("status") != "✅ نجح":
             continue
         confidence = safe_int(r.get("region_confidence", 0))
@@ -1998,7 +2004,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
             fallback_rows = []
             for record in geo_records:
                 point = record.get("geo_point")
-                    if not point:
+                if not point:
                     continue
                 fallback_rows.append({
                     "المستخدم": record.get("username", ""),
@@ -2773,6 +2779,10 @@ https://twitter.com/elonmusk/status/2007910921914769832
                         st.markdown(f"[🔗 فتح في X]({t.get('tweet_url', '')})")
 
 
+```
+
+## Part 3
+```python
 # ============ 🌍 تبويب تحليل موقع المنشور + كاشف VPN — الأقوى! ============
 with tab_postloc:
     st.markdown("### 🌍 تحديد موقع المنشور + كاشف VPN — تحليل بصري عميق 🧠")
@@ -3720,7 +3730,7 @@ with tab_osint:
         st.error(f"twitter_osint.py غير متوفر: {OSINT_ERROR}")
         st.stop()
 
-    # 🔑 تهيئة الذاكرة الدائمة ��كل وضع
+    # 🔑 تهيئة الذاكرة الدائمة لكل وضع
     for k in ("osint_geo_result", "osint_place_result",
               "osint_tz_result", "osint_full_result",
               "osint_rev_result"):
@@ -3998,7 +4008,7 @@ with tab_osint:
 
     # ═══════════════════════════════════════════════════════════
     # 4️⃣ المحقّق الشامل  —  كاشف VPN + موقع فعلي دقيق (8 إشارات)
-        # ═══════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════
     elif osint_mode.startswith("🕵️"):
         if not VPN_DETECTOR_AVAILABLE:
             st.error("vpn_detector.py غير متوفر — أعد تثبيت v19+")
@@ -4771,3 +4781,5 @@ if "results" in st.session_state and st.session_state["results"]:
     e3.download_button("⬇️ Excel", xl, f"results_{timestamp}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        use_container_width=True)
+```
+
