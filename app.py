@@ -1086,228 +1086,31 @@ except ImportError as _e:
 from collections import Counter as _Counter
 import math as _math
 
-# ── استخراج منطقة المستخدم بـ 4 طبقات متكاملة ──
+
+# ── استخراج منطقة المستخدم - نسخة v11 المُصلحة ──
 def fetch_region_from_video_page(username: str) -> dict:
-    """
-    استخراج دولة حساب TikTok باستخدام طبقات متعددة (نسخة محسّنة v11):
-    L1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → user.region (دقيق 92%)
-    L1b: SIGI_STATE → UserModule.users[].region (دقيق 88%)
-    L2:  TikWM API (مجاني موثوق)
-    L3:  JSON parsing دقيق من صفحة الفيديو (locationCreated/author.region)
-    L4:  استنتاج من البايو
-    ملاحظة: تم حذف L1c (regex واسع) لأنه يلتقط "US" من ملفات JS ويعطي نتائج خاطئة
-    """
-    result = {"region": "", "source": "unknown", "confidence": 0, "method": ""}
-    if not username:
-        return result
-    username = username.strip().lstrip("@")
-
-    import re as _re
-
-    MULTI_HEADERS = [
-        {
-            "Accept-Language": "en-US,en;q=0.9",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Cache-Control": "no-cache",
-            "Referer": "https://www.tiktok.com/",
-            "sec-fetch-dest": "document",
-            "sec-fetch-mode": "navigate",
-        },
-        {
-            "Accept-Language": "en-GB,en;q=0.9",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-        },
-        {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        },
-    ]
-
-    _stored_html = ""
-
-    # ─── الطبقة 1: صفحة البروفايل HTML (JSON parsing دقيق فقط) ───
+    """Wrapper إلى محرك v12 الأقوى متعدد المصادر."""
     try:
-        url = f"https://www.tiktok.com/@{username}"
-        for _headers in MULTI_HEADERS:
-            try:
-                resp = requests.get(url, headers=_headers, timeout=15, allow_redirects=True)
-                if resp.status_code != 200:
-                    continue
-                html = resp.text
-                _stored_html = html
-
-                # L1a: __UNIVERSAL_DATA_FOR_REHYDRATION__ → webapp.user-detail
-                m = _re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', html, _re.DOTALL)
-                if m:
-                    try:
-                        data = json.loads(m.group(1))
-                        user_info = data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {}).get("userInfo", {})
-                        region = user_info.get("user", {}).get("region") or user_info.get("region")
-                        if region and len(region) == 2 and region.isalpha():
-                            result.update({"region": region.upper(), "source": "profile_UNIVERSAL_DATA", "confidence": 92, "method": "L1a"})
-                            return result
-                    except Exception:
-                        pass
-
-                # L1b: SIGI_STATE
-                m2 = _re.search(r'<script id="SIGI_STATE"[^>]*>(.*?)</script>', html, _re.DOTALL)
-                if m2:
-                    try:
-                        sigi = json.loads(m2.group(1))
-                        users = sigi.get("UserModule", {}).get("users", {})
-                        for u in users.values():
-                            r_val = u.get("region")
-                            if r_val and len(r_val) == 2 and r_val.isalpha():
-                                result.update({"region": r_val.upper(), "source": "profile_SIGI_STATE", "confidence": 88, "method": "L1b"})
-                                return result
-                    except Exception:
-                        pass
-
-                # L1c مُحذوف: كان يستخدم regex واسع يلتقط "US" من ملفات JS الخارجية
-                # مما يتسبب في إرجاع "الولايات المتحدة" لجميع الحسابات بشكل خاطئ
-
-                break
-            except Exception:
-                continue
+        from tiktok_region_v12 import fetch_region_from_video_page as _fetch_region_v12
+        return _fetch_region_v12(username)
     except Exception:
-        pass
-
-    # ─── الطبقة 2: TikWM API ───
-    try:
-        tikwm_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
-        tikwm_url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
-        resp_tm = requests.get(tikwm_url, headers=tikwm_headers, timeout=10)
-        if resp_tm.status_code == 200:
-            try:
-                tm_data = resp_tm.json()
-                user_obj = None
-                try:
-                    user_obj = tm_data["data"]["user_info"]
-                except (KeyError, TypeError):
-                    try:
-                        user_obj = tm_data["data"]
-                    except (KeyError, TypeError):
-                        pass
-                if user_obj and isinstance(user_obj, dict):
-                    for key in ["region", "country", "location", "createRegion", "create_region"]:
-                        r_val = user_obj.get(key)
-                        if r_val and isinstance(r_val, str) and 2 <= len(r_val) <= 3 and r_val.isalpha():
-                            code = r_val.upper()[:2]
-                            if code in TIKTOK_REGION_MAP:
-                                result.update({"region": code, "source": "tikwm_api", "confidence": 88, "method": "L2_tikwm"})
-                                return result
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # ─── الطبقة 3: صفحة فيديو - JSON parsing دقيق فقط (بدون regex واسع) ───
-    try:
-        url3 = f"https://www.tiktok.com/@{username}"
-        for _headers in MULTI_HEADERS[:2]:
-            try:
-                resp3 = requests.get(url3, headers=_headers, timeout=15, allow_redirects=True)
-                if resp3.status_code != 200:
-                    continue
-                html3 = resp3.text
-                vid_ids = _re.findall(r'/video/(\d{15,20})', html3)
-                if vid_ids:
-                    vid_url = f"https://www.tiktok.com/@{username}/video/{vid_ids[0]}"
-                    resp_vid = requests.get(vid_url, headers=_headers, timeout=15)
-                    if resp_vid.status_code == 200:
-                        vid_html = resp_vid.text
-
-                        # محاولة JSON parsing أولاً (الطريقة الأدق)
-                        region_from_json = ""
-                        # L3a: __UNIVERSAL_DATA_FOR_REHYDRATION__ على صفحة الفيديو
-                        mv = _re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', vid_html, _re.DOTALL)
-                        if mv:
-                            try:
-                                vdata = json.loads(mv.group(1))
-                                scope = vdata.get("__DEFAULT_SCOPE__", {})
-                                # مسار 1: webapp.video-detail
-                                vid_detail = scope.get("webapp.video-detail", {})
-                                item_struct = vid_detail.get("itemInfo", {}).get("itemStruct", {})
-                                loc_created = item_struct.get("locationCreated", "")
-                                author_region = item_struct.get("author", {}).get("region", "")
-                                for candidate in [loc_created, author_region]:
-                                    if candidate and len(candidate) == 2 and candidate.upper() in TIKTOK_REGION_MAP:
-                                        region_from_json = candidate.upper()
-                                        break
-                            except Exception:
-                                pass
-
-                        # L3b: SIGI_STATE على صفحة الفيديو
-                        if not region_from_json:
-                            mv2 = _re.search(r'<script id="SIGI_STATE"[^>]*>(.*?)</script>', vid_html, _re.DOTALL)
-                            if mv2:
-                                try:
-                                    vsigi = json.loads(mv2.group(1))
-                                    # البحث في ItemModule
-                                    item_module = vsigi.get("ItemModule", {})
-                                    for item in item_module.values():
-                                        loc = item.get("locationCreated", "")
-                                        auth_reg = item.get("author", "") 
-                                        # author قد يكون string (username) أو dict
-                                        if isinstance(auth_reg, dict):
-                                            auth_reg = auth_reg.get("region", "")
-                                        else:
-                                            # البحث في UserModule
-                                            umod = vsigi.get("UserModule", {}).get("users", {})
-                                            auth_reg = umod.get(auth_reg, {}).get("region", "") if auth_reg else ""
-                                        for candidate in [loc, auth_reg]:
-                                            if candidate and len(candidate) == 2 and candidate.upper() in TIKTOK_REGION_MAP:
-                                                region_from_json = candidate.upper()
-                                                break
-                                        if region_from_json:
-                                            break
-                                except Exception:
-                                    pass
-
-                        if region_from_json:
-                            result.update({"region": region_from_json, "source": "video_json_precise", "confidence": 87, "method": "L3_json"})
-                            return result
-                break
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    # ─── الطبقة 4: استنتاج من البايو ───
-    if _stored_html:
-        try:
-            bio_region = _infer_region_from_bio(_stored_html)
-            if bio_region:
-                result.update({"region": bio_region, "source": "bio_inference", "confidence": 42, "method": "L4_bio"})
-        except Exception:
-            pass
-
-    return result
+        return {"region": "", "source": "unknown", "confidence": 0, "method": "v12_import_failed", "evidence": [], "votes": []}
 
 def _infer_region_from_bio(html: str) -> str:
     """استنتاج الدولة من نص البايو عبر كلمات دلالية."""
     import re as _re
-    # قاموس كلمات دلالية => رمز الدولة
     country_hints = {
         "SA": ["السعودية", "سعودي", "سعودية", "الرياض", "جدة", "مكة", "المدينة", "نجد", "حجاز", "saudi", "riyadh", "jeddah"],
         "EG": ["مصر", "مصري", "مصرية", "القاهرة", "الإسكندرية", "egypt", "cairo", "egyptian"],
         "AE": ["الإمارات", "إماراتي", "دبي", "أبوظبي", "الشارقة", "uae", "dubai", "emirates"],
-        "KW": ["الكويت", "كويتي", "kuwait"],
-        "QA": ["قطر", "قطري", "الدوحة", "qatar", "doha"],
-        "BH": ["البحرين", "بحريني", "bahrain"],
-        "OM": ["عُمان", "عمان", "عُماني", "مسقط", "oman", "muscat"],
+        "KW": ["الكويت", "كويتي", "kuwait"], "QA": ["قطر", "قطري", "الدوحة", "qatar", "doha"],
+        "BH": ["البحرين", "بحريني", "bahrain"], "OM": ["عُمان", "عمان", "عُماني", "مسقط", "oman", "muscat"],
         "IQ": ["العراق", "عراقي", "بغداد", "البصرة", "iraq", "baghdad"],
         "JO": ["الأردن", "أردني", "عمّان", "jordan", "amman"],
         "SY": ["سوريا", "سوري", "دمشق", "syria", "damascus"],
         "LB": ["لبنان", "لبناني", "بيروت", "lebanon", "beirut"],
         "MA": ["المغرب", "مغربي", "الدار البيضاء", "morocco", "casablanca"],
-        "TN": ["تونس", "تونسي", "tunisia"],
-        "DZ": ["الجزائر", "جزائري", "algeria"],
+        "TN": ["تونس", "تونسي", "tunisia"], "DZ": ["الجزائر", "جزائري", "algeria"],
         "YE": ["اليمن", "يمني", "صنعاء", "yemen", "sanaa"],
         "TR": ["تركيا", "تركي", "إسطنبول", "turkey", "istanbul"],
         "PS": ["فلسطين", "فلسطيني", "غزة", "القدس", "palestine", "gaza"],
@@ -1322,39 +1125,6 @@ def _infer_region_from_bio(html: str) -> str:
     if scores:
         return max(scores.items(), key=lambda x: x[1])[0]
     return ""
-
-
-def enrich_tiktok_region(result: dict) -> dict:
-    """
-    إثراء نتيجة TikTok بمصادر إضافية (4 طبقات شاملة).
-    يُستخدم لكل الحسابات بما فيها التي لها ثقة منخفضة.
-    """
-    username = result.get("username", "")
-    current_conf = safe_int(result.get("region_confidence", 0))
-
-    if current_conf >= 85 or not username:
-        return result  # الثقة عالية جداً - لا حاجة
-
-    # استدعاء الطبقات الأربع
-    enriched = fetch_region_from_video_page(username)
-    new_region = enriched.get("region", "")
-    new_conf = enriched.get("confidence", 0)
-
-    if new_region and new_conf > current_conf:
-        flag, name_ar = TIKTOK_REGION_MAP.get(new_region, ("🌍", new_region))
-        result["region"] = new_region
-        result["region_flag"] = flag
-        result["region_name_ar"] = name_ar
-        result["region_confidence"] = new_conf
-        result["region_source"] = f"⚡ {enriched.get('source', 'multi_layer')}"
-        result["country_code"] = new_region
-        result["country_flag"] = flag
-        result["country_name_ar"] = name_ar
-        result["country_confidence"] = new_conf
-        result["region_enriched"] = True
-        result["enrich_method"] = enriched.get("method", "")
-
-    return result
 
 
 TIKTOK_REGION_MAP = {
@@ -1895,13 +1665,12 @@ def render_tiktok_interactive_map(records, map_key="tt_integrated_geo_map"):
 
 
 # ============ التبويبات ============
-(tab_tt, tab_x, tab_postloc, tab_geo, tab_osint,
+(tab_tt, tab_x, tab_postloc, tab_geo,
  tab_rss, tab_buffin, tab_manual, tab_excel, tab_help) = st.tabs([
     "محلل حسابات TikTok المتكامل",
-    "🐦 تحليل تغريدات X (Twitter)",
+    "🐦 تحليل تغريدات X + OSINT",
     "🌍 موقع المنشور + كاشف VPN",
     "🛰️ Geo-Engine (GeoSpy + EXIF + Yandex)",
-    "🕵️ OSINT محقّق تويتر",
     "📡 أداة RSS",
     "🔍 BUFFIN - بحث المنصات",
     "📝 إدخال يدوي (كل المنصات)",
@@ -2231,6 +2000,48 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                 key="tt_integrated_accounts_excel",
             )
 
+            if REPORT_EXPORTER_AVAILABLE:
+                st.markdown("##### 📑 تصدير Word / PowerPoint لتحليل TikTok")
+                tt_r1, tt_r2 = st.columns(2)
+                with tt_r1:
+                    if st.button("📝 توليد Word TikTok", key="tt_make_docx", use_container_width=True):
+                        try:
+                            st.session_state["_tt_docx_bytes"] = generate_word_report(
+                                df_display.to_dict("records"),
+                                title="تقرير تحليل حسابات TikTok"
+                            )
+                            st.success("✅ تم توليد ملف Word")
+                        except Exception as e:
+                            st.error(f"تعذّر توليد Word: {e}")
+                with tt_r2:
+                    if st.button("📊 توليد PowerPoint TikTok", key="tt_make_pptx", use_container_width=True):
+                        try:
+                            st.session_state["_tt_pptx_bytes"] = generate_pptx_report(
+                                df_display.to_dict("records"),
+                                title="عرض تحليل حسابات TikTok"
+                            )
+                            st.success("✅ تم توليد ملف PowerPoint")
+                        except Exception as e:
+                            st.error(f"تعذّر توليد PowerPoint: {e}")
+                if st.session_state.get("_tt_docx_bytes"):
+                    st.download_button(
+                        "⬇️ تحميل Word TikTok",
+                        st.session_state["_tt_docx_bytes"],
+                        file_name=f"tiktok_integrated_accounts_{export_name}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
+                        key="tt_download_docx",
+                    )
+                if st.session_state.get("_tt_pptx_bytes"):
+                    st.download_button(
+                        "⬇️ تحميل PowerPoint TikTok",
+                        st.session_state["_tt_pptx_bytes"],
+                        file_name=f"tiktok_integrated_accounts_{export_name}.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        use_container_width=True,
+                        key="tt_download_pptx",
+                    )
+
             st.markdown("#### 🎴 بطاقات مختصرة")
             cards = [row for row in tt_results if row.get("status") == "✅ نجح"][:9]
             if cards:
@@ -2402,7 +2213,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
 
 # ============ تبويب تحليل تغريدات X ============
 with tab_x:
-    st.markdown("### 🐦 محلل تغريدات X v4 - محرك ذكي 7 طبقات + AI Vision! 🧠")
+    st.markdown("### 🐦 محلل تغريدات X + Twitter OSINT — النسخة النهائية")
     st.markdown(
         """
         <div class="info-box">
@@ -2698,6 +2509,48 @@ https://twitter.com/elonmusk/status/2007910921914769832
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True)
 
+        if REPORT_EXPORTER_AVAILABLE:
+            st.markdown("##### 📑 تصدير Word / PowerPoint لتحليل X")
+            x_r1, x_r2 = st.columns(2)
+            with x_r1:
+                if st.button("📝 توليد Word X", key="x_make_docx", use_container_width=True):
+                    try:
+                        st.session_state["_x_docx_bytes"] = generate_word_report(
+                            df_x.to_dict("records"),
+                            title="تقرير تحليل تغريدات X"
+                        )
+                        st.success("✅ تم توليد ملف Word")
+                    except Exception as e:
+                        st.error(f"تعذّر توليد Word: {e}")
+            with x_r2:
+                if st.button("📊 توليد PowerPoint X", key="x_make_pptx", use_container_width=True):
+                    try:
+                        st.session_state["_x_pptx_bytes"] = generate_pptx_report(
+                            df_x.to_dict("records"),
+                            title="عرض تحليل تغريدات X"
+                        )
+                        st.success("✅ تم توليد ملف PowerPoint")
+                    except Exception as e:
+                        st.error(f"تعذّر توليد PowerPoint: {e}")
+            if st.session_state.get("_x_docx_bytes"):
+                st.download_button(
+                    "⬇️ تحميل Word X",
+                    st.session_state["_x_docx_bytes"],
+                    file_name=f"x_tweets_{ts_x}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="x_download_docx",
+                )
+            if st.session_state.get("_x_pptx_bytes"):
+                st.download_button(
+                    "⬇️ تحميل PowerPoint X",
+                    st.session_state["_x_pptx_bytes"],
+                    file_name=f"x_tweets_{ts_x}.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True,
+                    key="x_download_pptx",
+                )
+
         # بطاقات بصرية للتغريدات
         successful_x = [r for r in x_results if r.get("status") == "✅ نجح"][:9]
         if successful_x:
@@ -2745,929 +2598,10 @@ https://twitter.com/elonmusk/status/2007910921914769832
                         st.markdown(f"[🔗 فتح في X]({t.get('tweet_url', '')})")
 
 
-# ============ 🌍 تبويب تحليل موقع المنشور + كاشف VPN — الأقوى! ============
-with tab_postloc:
-    st.markdown("### 🌍 تحديد موقع المنشور + كاشف VPN — تحليل بصري عميق 🧠")
-    st.markdown(
-        """
-        <div class="info-box">
-        <strong>🔥 الفرق الجوهري:</strong> هذا التبويب يحدد <strong>موقع تصوير المنشور الفعلي</strong>
-        (وليس ما يدّعيه الحساب في بروفايله)!
-        <ul>
-        <li>🛰️ <strong>EXIF GPS</strong>: الدقة القصوى 100% — يستخرج إحداثيات فعلية إن وجدت</li>
-        <li>🤖 <strong>Gemini Vision (GEO-Detective)</strong>: تحليل بصري 5 فئات (معمار، بنية تحتية، بيئة، تخطيط، لافتات)</li>
-        <li>🚨 <strong>كاشف VPN</strong>: يقارن موقع الحساب مع موقع التصوير → التناقض = احتمال VPN</li>
-        <li>🏛️ يكتشف: معالم، لوحات سيارات، لافتات، لباس تقليدي، علامات تجارية محلية</li>
-        </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # اختيار وضع التحليل
-    st.markdown("#### 📝 وضع التحليل")
-    pl_mode = st.radio(
-        "اختر طريقة الإدخال:",
-        [
-            "🔗 روابط منشورات X (تحليل صور + كشف VPN)",
-            "🖼️ رفع صورة مباشرة لتحديد موقعها",
-            "🔗 روابط صور مباشرة",
-        ],
-        horizontal=False,
-        key="pl_mode",
-    )
-
-    # تحقق من API key
-    api_key_for_post = (
-        os.environ.get("GEMINI_API_KEY")
-        or st.session_state.get("gemini_api_key")
-    )
-
-    if not api_key_for_post:
-        st.warning(
-            "⚠️ تحتاج **Gemini API Key** لتفعيل تحليل الصور. "
-            "احصل عليه مجاناً من: https://aistudio.google.com/apikey"
-        )
-        new_key = st.text_input(
-            "أدخل Gemini API Key:",
-            type="password",
-            key="gemini_api_key_postloc",
-        )
-        if new_key:
-            st.session_state["gemini_api_key"] = new_key
-            api_key_for_post = new_key
-            st.rerun()
-    else:
-        st.success("✅ Gemini API مفعل — جاهز للتحليل!")
-
-    # ✅ رسالة إعلامية - لا حاجة لـ cookies!
-    st.markdown(
-        """
-        <div style="background: #d1fae5; border-right: 4px solid #10b981; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
-        <strong>✅ آمن بنسبة 100% — لا حاجة لتسجيل دخول!</strong><br>
-        هذا التبويب يستخدم فقط APIs عامة وآمنة:
-        <ul style="margin: 0.5rem 0;">
-        <li>🌐 <strong>fxtwitter API</strong>: مجاني ومفتوح — يجلب حقل الموقع المعلن في البروفايل</li>
-        <li>🤖 <strong>Gemini Vision</strong>: يحلل صور المنشور لتحديد موقع التصوير الفعلي</li>
-        <li>🔍 <strong>EXIF GPS</strong>: إحداثيات مباشرة إن وجدت</li>
-        </ul>
-        🎯 <strong>كشف VPN</strong>: بمقارنة الموقع المعلن في البروفايل مع موقع التصوير من الصور = التناقض يكشف VPN!
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # الوضع الآمن: لا نستخدم cookies أبداً
-    use_about_api = False
-    x_cookies = ""
-
     st.markdown("---")
+    st.markdown("### 🕵️ أدوات Twitter OSINT المدمجة داخل تبويب X")
+    st.caption("تم دمج المحقّق الجغرافي بالكامل داخل تبويب تحليل X، مع إزالة التبويب المنفصل من الواجهة الرئيسية.")
 
-    # وضع 1: روابط منشورات X
-    if pl_mode.startswith("🔗 روابط منشورات X"):
-        st.markdown("#### 🔗 أدخل روابط تغريدات X تحتوي صور:")
-        pl_x_urls = st.text_area(
-            "رابط لكل سطر:",
-            height=150,
-            placeholder="https://x.com/username/status/1234567890\nhttps://x.com/another/status/9876543210",
-            key="pl_x_urls_input",
-        )
-
-        col_pl1, col_pl2 = st.columns([3, 1])
-        with col_pl2:
-            pl_max_imgs = st.number_input(
-                "صور لكل تغريدة", min_value=1, max_value=4, value=2,
-                help="عدد الصور التي ستحلل لكل تغريدة (أقل = أسرع)",
-            )
-
-        if st.button(
-            "🚀 تحليل مواقع المنشورات + كشف VPN",
-            type="primary",
-            use_container_width=True,
-            key="pl_x_analyze",
-            disabled=not api_key_for_post,
-        ):
-            urls = [u.strip() for u in pl_x_urls.splitlines()
-                    if u.strip() and ('x.com' in u or 'twitter.com' in u)]
-
-            if not urls:
-                st.error("❌ لم يتم العثور على روابط صحيحة")
-            else:
-                st.info(f"🔄 جارٍ تحليل **{len(urls)}** منشورات... (قد يستغرق دقيقة لكل منشور)")
-                progress = st.progress(0)
-                status = st.empty()
-                pl_results = []
-
-                for i, url in enumerate(urls):
-                    status.text(f"⏳ تحليل {i+1}/{len(urls)}: {url[:60]}...")
-
-                    # 1. جلب بيانات التغريدة (تتضمن روابط الصور + موقع الحساب)
-                    tweet_data = analyze_x_tweet(url)
-
-                    if tweet_data.get("status") != "✅ نجح":
-                        pl_results.append({
-                            "url": url, "error": tweet_data.get("error"),
-                            "success": False,
-                        })
-                        progress.progress((i+1) / len(urls))
-                        continue
-
-                    # 2. استخرج روابط الصور
-                    photos_urls = []
-                    # من النتيجة الجديدة (legacy wrapper)
-                    media = tweet_data.get("media") if isinstance(tweet_data.get("media"), dict) else {}
-                    if not media:
-                        # جلب مباشر
-                        from x_analyzer import fetch_x_tweet, parse_x_url
-                        u_, tid_ = parse_x_url(url)
-                        if u_ and tid_:
-                            full = fetch_x_tweet(u_, tid_)
-                            photos_urls = full.get("photos_urls", [])
-                    else:
-                        for p in (media.get("photos") or []):
-                            if isinstance(p, dict) and p.get("url"):
-                                photos_urls.append(p["url"])
-
-                    # 3. حلل الصور بـ Gemini Vision (مع hint من موقع الحساب ⚡)
-                    image_analysis = None
-                    if photos_urls:
-                        # مرر موقع الحساب لتحسين الكشف
-                        account_loc_hint = (
-                            tweet_data.get("user_location_field") or
-                            tweet_data.get("region_name_ar") or
-                            ""
-                        )
-                        image_analysis = analyze_post_images(
-                            photos_urls, api_key_for_post,
-                            max_images=int(pl_max_imgs),
-                            account_location=account_loc_hint,
-                        )
-
-                    # 4. لا نستخدم About API (آمن بدون cookies)
-                    about_data = None
-                    about_diagnosis = None
-                    screen_name = tweet_data.get("user_screen_name")
-
-                    # 5. كشف VPN: بالموقع المعلن في البروفايل (fxtwitter)
-                    account_country_iso = tweet_data.get("region")
-
-                    post_country = None
-                    if image_analysis and image_analysis.get("aggregate"):
-                        post_country = image_analysis["aggregate"].get("country_code")
-
-                    vpn_check = detect_vpn(
-                        account_country=account_country_iso,
-                        post_country=post_country,
-                        lang=tweet_data.get("lang", ""),
-                        name=tweet_data.get("user_name", ""),
-                        bio=tweet_data.get("user_bio", ""),
-                    )
-
-                    pl_results.append({
-                        "success": True,
-                        "url": url,
-                        "tweet": tweet_data,
-                        "photos": photos_urls,
-                        "image_analysis": image_analysis,
-                        "about_data": about_data,
-                        "about_diagnosis": about_diagnosis,
-                        "vpn_check": vpn_check,
-                        "account_country": account_country_iso,
-                        "post_country": post_country,
-                    })
-
-                    progress.progress((i+1) / len(urls))
-
-                progress.empty()
-                status.empty()
-                st.session_state["pl_results"] = pl_results
-                st.success(f"✅ تم تحليل {len(pl_results)} منشورات!")
-
-        # عرض النتائج
-        if "pl_results" in st.session_state and st.session_state["pl_results"]:
-            results = st.session_state["pl_results"]
-
-            st.markdown("---")
-            st.markdown("## 📊 نتائج تحليل مواقع المنشورات")
-
-            # إحصائيات سريعة
-            total = len([r for r in results if r.get("success")])
-            with_post_loc = sum(1 for r in results if r.get("post_country"))
-            vpn_alerts = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "likely_vpn")
-            matched = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "matched")
-            travel = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") in ("travel", "expat_visit"))
-
-            ms1, ms2, ms3, ms4, ms5 = st.columns(5)
-            ms1.metric("🔗 الإجمالي", total)
-            ms2.metric("🌍 لها موقع صورة", with_post_loc)
-            ms3.metric("🚨 احتمال VPN", vpn_alerts, delta=f"{vpn_alerts}/{total}" if total else None)
-            ms4.metric("✅ تطابق", matched)
-            ms5.metric("✈️ سفر/مغترب", travel)
-
-            # عرض كل نتيجة
-            for idx, r in enumerate(results):
-                if not r.get("success"):
-                    with st.container(border=True):
-                        st.error(f"❌ فشل تحليل: {r.get('url')} — {r.get('error')}")
-                    continue
-
-                tweet = r.get("tweet", {})
-                vpn = r.get("vpn_check", {})
-                img_an = r.get("image_analysis", {})
-
-                with st.container(border=True):
-                    # Header
-                    h1, h2 = st.columns([1, 4])
-                    with h1:
-                        if tweet.get("user_profile_image"):
-                            try:
-                                st.image(tweet["user_profile_image"], width=80)
-                            except Exception:
-                                pass
-                    with h2:
-                        st.markdown(
-                            f"### {tweet.get('user_name', '')} "
-                            f"{'✓' if tweet.get('user_blue_verified') else ''}"
-                        )
-                        st.caption(
-                            f"@{tweet.get('user_screen_name', '')} • "
-                            f"ID: `{tweet.get('user_id', '')}`"
-                        )
-                        st.markdown(f"🔗 [فتح التغريدة]({tweet.get('tweet_url', '')})")
-
-                    # 🎯 عرض بيانات About Account (إن توفرت)
-                    about = r.get("about_data") or {}
-                    about_diag = r.get("about_diagnosis") or {}
-                    if about.get("success"):
-                        with st.container(border=True):
-                            st.markdown("### 🎯 بيانات /about من X مباشرة (الأدق!)")
-                            ab1, ab2, ab3, ab4 = st.columns(4)
-                            ab1.metric(
-                                "📍 account_based_in",
-                                about.get("account_based_in") or "-",
-                            )
-                            la = about.get("location_accurate")
-                            if la is True:
-                                ab2.metric("✅ location_accurate", "True", delta="موثوق")
-                            elif la is False:
-                                ab2.metric("🚨 location_accurate", "False", delta="VPN!", delta_color="inverse")
-                            else:
-                                ab2.metric("❓ location_accurate", "unknown")
-                            ab3.metric("📱 source", (about.get("source") or "-")[:25])
-                            ab4.metric(
-                                "🔄 username_changes",
-                                about.get("username_changes_count", 0),
-                            )
-
-                            # تشخيص X الرسمي
-                            if about_diag:
-                                if about_diag["risk_score"] >= 80:
-                                    st.error(f"## {about_diag['verdict_ar']}")
-                                elif about_diag["risk_score"] >= 40:
-                                    st.warning(f"## {about_diag['verdict_ar']}")
-                                else:
-                                    st.success(f"## {about_diag['verdict_ar']}")
-
-                                for ind in about_diag.get("indicators", []):
-                                    st.markdown(f"• {ind}")
-
-                    # المقارنة الرئيسية: حساب vs منشور
-                    cmp1, cmp2 = st.columns(2)
-                    with cmp1:
-                        st.markdown("#### 🏠 موقع الحساب")
-                        # أولوية لـ about_data
-                        if about.get("success") and about.get("account_based_in"):
-                            st.markdown(
-                                f"**🎯 من X مباشرة:** {about['account_based_in']}"
-                            )
-                            iso = country_name_to_iso(about["account_based_in"])
-                            if iso:
-                                from x_analyzer import X_REGION_MAP
-                                ci = X_REGION_MAP.get(iso, {})
-                                st.markdown(f"### {ci.get('flag', '')} {ci.get('ar', iso)}")
-                            if about.get("location_accurate") is False:
-                                st.error("🚨 X أبلغ: الموقع غير دقيق (VPN/Proxy)")
-                        elif tweet.get("user_location_field"):
-                            st.markdown(f"**حقل الموقع:** `{tweet['user_location_field']}`")
-                            if tweet.get("region_flag"):
-                                st.markdown(
-                                    f"### {tweet['region_flag']} {tweet.get('region_name_ar', '')}"
-                                )
-                                st.caption(f"ثقة: {tweet.get('region_confidence', 0)}%")
-                        elif tweet.get("region_flag"):
-                            st.markdown(
-                                f"### {tweet['region_flag']} {tweet.get('region_name_ar', '')}"
-                            )
-                            st.caption(f"ثقة: {tweet.get('region_confidence', 0)}%")
-                        else:
-                            st.warning("لم يحدد الحساب موقعاً")
-
-                    with cmp2:
-                        st.markdown("#### 📸 موقع تصوير الصورة (فعلي)")
-                        if img_an and img_an.get("aggregate"):
-                            agg = img_an["aggregate"]
-                            from x_analyzer import X_REGION_MAP
-                            cc = agg.get("country_code")
-                            country_info = X_REGION_MAP.get(cc, {})
-                            flag = country_info.get("flag", "🌍")
-                            ar = country_info.get("ar", agg.get("country_name", cc))
-                            st.markdown(f"### {flag} {ar}")
-                            if agg.get("city"):
-                                st.markdown(f"🏙️ **{agg['city']}**")
-                            if agg.get("neighborhood"):
-                                st.caption(f"📍 {agg['neighborhood']}")
-                            st.caption(f"ثقة: {agg.get('confidence_score', 0)}% • مصدر: {agg.get('source', '')}")
-                            if agg.get("votes_str"):
-                                st.caption(f"🗳️ تصويت: {agg['votes_str']}")
-                        elif r.get("photos"):
-                            st.warning(
-                                f"⚠️ التغريدة فيها صور لكن لم نستخرج موقعاً "
-                                f"({len(r['photos'])} صور)"
-                            )
-                            # عرض الأدلة الجزئية إن وجدت (جديد ⚡)
-                            partial_obs = (img_an or {}).get("partial_observations", [])
-                            partial_texts = (img_an or {}).get("partial_texts", [])
-                            if partial_obs or partial_texts:
-                                with st.expander("🔍 عرض الأدلة الجزئية التي رصدها AI", expanded=True):
-                                    if partial_texts:
-                                        st.markdown("**📝 نصوص في الصورة:**")
-                                        for t in partial_texts[:5]:
-                                            st.markdown(f"• {t}")
-                                    if partial_obs:
-                                        st.markdown("**👁️ ملاحظات:**")
-                                        for o in partial_obs[:5]:
-                                            st.markdown(f"• {o}")
-                                    st.caption(
-                                        "💡 التحليل رصد هذه الإشارات لكنها غير كافية لتحديد دولة بدقة"
-                                    )
-                        else:
-                            st.info("📝 التغريدة بدون صور")
-
-                    # تشخيص VPN
-                    risk = vpn.get("risk_score", 0)
-                    if risk >= 80:
-                        st.error(f"## {vpn.get('icon', '🚨')} {vpn.get('verdict_ar', '')}")
-                    elif risk >= 50:
-                        st.warning(f"## {vpn.get('icon', '⚠️')} {vpn.get('verdict_ar', '')}")
-                    elif risk >= 25:
-                        st.info(f"## {vpn.get('icon', 'ℹ️')} {vpn.get('verdict_ar', '')}")
-                    else:
-                        st.success(f"## {vpn.get('icon', '✅')} {vpn.get('verdict_ar', '')}")
-
-                    # شريط الخطر
-                    st.progress(risk / 100, text=f"📊 درجة خطر VPN: {risk}/100")
-
-                    # المؤشرات
-                    if vpn.get("indicators"):
-                        with st.expander("🔍 تفاصيل التحليل", expanded=risk >= 70):
-                            for ind in vpn.get("indicators", []):
-                                st.markdown(f"• {ind}")
-                            if vpn.get("recommendation"):
-                                st.markdown(f"\n**💡 التوصية:** {vpn['recommendation']}")
-                            if vpn.get("real_location_guess"):
-                                rg_info = X_REGION_MAP.get(vpn["real_location_guess"], {})
-                                st.markdown(
-                                    f"\n**🎯 الموقع الفعلي المرجّح:** "
-                                    f"{rg_info.get('flag', '')} {rg_info.get('ar', vpn['real_location_guess'])}"
-                                )
-
-                    # تفاصيل الصور وأدلة Gemini
-                    if img_an and img_an.get("aggregate"):
-                        agg = img_an["aggregate"]
-                        with st.expander("📸 تفاصيل تحليل الصور بالذكاء الاصطناعي", expanded=True):
-                            if agg.get("reasoning"):
-                                st.markdown(f"**🧠 الاستنتاج:** {agg['reasoning']}")
-                            if agg.get("verification"):
-                                ver = agg["verification"]
-                                if ver == "MATCHES":
-                                    st.success(f"✅ الصورة **تطابق** موقع الحساب المعلن")
-                                elif ver == "DIFFERENT":
-                                    st.error(f"🚨 الصورة **مختلفة** عن موقع الحساب (VPN!)")
-                                else:
-                                    st.info("ℹ️ غير محدد")
-                            if agg.get("visible_texts"):
-                                st.markdown("**📝 نصوص مرئية في الصورة:**")
-                                for t in agg["visible_texts"][:5]:
-                                    st.markdown(f"• {t}")
-                            if agg.get("key_evidence"):
-                                st.markdown("**🔑 الأدلة الرئيسية:**")
-                                for ev in agg["key_evidence"]:
-                                    st.markdown(f"• {ev}")
-                            if agg.get("observations"):
-                                st.markdown("**👁️ الملاحظات:**")
-                                for obs in agg["observations"]:
-                                    st.markdown(f"  ○ {obs}")
-                            if agg.get("coordinates"):
-                                st.markdown(f"**📍 إحداثيات تقريبية:** `{agg['coordinates']}`")
-                                try:
-                                    lat, lon = [float(x.strip()) for x in agg['coordinates'].split(',')[:2]]
-                                    import pandas as pd
-                                    map_df = pd.DataFrame({'lat': [lat], 'lon': [lon]})
-                                    st.map(map_df, zoom=10)
-                                except Exception:
-                                    pass
-
-                    # عرض الصور المحللة
-                    if r.get("photos"):
-                        with st.expander(f"🖼️ عرض صور التغريدة ({len(r['photos'])})", expanded=False):
-                            img_cols = st.columns(min(len(r['photos']), 3))
-                            for j, pu in enumerate(r['photos'][:3]):
-                                with img_cols[j]:
-                                    try:
-                                        st.image(pu, use_container_width=True)
-                                    except Exception:
-                                        st.caption(f"فشل تحميل: {pu[:50]}")
-
-            # تصدير النتائج
-            st.markdown("---")
-            st.markdown("#### 📥 تصدير")
-            export_rows = []
-            for r in results:
-                if not r.get("success"):
-                    continue
-                tw = r.get("tweet", {})
-                ag = (r.get("image_analysis") or {}).get("aggregate") or {}
-                vp = r.get("vpn_check", {})
-                export_rows.append({
-                    "الرابط": r.get("url"),
-                    "المستخدم": f"@{tw.get('user_screen_name','')}",
-                    "الاسم": tw.get("user_name", ""),
-                    "User ID": tw.get("user_id", ""),
-                    "موقع الحساب (معلن)": tw.get("region_name_ar", ""),
-                    "حقل الموقع": tw.get("user_location_field", ""),
-                    "موقع الصورة (فعلي)": ag.get("country_name") or ag.get("country_code", ""),
-                    "المدينة": ag.get("city", ""),
-                    "ثقة الصورة": f"{ag.get('confidence_score', 0)}%",
-                    "تشخيص VPN": vp.get("verdict_ar", ""),
-                    "درجة الخطر": vp.get("risk_score", 0),
-                    "التوصية": vp.get("recommendation", ""),
-                })
-            if export_rows:
-                df_pl = pd.DataFrame(export_rows)
-                csv_pl = df_pl.to_csv(index=False).encode("utf-8-sig")
-                json_pl = df_pl.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
-                ts_pl = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-                # تصدير بسيط
-                st.markdown("##### 📊 تصدير بسيط (بيانات)")
-                ec1, ec2 = st.columns(2)
-                ec1.download_button(
-                    "⬇️ CSV", data=csv_pl,
-                    file_name=f"post_locations_{ts_pl}.csv",
-                    mime="text/csv", use_container_width=True,
-                )
-                ec2.download_button(
-                    "⬇️ JSON", data=json_pl,
-                    file_name=f"post_locations_{ts_pl}.json",
-                    mime="application/json", use_container_width=True,
-                )
-
-                # 📑 تصدير تقارير احترافية (Word + PowerPoint)
-                st.markdown("##### 📑 تصدير تقارير احترافية (مع الصور والتنسيق الكامل)")
-                if not REPORT_EXPORTER_AVAILABLE:
-                    st.warning(
-                        "⚠️ ثبّت `python-docx` و `python-pptx` في requirements.txt لتفعيل هذه الميزة"
-                    )
-                else:
-                    er1, er2 = st.columns(2)
-
-                    with er1:
-                        if st.button(
-                            "📝 توليد تقرير Word (.docx)",
-                            use_container_width=True,
-                            key="pl_gen_word",
-                        ):
-                            with st.spinner("⏳ جارٍ توليد تقرير Word مع الصور..."):
-                                try:
-                                    docx_bytes = generate_word_report(
-                                        results,
-                                        title="🌍 تقرير تحليل مواقع المنشورات + كاشف VPN",
-                                    )
-                                    st.session_state["_pl_docx_bytes"] = docx_bytes
-                                    st.session_state["_pl_docx_ts"] = ts_pl
-                                    st.success(f"✅ تم توليد Word ({len(docx_bytes):,} bytes)")
-                                except Exception as e:
-                                    st.error(f"❌ فشل: {e}")
-
-                        if st.session_state.get("_pl_docx_bytes"):
-                            st.download_button(
-                                "⬇️ تحميل Word",
-                                data=st.session_state["_pl_docx_bytes"],
-                                file_name=f"post_locations_report_{st.session_state.get('_pl_docx_ts', ts_pl)}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
-                                key="pl_dl_word",
-                            )
-
-                    with er2:
-                        if st.button(
-                            "📊 توليد عرض PowerPoint (.pptx)",
-                            use_container_width=True,
-                            key="pl_gen_pptx",
-                        ):
-                            with st.spinner("⏳ جارٍ توليد عرض PowerPoint مع الصور..."):
-                                try:
-                                    pptx_bytes = generate_pptx_report(
-                                        results,
-                                        title="🌍 تحليل مواقع المنشورات + كاشف VPN",
-                                    )
-                                    st.session_state["_pl_pptx_bytes"] = pptx_bytes
-                                    st.session_state["_pl_pptx_ts"] = ts_pl
-                                    st.success(f"✅ تم توليد PowerPoint ({len(pptx_bytes):,} bytes)")
-                                except Exception as e:
-                                    st.error(f"❌ فشل: {e}")
-
-                        if st.session_state.get("_pl_pptx_bytes"):
-                            st.download_button(
-                                "⬇️ تحميل PowerPoint",
-                                data=st.session_state["_pl_pptx_bytes"],
-                                file_name=f"post_locations_report_{st.session_state.get('_pl_pptx_ts', ts_pl)}.pptx",
-                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                                use_container_width=True,
-                                key="pl_dl_pptx",
-                            )
-
-                    st.info(
-                        "💡 **التقارير تحتوي:** صور البروفايل + صور المنشورات + كل البيانات + "
-                        "مقارنة المواقع + تشخيص VPN بالألوان. تنسيق RTL عربي كامل."
-                    )
-
-    # وضع 2: رفع صورة مباشرة
-    elif pl_mode.startswith("🖼️ رفع صورة"):
-        st.markdown("#### 🖼️ ارفع صورة لتحديد موقعها:")
-        uploaded = st.file_uploader(
-            "اختر صورة:",
-            type=["jpg", "jpeg", "png", "webp"],
-            key="pl_upload",
-        )
-
-        if uploaded and api_key_for_post:
-            if st.button("🔍 حلل موقع الصورة", type="primary", use_container_width=True):
-                col_img, col_res = st.columns([1, 2])
-                with col_img:
-                    st.image(uploaded, caption="الصورة المحللة", use_container_width=True)
-
-                with col_res:
-                    with st.spinner("🔄 جارٍ التحليل بالذكاء الاصطناعي..."):
-                        image_bytes = uploaded.read()
-                        result = analyze_image_geo(image_bytes, api_key_for_post)
-
-                    if not result.get("success"):
-                        st.error(f"❌ فشل: {result.get('error')}")
-                    else:
-                        # عرض EXIF
-                        if result.get("exif"):
-                            ex = result["exif"]
-                            st.success(f"🛰️ **EXIF GPS وجد!** (الأدق 100%)")
-                            st.markdown(f"• الدولة: **{ex.get('country_name')}** ({ex.get('country_code')})")
-                            if ex.get("city"):
-                                st.markdown(f"• المدينة: **{ex['city']}**")
-                            if ex.get("neighborhood"):
-                                st.markdown(f"• الحي: **{ex['neighborhood']}**")
-                            st.markdown(f"• الإحداثيات: `{ex['lat']:.5f}, {ex['lon']:.5f}`")
-                            try:
-                                map_df = pd.DataFrame({'lat': [ex['lat']], 'lon': [ex['lon']]})
-                                st.map(map_df, zoom=12)
-                            except Exception:
-                                pass
-
-                        # عرض Gemini
-                        if result.get("gemini"):
-                            g = result["gemini"]
-                            if g.get("country_code"):
-                                from x_analyzer import X_REGION_MAP
-                                ci = X_REGION_MAP.get(g["country_code"], {})
-                                st.markdown(f"### {ci.get('flag','🌍')} {ci.get('ar', g.get('country_name'))}")
-                                if g.get("city"):
-                                    st.markdown(f"🏙️ **المدينة:** {g['city']}")
-                                if g.get("neighborhood"):
-                                    st.markdown(f"📍 **الحي:** {g['neighborhood']}")
-                                st.markdown(f"🎯 **الثقة:** {g.get('confidence')} ({g.get('confidence_score', 0)}%)")
-                                if g.get("reasoning"):
-                                    st.markdown(f"**🧠 الاستنتاج:** {g['reasoning']}")
-                                if g.get("key_evidence"):
-                                    st.markdown("**🔑 الأدلة:**")
-                                    for ev in g["key_evidence"]:
-                                        st.markdown(f"• {ev}")
-                                if g.get("observations"):
-                                    with st.expander("👁️ كل الملاحظات"):
-                                        for o in g["observations"]:
-                                            st.markdown(f"• {o}")
-                                if g.get("alternative_locations"):
-                                    with st.expander("🔀 مواقع بديلة محتملة"):
-                                        for a in g["alternative_locations"]:
-                                            st.markdown(f"• {a}")
-                            else:
-                                st.warning("⚠️ الصورة لا تحتوي على إشارات جغرافية واضحة")
-                                if g.get("observations"):
-                                    st.markdown("ملاحظات:")
-                                    for o in g["observations"]:
-                                        st.markdown(f"• {o}")
-
-    # وضع 3: روابط صور مباشرة
-    elif pl_mode.startswith("🔗 روابط صور"):
-        st.markdown("#### 🔗 أدخل روابط صور مباشرة:")
-        pl_img_urls = st.text_area(
-            "رابط صورة لكل سطر:",
-            height=120,
-            placeholder="https://example.com/photo1.jpg\nhttps://example.com/photo2.jpg",
-            key="pl_img_urls_input",
-        )
-        if st.button("🔍 حلل الصور", type="primary", use_container_width=True,
-                     key="pl_imgs_analyze", disabled=not api_key_for_post):
-            urls = [u.strip() for u in pl_img_urls.splitlines() if u.strip().startswith("http")]
-            if not urls:
-                st.error("❌ لم تدخل روابط صحيحة")
-            else:
-                st.info(f"🔄 تحليل {len(urls)} صورة...")
-                progress = st.progress(0)
-                for i, u in enumerate(urls):
-                    with st.container(border=True):
-                        col_i, col_d = st.columns([1, 2])
-                        with col_i:
-                            try:
-                                st.image(u, use_container_width=True)
-                            except Exception:
-                                pass
-                        with col_d:
-                            res = analyze_image_geo(u, api_key_for_post)
-                            if not res.get("success"):
-                                st.error(f"❌ {res.get('error')}")
-                            elif res.get("gemini") and res["gemini"].get("country_code"):
-                                g = res["gemini"]
-                                from x_analyzer import X_REGION_MAP
-                                ci = X_REGION_MAP.get(g["country_code"], {})
-                                st.markdown(f"### {ci.get('flag','🌍')} {ci.get('ar', g.get('country_name'))}")
-                                if g.get("city"):
-                                    st.markdown(f"🏙️ {g['city']}")
-                                st.caption(f"ثقة: {g.get('confidence_score', 0)}%")
-                                if g.get("key_evidence"):
-                                    for ev in g["key_evidence"][:3]:
-                                        st.caption(f"• {ev}")
-                            else:
-                                st.warning("⚠️ لم توجد إشارات جغرافية واضحة")
-                    progress.progress((i+1) / len(urls))
-
-
-# ════════════════════════════════════════════════════════════
-# Helper: render one geo-engine result
-# ════════════════════════════════════════════════════════════
-def _render_geo_result(label, img_bytes, res):
-    if not res or res.get("error"):
-        st.error(f"❌ فشل التحليل: {res.get('error', 'unknown')}")
-        return
-
-    cols = st.columns([1, 2])
-    with cols[0]:
-        if img_bytes:
-            try:
-                st.image(img_bytes, caption=label[:60], use_container_width=True)
-            except Exception:
-                st.caption("(تعذر عرض الصورة)")
-
-    with cols[1]:
-        tri = res.get("triangulation", {})
-        vpn = res.get("vpn", {})
-
-        # Final answer
-        if tri.get("final_iso"):
-            st.markdown(
-                f"<div style='background:#e8f5e9; padding:14px;"
-                f"border-radius:10px; border-right:5px solid #2e7d32;'>"
-                f"<h3 style='margin:0;'>{tri['final_flag']} {tri['country_ar']} "
-                f"<span style='color:#555;font-size:14px;'>(ثقة {tri['confidence']}%)</span></h3>"
-                f"<b>🏙️ المدينة:</b> {tri.get('city') or '—'}<br>"
-                f"<b>📍 الحي:</b> {tri.get('neighbourhood') or '—'}<br>"
-                f"<b>🌐 الإحداثيات:</b> {tri.get('lat')}, {tri.get('lon')}<br>"
-                f"<b>🔍 الطريقة:</b> <code>{tri.get('method')}</code>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            if tri.get("lat") and tri.get("lon"):
-                st.markdown(f"[🗺️ فتح على OpenStreetMap]"
-                            f"(https://www.openstreetmap.org/?mlat={tri['lat']}"
-                            f"&mlon={tri['lon']}&zoom=16)")
-        else:
-            st.warning("⚠️ لم يتمكّن أي من الطبقات من تحديد الدولة — جرّب Yandex يدوياً")
-
-        # VPN
-        risk = vpn.get("risk_score", 0)
-        risk_color = ("#c62828" if risk >= 80 else
-                      "#ef6c00" if risk >= 50 else
-                      "#f9a825" if risk >= 25 else "#2e7d32")
-        st.markdown(
-            f"<div style='background:#fafafa;padding:12px;border-radius:8px;"
-            f"border-right:5px solid {risk_color}; margin-top:10px;'>"
-            f"<b>🛡️ تشخيص VPN:</b> {vpn.get('verdict')} "
-            f"<span style='color:{risk_color};font-weight:bold;'>({risk}/100)</span><br>"
-            f"‪{'<br>'.join('• ' + r for r in vpn.get('reasons', []))}‬"
-            f"<br><i>💡 {vpn.get('recommendation','')}</i>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    # ─── EXIF table ───
-    e = res.get("exif", {})
-    with st.expander(f"🔍 فحص EXIF التفصيلي ({e.get('total_tags', 0)} حقل)", expanded=False):
-        if e.get("available"):
-            exif_show = {k: v for k, v in e.items() if v not in (None, "", {})
-                         and k not in ("available", "total_tags")}
-            st.json(exif_show)
-        else:
-            st.info("لا توجد بيانات EXIF (غالباً X/Twitter يحذفها عند الرفع).")
-
-    # ─── AI Vision details ───
-    ai = res.get("ai_vision", {})
-    with st.expander("🤖 تفاصيل AI GEO-Detective", expanded=False):
-        if "error" in ai:
-            st.warning(f"AI غير متاح: {ai['error']}")
-        else:
-            st.json(ai)
-
-    # ─── Reverse-image search links ───
-    rev = res.get("reverse_search", {})
-    if rev:
-        st.markdown("##### 🔗 Reverse Image Search (افتح يدوياً للتحقّق):")
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.link_button("🧬 Yandex", rev.get("yandex", "#"), use_container_width=True)
-        c2.link_button("🔍 Google Lens", rev.get("google_lens", "#"), use_container_width=True)
-        c3.link_button("🌐 Google", rev.get("google", "#"), use_container_width=True)
-        c4.link_button("🅱️ Bing", rev.get("bing", "#"), use_container_width=True)
-        c5.link_button("👁️ TinEye", rev.get("tineye", "#"), use_container_width=True)
-
-
-# ════════════════════════════════════════════════════════════
-# 🛰️ تبويب Geo-Engine (GeoSpy + EXIF + Yandex + AI Vision)
-# ════════════════════════════════════════════════════════════
-with tab_geo:
-    st.markdown("### 🛰️ Geo-Engine — محرّك التحليل الجغرافي المتعدد الطبقات")
-    st.markdown(
-        """
-<div style='background: linear-gradient(135deg, #0f2027, #2c5364);
-            padding: 18px; border-radius: 12px; color: white;
-            border-left: 5px solid #00d4ff;'>
-  <b>🎯 محرّك مستوحى من GeoSpy.ai وورقة PIGEON من Stanford</b>
-  <ul style='margin-top: 10px; font-size: 14px;'>
-    <li>🔍 <b>الطبقة 1 — ExifTool Deep Scan</b>: فحص 100+ حقل (GPS، كاميرا، توقيت، برامج، XMP، IPTC) — بنفس محرّك ExifGlass</li>
-    <li>🔗 <b>الطبقة 2 — Reverse Image Search</b>: روابط جاهزة لـ Yandex (الأقوى عالمياً)، Google Lens، Bing، TinEye</li>
-    <li>🤖 <b>الطبقة 3 — AI GEO-Detective</b>: Gemini 2.0 يفحص 6 فئات (لافتات، عمارة، مركبات، طبيعة، أشخاص، رقميّة)</li>
-    <li>🎯 <b>الطبقة 4 — Triangulation Voting</b>: تصويت موزون بين الطبقات للحصول على دليل واحد موثوق</li>
-    <li>🛡️ <b>الطبقة 5 — VPN Detector</b>: يقارن موقع الحساب × موقع الصورة × اللغة × المنطقة الزمنية</li>
-  </ul>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.write("")
-
-    if not GEO_ENGINE_AVAILABLE:
-        st.error(f"⚠️ geo_engine.py غير متوفر: {GEO_ENGINE_ERROR}")
-        st.stop()
-
-    # ─── إعدادات الإدخال ───
-    geo_mode = st.radio(
-        "📁 وضع الإدخال:",
-        [
-            "📎 رفع صورة مباشرة (أدقّ فحص EXIF)",
-            "🔗 روابط صور مباشرة (URLs)",
-            "🐦 روابط منشورات X (استخراج تلقائي)",
-        ],
-        horizontal=True, key="geo_mode",
-    )
-
-    # API key
-    geo_api_key = st.session_state.get("gemini_api_key", "") \
-                  or os.environ.get("GEMINI_API_KEY", "")
-    if not geo_api_key:
-        with st.expander("🔑 إعداد Gemini API Key (مجاني 1500 طلب/يوم)", expanded=False):
-            st.markdown(
-                "احصل على مفتاح مجاني من [Google AI Studio]"
-                "(https://aistudio.google.com/apikey) — بدون بطاقة بنكية."
-            )
-            geo_api_key = st.text_input(
-                "AIza...", type="password", key="geo_api_input",
-                placeholder="اتركه فارغاً لتعطيل AI والاكتفاء بـ EXIF + Reverse-Search",
-            )
-            if geo_api_key:
-                st.session_state["gemini_api_key"] = geo_api_key
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        geo_account_iso = st.selectbox(
-            "🏠 الدولة المعلنة للحساب (للمقارنة/كشف VPN)",
-            ["— غير محدد —"] + [f"{ge_flag(k)} {k} — {v}" for k, v in ISO_TO_AR.items()],
-            key="geo_acc_iso",
-        )
-    with col_b:
-        geo_lang = st.selectbox(
-            "🗣️ لغة المنشور (لكشف VPN)",
-            ["—", "ar", "en", "fr", "es", "ru", "tr", "fa", "ur", "id", "ms"],
-            key="geo_lang",
-        )
-
-    parsed_account_iso = (geo_account_iso.split(" ")[1]
-                          if geo_account_iso and "—" not in geo_account_iso[:5]
-                          else None)
-    parsed_lang = geo_lang if geo_lang and geo_lang != "—" else None
-
-    # ─── وضع 1: رفع صورة ###############################
-    if geo_mode.startswith("📎"):
-        uploaded = st.file_uploader(
-            "اختر صورة (jpg/jpeg/png/webp/heic) — حتى 8 MB",
-            type=["jpg", "jpeg", "png", "webp", "heic", "heif"],
-            accept_multiple_files=True,
-            key="geo_upload",
-        )
-        if uploaded and st.button("🚀 تحليل عبر 5 طبقات", type="primary", key="geo_run_upload"):
-            for idx, file in enumerate(uploaded):
-                st.markdown(f"---\n#### 📸 صورة {idx+1}: `{file.name}`")
-                img_bytes = file.read()
-                with st.spinner("جارٍ فحص EXIF + Reverse Search + AI …"):
-                    res = analyze_image_full(
-                        image_bytes=img_bytes,
-                        gemini_api_key=geo_api_key or None,
-                        account_iso=parsed_account_iso,
-                        tweet_lang=parsed_lang,
-                    )
-                _render_geo_result(file.name, img_bytes, res)
-
-    # ─── وضع 2: روابط صور مباشرة #####################
-    elif geo_mode.startswith("🔗"):
-        urls_text = st.text_area(
-            "ألصق روابط صور مباشرة (رابط لكل سطر):",
-            height=140, key="geo_urls_in",
-            placeholder="https://pbs.twimg.com/media/XXX.jpg\nhttps://example.com/photo.jpg",
-        )
-        if urls_text and st.button("🚀 تحليل الروابط", type="primary", key="geo_run_urls"):
-            urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
-            for idx, url in enumerate(urls):
-                st.markdown(f"---\n#### 🔗 رابط {idx+1}")
-                st.caption(url)
-                with st.spinner("جارٍ تحليل 5 طبقات …"):
-                    res = analyze_image_full(
-                        image_url=url,
-                        gemini_api_key=geo_api_key or None,
-                        account_iso=parsed_account_iso,
-                        tweet_lang=parsed_lang,
-                    )
-                # try to fetch bytes for preview
-                try:
-                    img_bytes = requests.get(url, timeout=15,
-                        headers={"User-Agent":"Mozilla/5.0"}).content
-                except Exception:
-                    img_bytes = None
-                _render_geo_result(url, img_bytes, res)
-
-    # ─── وضع 3: منشورات X #################################
-    else:
-        x_links = st.text_area(
-            "ألصق روابط منشورات X (رابط لكل سطر):",
-            height=140, key="geo_x_in",
-            placeholder="https://x.com/username/status/1234567890",
-        )
-        if x_links and st.button("🚀 استخراج الصور + تحليل", type="primary", key="geo_run_x"):
-            from x_analyzer import analyze_x_tweet_legacy as _atl
-            urls = [u.strip() for u in x_links.splitlines() if u.strip()]
-            for idx, url in enumerate(urls):
-                st.markdown(f"---\n#### 🐦 تغريدة {idx+1}")
-                st.caption(url)
-                with st.spinner("جارٍ جلب بيانات التغريدة …"):
-                    try:
-                        tw = _atl(url) or {}
-                    except Exception as e:
-                        st.error(f"تعذّر جلب التغريدة: {e}")
-                        continue
-                    media_urls = tw.get("media_urls") or tw.get("images") or []
-                    acc_iso = parsed_account_iso or (tw.get("region_iso") or None)
-                    acc_lang = parsed_lang or tw.get("lang")
-
-                if not media_urls:
-                    st.warning("لا توجد صور في هذه التغريدة.")
-                    continue
-                st.success(f"تمّ استخراج {len(media_urls)} صورة — الحساب @{tw.get('user_screen_name','?')} "
-                           f"({ge_flag(acc_iso) if acc_iso else ''} {acc_iso or '—'})")
-                for j, mu in enumerate(media_urls[:4]):
-                    st.markdown(f"##### 🖼️ صورة {j+1}/{len(media_urls[:4])}")
-                    with st.spinner("تحليل 5 طبقات …"):
-                        res = analyze_image_full(
-                            image_url=mu,
-                            gemini_api_key=geo_api_key or None,
-                            account_iso=acc_iso,
-                            tweet_lang=acc_lang,
-                        )
-                    try:
-                        img_bytes = requests.get(mu, timeout=15,
-                            headers={"User-Agent":"Mozilla/5.0"}).content
-                    except Exception:
-                        img_bytes = None
-                    _render_geo_result(mu, img_bytes, res)
-
-
-
-# ════════════════════════════════════════════════════════════
-# 🕵️ تبويب OSINT محقّق تويتر  (نسخة دائمة — النتائج تبقى)
-# ════════════════════════════════════════════════════════════
-with tab_osint:
     st.markdown("### 🕵️ محقّق تويتر — أدوات OSINT جغرافية متكاملة")
     st.markdown(
         """
@@ -4306,6 +3240,315 @@ with tab_osint:
             if st.button("🗑️ مسح النتيجة", key="osint_clear_rev"):
                 st.session_state["osint_rev_result"] = None
                 st.rerun()
+
+# ============ 🌍 تبويب تحليل موقع المنشور + كاشف VPN — الأقوى! ============
+with tab_postloc:
+    st.markdown("### 🌍 تحديد موقع المنشور + كاشف VPN — تحليل بصري عميق 🧠")
+    st.markdown(
+        """
+        <div class="info-box">
+        <strong>🔥 الفرق الجوهري:</strong> هذا التبويب يحدد <strong>موقع تصوير المنشور الفعلي</strong>
+        (وليس ما يدّعيه الحساب في بروفايله)!
+        <ul>
+        <li>🛰️ <strong>EXIF GPS</strong>: الدقة القصوى 100% — يستخرج إحداثيات فعلية إن وجدت</li>
+        <li>🤖 <strong>Gemini Vision (GEO-Detective)</strong>: تحليل بصري 5 فئات (معمار، بنية تحتية، بيئة، تخطيط، لافتات)</li>
+        <li>🚨 <strong>كاشف VPN</strong>: يقارن موقع الحساب مع موقع التصوير → التناقض = احتمال VPN</li>
+        <li>🏛️ يكتشف: معالم، لوحات سيارات، لافتات، لباس تقليدي، علامات تجارية محلية</li>
+        </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # اختيار وضع التحليل
+    st.markdown("#### 📝 وضع التحليل")
+    pl_mode = st.radio(
+        "اختر طريقة الإدخال:",
+        [
+            "🔗 روابط منشورات X (تحليل صور + كشف VPN)",
+            "🖼️ رفع صورة مباشرة لتحديد موقعها",
+            "🔗 روابط صور مباشرة",
+        ],
+        horizontal=False,
+        key="pl_mode",
+    )
+
+    # تحقق من API key
+    api_key_for_post = (
+        os.environ.get("GEMINI_API_KEY")
+        or st.session_state.get("gemini_api_key")
+    )
+
+    if not api_key_for_post:
+        st.warning(
+            "⚠️ تحتاج **Gemini API Key** لتفعيل تحليل الصور. "
+            "احصل عليه مجاناً من: https://aistudio.google.com/apikey"
+        )
+        new_key = st.text_input(
+            "أدخل Gemini API Key:",
+            type="password",
+            key="gemini_api_key_postloc",
+        )
+        if new_key:
+            st.session_state["gemini_api_key"] = new_key
+            api_key_for_post = new_key
+            st.rerun()
+    else:
+        st.success("✅ Gemini API مفعل — جاهز للتحليل!")
+
+    # ✅ رسالة إعلامية - لا حاجة لـ cookies!
+    st.markdown(
+        """
+        <div style="background: #d1fae5; border-right: 4px solid #10b981; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+        <strong>✅ آمن بنسبة 100% — لا حاجة لتسجيل دخول!</strong><br>
+        هذا التبويب يستخدم فقط APIs عامة وآمنة:
+        <ul style="margin: 0.5rem 0;">
+        <li>🌐 <strong>fxtwitter API</strong>: مجاني ومفتوح — يجلب حقل الموقع المعلن في البروفايل</li>
+        <li>🤖 <strong>Gemini Vision</strong>: يحلل صور المنشور لتحديد موقع التصوير الفعلي</li>
+        <li>🔍 <strong>EXIF GPS</strong>: إحداثيات مباشرة إن وجدت</li>
+        </ul>
+        🎯 <strong>كشف VPN</strong>: بمقارنة الموقع المعلن في البروفايل مع موقع التصوير من الصور = التناقض يكشف VPN!
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # الوضع الآمن: لا نستخدم cookies أبداً
+    use_about_api = False
+    x_cookies = ""
+
+    st.markdown("---")
+
+    # وضع 1: روابط منشورات X
+    if pl_mode.startswith("🔗 روابط منشورات X"):
+        st.markdown("#### 🔗 أدخل روابط تغريدات X تحتوي صور:")
+        pl_x_urls = st.text_area(
+            "رابط لكل سطر:",
+            height=150,
+            placeholder="https://x.com/username/status/1234567890\nhttps://x.com/another/status/9876543210",
+            key="pl_x_urls_input",
+        )
+
+        col_pl1, col_pl2 = st.columns([3, 1])
+        with col_pl2:
+            pl_max_imgs = st.number_input(
+                "صور لكل تغريدة", min_value=1, max_value=4, value=2,
+                help="عدد الصور التي ستحلل لكل تغريدة (أقل = أسرع)",
+            )
+
+        if st.button(
+            "🚀 تحليل مواقع المنشورات + كشف VPN",
+            type="primary",
+            use_container_width=True,
+            key="pl_x_analyze",
+            disabled=not api_key_for_post,
+        ):
+            urls = [u.strip() for u in pl_x_urls.splitlines()
+                    if u.strip() and ('x.com' in u or 'twitter.com' in u)]
+
+            if not urls:
+                st.error("❌ لم يتم العثور على روابط صحيحة")
+            else:
+                st.info(f"🔄 جارٍ تحليل **{len(urls)}** منشورات... (قد يستغرق دقيقة لكل منشور)")
+                progress = st.progress(0)
+                status = st.empty()
+                pl_results = []
+
+                for i, url in enumerate(urls):
+                    status.text(f"⏳ تحليل {i+1}/{len(urls)}: {url[:60]}...")
+
+                    # 1. جلب بيانات التغريدة (تتضمن روابط الصور + موقع الحساب)
+                    tweet_data = analyze_x_tweet(url)
+
+                    if tweet_data.get("status") != "✅ نجح":
+                        pl_results.append({
+                            "url": url, "error": tweet_data.get("error"),
+                            "success": False,
+                        })
+                        progress.progress((i+1) / len(urls))
+                        continue
+
+                    # 2. استخرج روابط الصور
+                    photos_urls = []
+                    # من النتيجة الجديدة (legacy wrapper)
+                    media = tweet_data.get("media") if isinstance(tweet_data.get("media"), dict) else {}
+                    if not media:
+                        # جلب مباشر
+                        from x_analyzer import fetch_x_tweet, parse_x_url
+                        u_, tid_ = parse_x_url(url)
+                        if u_ and tid_:
+                            full = fetch_x_tweet(u_, tid_)
+                            photos_urls = full.get("photos_urls", [])
+                    else:
+                        for p in (media.get("photos") or []):
+                            if isinstance(p, dict) and p.get("url"):
+                                photos_urls.append(p["url"])
+
+                    # 3. حلل الصور بـ Gemini Vision (مع hint من موقع الحساب ⚡)
+                    image_analysis = None
+                    if photos_urls:
+                        # مرر موقع الحساب لتحسين الكشف
+                        account_loc_hint = (
+                            tweet_data.get("user_location_field") or
+                            tweet_data.get("region_name_ar") or
+                            ""
+                        )
+                        image_analysis = analyze_post_images(
+                            photos_urls, api_key_for_post,
+                            max_images=int(pl_max_imgs),
+                            account_location=account_loc_hint,
+                        )
+
+                    # 4. لا نستخدم About API (آمن بدون cookies)
+                    about_data = None
+                    about_diagnosis = None
+                    screen_name = tweet_data.get("user_screen_name")
+
+                    # 5. كشف VPN: بالموقع المعلن في البروفايل (fxtwitter)
+                    account_country_iso = tweet_data.get("region")
+
+                    post_country = None
+                    if image_analysis and image_analysis.get("aggregate"):
+                        post_country = image_analysis["aggregate"].get("country_code")
+
+                    vpn_check = detect_vpn(
+                        account_country=account_country_iso,
+                        post_country=post_country,
+                        lang=tweet_data.get("lang", ""),
+                        name=tweet_data.get("user_name", ""),
+                        bio=tweet_data.get("user_bio", ""),
+                    )
+
+                    pl_results.append({
+                        "success": True,
+                        "url": url,
+                        "tweet": tweet_data,
+                        "photos": photos_urls,
+                        "image_analysis": image_analysis,
+                        "about_data": about_data,
+                        "about_diagnosis": about_diagnosis,
+                        "vpn_check": vpn_check,
+                        "account_country": account_country_iso,
+                        "post_country": post_country,
+                    })
+
+                    progress.progress((i+1) / len(urls))
+
+                progress.empty()
+                status.empty()
+                st.session_state["pl_results"] = pl_results
+                st.success(f"✅ تم تحليل {len(pl_results)} منشورات!")
+
+        # عرض النتائج
+        if "pl_results" in st.session_state and st.session_state["pl_results"]:
+            results = st.session_state["pl_results"]
+
+            st.markdown("---")
+            st.markdown("## 📊 نتائج تحليل مواقع المنشورات")
+
+            # إحصائيات سريعة
+            total = len([r for r in results if r.get("success")])
+            with_post_loc = sum(1 for r in results if r.get("post_country"))
+            vpn_alerts = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "likely_vpn")
+            matched = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") == "matched")
+            travel = sum(1 for r in results if r.get("vpn_check", {}).get("verdict") in ("travel", "expat_visit"))
+
+            ms1, ms2, ms3, ms4, ms5 = st.columns(5)
+            ms1.metric("🔗 الإجمالي", total)
+            ms2.metric("🌍 لها موقع صورة", with_post_loc)
+            ms3.metric("🚨 احتمال VPN", vpn_alerts, delta=f"{vpn_alerts}/{total}" if total else None)
+            ms4.metric("✅ تطابق", matched)
+            ms5.metric("✈️ سفر/مغترب", travel)
+
+            # عرض كل نتيجة
+            for idx, r in enumerate(results):
+                if not r.get("success"):
+                    with st.container(border=True):
+                        st.error(f"❌ فشل تحليل: {r.get('url')} — {r.get('error')}")
+                    continue
+
+                tweet = r.get("tweet", {})
+                vpn = r.get("vpn_check", {})
+                img_an = r.get("image_analysis", {})
+
+                with st.container(border=True):
+                    # Header
+                    h1, h2 = st.columns([1, 4])
+                    with h1:
+                        if tweet.get("user_profile_image"):
+                            try:
+                                st.image(tweet["user_profile_image"], width=80)
+                            except Exception:
+                                pass
+                    with h2:
+                        st.markdown(
+                            f"### {tweet.get('user_name', '')} "
+                            f"{'✓' if tweet.get('user_blue_verified') else ''}"
+                        )
+                        st.caption(
+                            f"@{tweet.get('user_screen_name', '')} • "
+                            f"ID: `{tweet.get('user_id', '')}`"
+                        )
+                        st.markdown(f"🔗 [فتح التغريدة]({tweet.get('tweet_url', '')})")
+
+                    # 🎯 عرض بيانات About Account (إن توفرت)
+                    about = r.get("about_data") or {}
+                    about_diag = r.get("about_diagnosis") or {}
+                    if about.get("success"):
+                        with st.container(border=True):
+                            st.markdown("### 🎯 بيانات /about من X مباشرة (الأدق!)")
+                            ab1, ab2, ab3, ab4 = st.columns(4)
+                            ab1.metric(
+                                "📍 account_based_in",
+                                about.get("account_based_in") or "-",
+                            )
+                            la = about.get("location_accurate")
+                            if la is True:
+                                ab2.metric("✅ location_accurate", "True", delta="موثوق")
+                            elif la is False:
+                                ab2.metric("🚨 location_accurate", "False", delta="VPN!", delta_color="inverse")
+                            else:
+                                ab2.metric("❓ location_accurate", "unknown")
+                            ab3.metric("📱 source", (about.get("source") or "-")[:25])
+                            ab4.metric(
+                                "🔄 username_changes",
+                                about.get("username_changes_count", 0),
+                            )
+
+                            # تشخيص X الرسمي
+                            if about_diag:
+                                if about_diag["risk_score"] >= 80:
+                                    st.error(f"## {about_diag['verdict_ar']}")
+                                elif about_diag["risk_score"] >= 40:
+                                    st.warning(f"## {about_diag['verdict_ar']}")
+                                else:
+                                    st.success(f"## {about_diag['verdict_ar']}")
+
+                                for ind in about_diag.get("indicators", []):
+                                    st.markdown(f"• {ind}")
+
+                    # المقارنة الرئيسية: حساب vs منشور
+                    cmp1, cmp2 = st.columns(2)
+                    with cmp1:
+                        st.markdown("#### 🏠 موقع الحساب")
+                        # أولوية لـ about_data
+                        if about.get("success") and about.get("account_based_in"):
+                            st.markdown(
+                                f"**🎯 من X مباشرة:** {about['account_based_in']}"
+                            )
+                            iso = country_name_to_iso(about["account_based_in"])
+                            if iso:
+                                from x_analyzer import X_REGION_MAP
+                                ci = X_REGION_MAP.get(iso, {})
+                                st.markdown(f"### {ci.get('flag', '')} {ci.get('ar', iso)}")
+                            if about.get("location_accurate") is False:
+                                st.error("🚨 X أبلغ: الموقع غير دقيق (VPN/Proxy)")
+                        elif tweet.get("user_location_field"):
+                            st.markdown(f"**حقل الموقع:** `{tweet['user_location_field']}`")
+                            if tweet.get("region_flag"):
+                                st.markdown(
+    s)
+
 
 
 # ============ تبويب RSS ============
