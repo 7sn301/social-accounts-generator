@@ -1096,6 +1096,39 @@ def fetch_region_from_video_page(username: str) -> dict:
     except Exception:
         return {"region": "", "source": "unknown", "confidence": 0, "method": "v12_import_failed", "evidence": [], "votes": []}
 
+
+def enrich_tiktok_region(row: dict) -> dict:
+    """
+    تحسين بيانات الموقع لحساب TikTok بثقة منخفضة.
+    تأخذ dict الحساب وتُعيده مُحدَّثاً بأفضل موقع متاح.
+    """
+    username = row.get("username", "")
+    if not username:
+        return row
+    try:
+        result = fetch_region_from_video_page(username)
+        region = result.get("region", "")
+        confidence = int(result.get("confidence", 0))
+        if region and confidence >= 30:
+            flag, name_ar = TIKTOK_REGION_MAP.get(region, ("🌍", region))
+            row = dict(row)  # نسخة لتجنب التعديل في المكان
+            row["region"] = region
+            row["region_flag"] = flag
+            row["region_name_ar"] = name_ar
+            row["region_confidence"] = confidence
+            row["region_source"] = f"⚡ {result.get('source', 'enrich')}"
+            row["country_code"] = region
+            row["country_flag"] = flag
+            row["country_name_ar"] = name_ar
+            row["region_enriched"] = True
+        else:
+            row = dict(row)
+            row["region_enriched"] = False
+    except Exception as e:
+        row = dict(row)
+        row["region_enriched"] = False
+    return row
+
 def _infer_region_from_bio(html: str) -> str:
     """استنتاج الدولة من نص البايو عبر كلمات دلالية."""
     import re as _re
