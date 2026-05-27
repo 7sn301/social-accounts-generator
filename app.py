@@ -1089,12 +1089,32 @@ import math as _math
 
 # ── استخراج منطقة المستخدم - نسخة v11 المُصلحة ──
 def fetch_region_from_video_page(username: str) -> dict:
-    """Wrapper إلى محرك v12 الأقوى متعدد المصادر."""
+    """Wrapper إلى محرك v13 متعدد الطبقات."""
     try:
-        from tiktok_region_v12 import fetch_region_from_video_page as _fetch_region_v12
-        return _fetch_region_v12(username)
-    except Exception:
-        return {"region": "", "source": "unknown", "confidence": 0, "method": "v12_import_failed", "evidence": [], "votes": []}
+        from tiktok_region_v13 import fetch_region_from_video_page as _fetch_v13
+        return _fetch_v13(username)
+    except Exception as ex:
+        # Direct fallback using requests
+        import requests, json, re
+        try:
+            ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            resp = requests.get(f"https://www.tiktok.com/@{username}", 
+                headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.9"}, 
+                timeout=20)
+            if resp.status_code == 200:
+                m = re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', resp.text, re.DOTALL)
+                if m:
+                    data = json.loads(m.group(1))
+                    user = data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {}).get("userInfo", {}).get("user", {})
+                    region = user.get("region", "")
+                    if region and len(region) == 2 and region.isupper():
+                        from tiktok_region_v12 import TIKTOK_REGION_MAP as _MAP
+                        flag, name = _MAP.get(region, ("🌍", region))
+                        return {"region": region, "source": "direct_fallback", "confidence": 85, 
+                                "region_flag": flag, "region_name_ar": name, "method": "direct_html", "evidence": [], "votes": []}
+        except Exception:
+            pass
+        return {"region": "", "source": "unknown", "confidence": 0, "method": "all_failed", "evidence": [], "votes": []}
 
 
 def enrich_tiktok_region(row: dict) -> dict:
@@ -1876,373 +1896,367 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
     geo_records = build_tiktok_geo_records(tt_results, video_results)
     st.session_state["tt_geo_records"] = geo_records
 
-    sub_accounts, sub_geo = st.tabs([
-        "👤 تحليل الحسابات",
-        "📍 استنتاج الموقع",
-    ])
+    if not tt_results:
+        st.info("ℹ️ ابدأ بتحليل حساب واحد على الأقل لعرض بيانات الحساب الكاملة هنا")
+    else:
+        df_tt = pd.DataFrame(tt_results)
+        total = len(tt_results)
+        success = sum(1 for r in tt_results if r.get("status") == "✅ نجح")
+        verified = sum(1 for r in tt_results if r.get("verified"))
+        private = sum(1 for r in tt_results if r.get("private_account"))
+        with_region = sum(1 for r in tt_results if safe_int(r.get("region_confidence", 0)) >= min_confidence)
+        total_followers = sum(safe_int(r.get("follower_count", 0)) for r in tt_results if r.get("status") == "✅ نجح")
+        total_videos = sum(safe_int(r.get("video_count", 0)) for r in tt_results if r.get("status") == "✅ نجح")
 
-    with sub_accounts:
-        if not tt_results:
-            st.info("ℹ️ ابدأ بتحليل حساب واحد على الأقل لعرض بيانات الحساب الكاملة هنا")
-        else:
-            df_tt = pd.DataFrame(tt_results)
-            total = len(tt_results)
-            success = sum(1 for r in tt_results if r.get("status") == "✅ نجح")
-            verified = sum(1 for r in tt_results if r.get("verified"))
-            private = sum(1 for r in tt_results if r.get("private_account"))
-            with_region = sum(1 for r in tt_results if safe_int(r.get("region_confidence", 0)) >= min_confidence)
-            total_followers = sum(safe_int(r.get("follower_count", 0)) for r in tt_results if r.get("status") == "✅ نجح")
-            total_videos = sum(safe_int(r.get("video_count", 0)) for r in tt_results if r.get("status") == "✅ نجح")
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("📋 الإجمالي", total)
+        m2.metric("✅ ناجح", success)
+        m3.metric("✓ موثّق", verified)
+        m4.metric("🔒 خاص", private)
+        m5.metric("🌍 له دولة", with_region)
+        m6.metric("👥 المتابعون", tt_format_count(total_followers))
+        st.caption(f"🎬 إجمالي الفيديوهات في الحسابات الناجحة: {tt_format_count(total_videos)}")
 
-            m1, m2, m3, m4, m5, m6 = st.columns(6)
-            m1.metric("📋 الإجمالي", total)
-            m2.metric("✅ ناجح", success)
-            m3.metric("✓ موثّق", verified)
-            m4.metric("🔒 خاص", private)
-            m5.metric("🌍 له دولة", with_region)
-            m6.metric("👥 المتابعون", tt_format_count(total_followers))
-            st.caption(f"🎬 إجمالي الفيديوهات في الحسابات الناجحة: {tt_format_count(total_videos)}")
-
-            if any(safe_int(r.get("region_confidence", 0)) >= min_confidence for r in tt_results):
-                countries_data = [
-                    f"{r.get('region_flag', '🌍')} {r.get('region_name_ar', '')}"
-                    for r in tt_results
-                    if safe_int(r.get("region_confidence", 0)) >= min_confidence and r.get("region_name_ar")
-                ]
-                if countries_data:
-                    st.markdown(f"#### 🌍 توزيع الدول من بيانات الحساب (ثقة ≥ {min_confidence}%)")
-                    st.bar_chart(pd.Series(countries_data).value_counts())
-
-            display_cols = [
-                "username", "nickname", "user_id", "sec_uid", "region_flag", "region_name_ar",
-                "region_source", "region_confidence", "language_name_ar", "create_date",
-                "follower_count_formatted", "follower_count", "following_count", "video_count",
-                "heart_count_formatted", "verified", "private_account", "is_organization",
-                "signature", "bio_link", "profile_url", "status", "error",
+        if any(safe_int(r.get("region_confidence", 0)) >= min_confidence for r in tt_results):
+            countries_data = [
+                f"{r.get('region_flag', '🌍')} {r.get('region_name_ar', '')}"
+                for r in tt_results
+                if safe_int(r.get("region_confidence", 0)) >= min_confidence and r.get("region_name_ar")
             ]
-            display_cols = [col for col in display_cols if col in df_tt.columns]
-            df_display = df_tt.copy()
-            if "region_confidence" in df_display.columns:
-                low_mask = df_display["region_confidence"].fillna(0).astype(int) < min_confidence
-                for col in ["region_flag", "region_name_ar", "region_source"]:
-                    if col in df_display.columns:
-                        df_display.loc[low_mask, col] = ""
+            if countries_data:
+                st.markdown(f"#### 🌍 توزيع الدول من بيانات الحساب (ثقة ≥ {min_confidence}%)")
+                st.bar_chart(pd.Series(countries_data).value_counts())
 
-            st.dataframe(
-                df_display[display_cols],
-                use_container_width=True,
-                height=520,
-                column_config={
-                    "profile_url": st.column_config.LinkColumn("🔗 الملف"),
-                    "bio_link": st.column_config.LinkColumn("🔗 رابط البايو"),
-                    "verified": st.column_config.CheckboxColumn("✓"),
-                    "private_account": st.column_config.CheckboxColumn("🔒"),
-                    "is_organization": st.column_config.CheckboxColumn("🏢"),
-                    "follower_count": st.column_config.NumberColumn("👥 المتابعون", format="%d"),
-                    "following_count": st.column_config.NumberColumn("➕ يتابع", format="%d"),
-                    "video_count": st.column_config.NumberColumn("🎬 فيديوهات", format="%d"),
-                    "region_confidence": st.column_config.ProgressColumn("الثقة %", min_value=0, max_value=100, format="%d%%"),
-                    "signature": st.column_config.TextColumn("📝 البايو", width="large"),
-                },
-            )
+        display_cols = [
+            "username", "nickname", "user_id", "sec_uid", "region_flag", "region_name_ar",
+            "region_source", "region_confidence", "language_name_ar", "create_date",
+            "follower_count_formatted", "follower_count", "following_count", "video_count",
+            "heart_count_formatted", "verified", "private_account", "is_organization",
+            "signature", "bio_link", "profile_url", "status", "error",
+        ]
+        display_cols = [col for col in display_cols if col in df_tt.columns]
+        df_display = df_tt.copy()
+        if "region_confidence" in df_display.columns:
+            low_mask = df_display["region_confidence"].fillna(0).astype(int) < min_confidence
+            for col in ["region_flag", "region_name_ar", "region_source"]:
+                if col in df_display.columns:
+                    df_display.loc[low_mask, col] = ""
 
-            export_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ex1, ex2, ex3 = st.columns(3)
-            ex1.download_button(
-                "⬇️ CSV الحسابات",
-                data=df_display.to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"tiktok_integrated_accounts_{export_name}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key="tt_integrated_accounts_csv",
-            )
+        st.dataframe(
+            df_display[display_cols],
+            use_container_width=True,
+            height=520,
+            column_config={
+                "profile_url": st.column_config.LinkColumn("🔗 الملف"),
+                "bio_link": st.column_config.LinkColumn("🔗 رابط البايو"),
+                "verified": st.column_config.CheckboxColumn("✓"),
+                "private_account": st.column_config.CheckboxColumn("🔒"),
+                "is_organization": st.column_config.CheckboxColumn("🏢"),
+                "follower_count": st.column_config.NumberColumn("👥 المتابعون", format="%d"),
+                "following_count": st.column_config.NumberColumn("➕ يتابع", format="%d"),
+                "video_count": st.column_config.NumberColumn("🎬 فيديوهات", format="%d"),
+                "region_confidence": st.column_config.ProgressColumn("الثقة %", min_value=0, max_value=100, format="%d%%"),
+                "signature": st.column_config.TextColumn("📝 البايو", width="large"),
+            },
+        )
 
-            # ── تحديد الدولة يدوياً للحسابات بلا موقع ──
-            no_location_accs = [r for r in tt_results if safe_int(r.get("region_confidence", 0)) < 30 and r.get("status") == "✅ نجح"]
-            if no_location_accs:
-                st.markdown("---")
-                st.markdown("#### ✋ تحديد الدولة يدوياً للحسابات بلا موقع")
-                st.markdown(
-                    """<div style="background:#fff3cd;border-right:4px solid #ffc107;padding:8px 12px;border-radius:6px;font-size:0.85em" dir="rtl">
-                    هذه الحسابات لم يُعثر على دولتها تلقائياً. يمكنك تحديد دولتها يدوياً ليتم عرضها على الخريطة.
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-                country_options = ["— اختر —"] + [
-                    f"{flag} {name}" for code, (flag, name) in sorted(TIKTOK_REGION_MAP.items(), key=lambda x: x[1][1])
-                ]
-                country_code_lookup = {f"{flag} {name}": code for code, (flag, name) in TIKTOK_REGION_MAP.items()}
+        export_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ex1, ex2, ex3 = st.columns(3)
+        ex1.download_button(
+            "⬇️ CSV الحسابات",
+            data=df_display.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"tiktok_integrated_accounts_{export_name}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="tt_integrated_accounts_csv",
+        )
 
-                manual_overrides = st.session_state.get("tt_manual_region_overrides", {})
-                override_changed = False
-
-                for acc_row in no_location_accs[:15]:  # max 15 rows
-                    uname = acc_row.get("username", "")
-                    current_override = manual_overrides.get(uname, "— اختر —")
-                    cols_ov = st.columns([2, 3, 1])
-                    cols_ov[0].markdown(f"**@{uname}**")
-                    selected_country = cols_ov[1].selectbox(
-                        "الدولة",
-                        options=country_options,
-                        index=country_options.index(current_override) if current_override in country_options else 0,
-                        key=f"manual_country_{uname}",
-                        label_visibility="collapsed",
-                    )
-                    if selected_country != "— اختر —" and selected_country != current_override:
-                        manual_overrides[uname] = selected_country
-                        override_changed = True
-                    elif selected_country == "— اختر —" and uname in manual_overrides:
-                        del manual_overrides[uname]
-                        override_changed = True
-
-                if override_changed:
-                    st.session_state["tt_manual_region_overrides"] = manual_overrides
-
-                if manual_overrides:
-                    if st.button("💾 تطبيق التحديدات اليدوية على الخريطة", key="apply_manual_overrides", use_container_width=True):
-                        updated = st.session_state.get("tt_results") or []
-                        for idx, row in enumerate(updated):
-                            uname = row.get("username", "")
-                            if uname in manual_overrides:
-                                country_str = manual_overrides[uname]
-                                country_code = country_code_lookup.get(country_str, "")
-                                if country_code:
-                                    flag, name_ar = TIKTOK_REGION_MAP.get(country_code, ("🌍", country_code))
-                                    updated[idx]["region"] = country_code
-                                    updated[idx]["region_flag"] = flag
-                                    updated[idx]["region_name_ar"] = name_ar
-                                    updated[idx]["region_confidence"] = 60
-                                    updated[idx]["region_source"] = "✋ يدوي"
-                        st.session_state["tt_results"] = updated
-                        st.success(f"✅ تم تطبيق {len(manual_overrides)} تحديد يدوي على بيانات الحسابات")
-                        st.rerun()
-            ex2.download_button(
-                "⬇️ JSON الحسابات",
-                data=df_display.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8"),
-                file_name=f"tiktok_integrated_accounts_{export_name}.json",
-                mime="application/json",
-                use_container_width=True,
-                key="tt_integrated_accounts_json",
-            )
-            ex3.download_button(
-                "⬇️ Excel الحسابات",
-                data=results_to_excel(df_display.to_dict("records")),
-                file_name=f"tiktok_integrated_accounts_{export_name}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="tt_integrated_accounts_excel",
-            )
-
-            if REPORT_EXPORTER_AVAILABLE:
-                st.markdown("##### 📑 تصدير Word / PowerPoint لتحليل TikTok")
-                tt_r1, tt_r2 = st.columns(2)
-                with tt_r1:
-                    if st.button("📝 توليد Word TikTok", key="tt_make_docx", use_container_width=True):
-                        try:
-                            st.session_state["_tt_docx_bytes"] = generate_word_report(
-                                df_display.to_dict("records"),
-                                title="تقرير تحليل حسابات TikTok"
-                            )
-                            st.success("✅ تم توليد ملف Word")
-                        except Exception as e:
-                            st.error(f"تعذّر توليد Word: {e}")
-                with tt_r2:
-                    if st.button("📊 توليد PowerPoint TikTok", key="tt_make_pptx", use_container_width=True):
-                        try:
-                            st.session_state["_tt_pptx_bytes"] = generate_pptx_report(
-                                df_display.to_dict("records"),
-                                title="عرض تحليل حسابات TikTok"
-                            )
-                            st.success("✅ تم توليد ملف PowerPoint")
-                        except Exception as e:
-                            st.error(f"تعذّر توليد PowerPoint: {e}")
-                if st.session_state.get("_tt_docx_bytes"):
-                    st.download_button(
-                        "⬇️ تحميل Word TikTok",
-                        st.session_state["_tt_docx_bytes"],
-                        file_name=f"tiktok_integrated_accounts_{export_name}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True,
-                        key="tt_download_docx",
-                    )
-                if st.session_state.get("_tt_pptx_bytes"):
-                    st.download_button(
-                        "⬇️ تحميل PowerPoint TikTok",
-                        st.session_state["_tt_pptx_bytes"],
-                        file_name=f"tiktok_integrated_accounts_{export_name}.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                        use_container_width=True,
-                        key="tt_download_pptx",
-                    )
-
-            st.markdown("#### 🎴 بطاقات مختصرة")
-            cards = [row for row in tt_results if row.get("status") == "✅ نجح"][:9]
-            if cards:
-                cols = st.columns(3)
-                for idx, row in enumerate(cards):
-                    metrics = calculate_engagement_metrics(row)
-                    with cols[idx % 3]:
-                        with st.container(border=True):
-                            if row.get("avatar_medium"):
-                                try:
-                                    st.image(row["avatar_medium"], width=90)
-                                except Exception:
-                                    pass
-                            title = row.get("nickname") or row.get("username") or "TikTok"
-                            flags = f" {row.get('region_flag', '')}" if row.get("region_flag") else ""
-                            st.markdown(f"### {title}{' ✓' if row.get('verified') else ''}")
-                            st.caption(f"@{row.get('username', '')}{flags}")
-                            if row.get("region_name_ar") and safe_int(row.get("region_confidence", 0)) >= min_confidence:
-                                st.caption(
-                                    f"📍 {row.get('region_name_ar')} • {row.get('region_source', '')} ({row.get('region_confidence', 0)}%)"
-                                )
-                            c_a, c_b = st.columns(2)
-                            c_a.metric("👥 متابعون", row.get("follower_count_formatted", "0"))
-                            c_b.metric("❤️ إعجابات", row.get("heart_count_formatted", "0"))
-                            c_a.metric("🎬 فيديوهات", f"{safe_int(row.get('video_count', 0)):,}")
-                            c_b.metric("📊 التفاعل", f"{metrics.get('engagement_rate', 0)}%")
-                            if row.get("signature"):
-                                st.caption(row.get("signature", "")[:120])
-                            if row.get("bio_link"):
-                                st.markdown(f"[رابط البايو ↗]({row.get('bio_link')})")
-                            if row.get("profile_url"):
-                                st.markdown(f"[فتح الحساب ↗]({row.get('profile_url')})")
-
-
-        st.markdown("---")
-        st.markdown("#### 🗺️ الخريطة التفاعلية")
-        if not geo_records:
-            st.info("ℹ️ لا توجد بيانات كافية لرسم الخريطة بعد")
-        else:
-            st.markdown("#### 🗺️ خريطة TikTok التفاعلية")
-            render_tiktok_interactive_map(
-                [record for record in geo_records if record.get("final_country_code") and record.get("final_confidence", 0) >= max(20, min_confidence)],
-                map_key="tt_integrated_map_view",
-            )
-
-            fallback_rows = []
-            for record in geo_records:
-                point = record.get("geo_point")
-                if not point:
-                    continue
-                fallback_rows.append({
-                    "المستخدم": record.get("username", ""),
-                    "النتيجة": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
-                    "الثقة": record.get("final_confidence", 0),
-                    "الإحداثيات": f"{point['lat']:.5f}, {point['lon']:.5f}",
-                    "المصدر": point.get("resolved_from", ""),
-                })
-            if fallback_rows:
-                st.markdown("#### 📋 نقاط الخريطة")
-                st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
-
-
-    with sub_geo:
-        if not geo_records:
-            st.info("ℹ️ لا توجد إشارات كافية بعد. حلّل حسابات أو فيديوهات TikTok أولاً.")
-        else:
+        # ── تحديد الدولة يدوياً للحسابات بلا موقع ──
+        no_location_accs = [r for r in tt_results if safe_int(r.get("region_confidence", 0)) < 30 and r.get("status") == "✅ نجح"]
+        if no_location_accs:
+            st.markdown("---")
+            st.markdown("#### ✋ تحديد الدولة يدوياً للحسابات بلا موقع")
             st.markdown(
-                """
-                <div class="info-box">
-                يتم دمج 3 مصادر رئيسية: <strong>بيانات الحساب</strong>، <strong>موقع الفيديو</strong>، و<strong>المنطقة الزمنية</strong>.
-                النتيجة النهائية تُعرض مع نسبة الثقة والأدلة وروابط الخرائط.
-                </div>
-                """,
+                """<div style="background:#fff3cd;border-right:4px solid #ffc107;padding:8px 12px;border-radius:6px;font-size:0.85em" dir="rtl">
+                هذه الحسابات لم يُعثر على دولتها تلقائياً. يمكنك تحديد دولتها يدوياً ليتم عرضها على الخريطة.
+                </div>""",
                 unsafe_allow_html=True,
             )
-            geo_rows = []
-            for record in geo_records:
-                tz_candidates = []
-                for code in record.get("timezone_candidates", [])[:4]:
-                    flag, name = get_tiktok_country_meta(code)
-                    tz_candidates.append(f"{flag} {name}")
-                geo_rows.append({
-                    "username": record.get("username", ""),
-                    "الحساب": record.get("account_country_name_ar", "") or "—",
-                    "ثقة الحساب": record.get("account_confidence", 0),
-                    "الفيديو": record.get("video_country_name_ar", "") or "—",
-                    "ثقة الفيديو": record.get("video_confidence", 0),
-                    "أفضل توقيت": record.get("timezone_best", "—") or "—",
-                    "الدول الزمنية": "، ".join(tz_candidates) if tz_candidates else "—",
-                    "النتيجة النهائية": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
-                    "الثقة النهائية": record.get("final_confidence", 0),
-                    "عدد الفيديوهات": record.get("matched_video_count", 0),
-                    "الملف": record.get("profile_url", f"https://www.tiktok.com/@{record.get('username', '')}"),
-                })
+            country_options = ["— اختر —"] + [
+                f"{flag} {name}" for code, (flag, name) in sorted(TIKTOK_REGION_MAP.items(), key=lambda x: x[1][1])
+            ]
+            country_code_lookup = {f"{flag} {name}": code for code, (flag, name) in TIKTOK_REGION_MAP.items()}
 
-            df_geo = pd.DataFrame(geo_rows)
-            st.dataframe(
-                df_geo,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "الملف": st.column_config.LinkColumn("🔗 الحساب"),
-                    "الثقة النهائية": st.column_config.ProgressColumn("الثقة النهائية", min_value=0, max_value=100, format="%d%%"),
-                    "ثقة الحساب": st.column_config.ProgressColumn("ثقة الحساب", min_value=0, max_value=100, format="%d%%"),
-                    "ثقة الفيديو": st.column_config.ProgressColumn("ثقة الفيديو", min_value=0, max_value=100, format="%d%%"),
-                },
-            )
+            manual_overrides = st.session_state.get("tt_manual_region_overrides", {})
+            override_changed = False
 
-            if video_results:
-                successful_videos = [row for row in video_results if row.get("status") == "✅ نجح"]
-                with_location = [row for row in successful_videos if row.get("location_created")]
-                v1, v2, v3, v4 = st.columns(4)
-                v1.metric("🎬 فيديوهات ناجحة", len(successful_videos))
-                v2.metric("📍 لها locationCreated", len(with_location))
-                v3.metric("👤 حسابات مرتبطة", len({normalize_tiktok_username(row.get('username')) for row in successful_videos if row.get('username')}))
-                v4.metric("👁️ المشاهدات", tt_format_count(sum(safe_int(row.get("video_views", 0)) for row in successful_videos)))
+            for acc_row in no_location_accs[:15]:  # max 15 rows
+                uname = acc_row.get("username", "")
+                current_override = manual_overrides.get(uname, "— اختر —")
+                cols_ov = st.columns([2, 3, 1])
+                cols_ov[0].markdown(f"**@{uname}**")
+                selected_country = cols_ov[1].selectbox(
+                    "الدولة",
+                    options=country_options,
+                    index=country_options.index(current_override) if current_override in country_options else 0,
+                    key=f"manual_country_{uname}",
+                    label_visibility="collapsed",
+                )
+                if selected_country != "— اختر —" and selected_country != current_override:
+                    manual_overrides[uname] = selected_country
+                    override_changed = True
+                elif selected_country == "— اختر —" and uname in manual_overrides:
+                    del manual_overrides[uname]
+                    override_changed = True
 
-            for record in geo_records:
-                with st.container(border=True):
-                    title_cols = st.columns([3, 1])
-                    with title_cols[0]:
-                        st.markdown(
-                            f"### @{record.get('username', '')} — {record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}"
+            if override_changed:
+                st.session_state["tt_manual_region_overrides"] = manual_overrides
+
+            if manual_overrides:
+                if st.button("💾 تطبيق التحديدات اليدوية على الخريطة", key="apply_manual_overrides", use_container_width=True):
+                    updated = st.session_state.get("tt_results") or []
+                    for idx, row in enumerate(updated):
+                        uname = row.get("username", "")
+                        if uname in manual_overrides:
+                            country_str = manual_overrides[uname]
+                            country_code = country_code_lookup.get(country_str, "")
+                            if country_code:
+                                flag, name_ar = TIKTOK_REGION_MAP.get(country_code, ("🌍", country_code))
+                                updated[idx]["region"] = country_code
+                                updated[idx]["region_flag"] = flag
+                                updated[idx]["region_name_ar"] = name_ar
+                                updated[idx]["region_confidence"] = 60
+                                updated[idx]["region_source"] = "✋ يدوي"
+                    st.session_state["tt_results"] = updated
+                    st.success(f"✅ تم تطبيق {len(manual_overrides)} تحديد يدوي على بيانات الحسابات")
+                    st.rerun()
+        ex2.download_button(
+            "⬇️ JSON الحسابات",
+            data=df_display.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8"),
+            file_name=f"tiktok_integrated_accounts_{export_name}.json",
+            mime="application/json",
+            use_container_width=True,
+            key="tt_integrated_accounts_json",
+        )
+        ex3.download_button(
+            "⬇️ Excel الحسابات",
+            data=results_to_excel(df_display.to_dict("records")),
+            file_name=f"tiktok_integrated_accounts_{export_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="tt_integrated_accounts_excel",
+        )
+
+        if REPORT_EXPORTER_AVAILABLE:
+            st.markdown("##### 📑 تصدير Word / PowerPoint لتحليل TikTok")
+            tt_r1, tt_r2 = st.columns(2)
+            with tt_r1:
+                if st.button("📝 توليد Word TikTok", key="tt_make_docx", use_container_width=True):
+                    try:
+                        st.session_state["_tt_docx_bytes"] = generate_word_report(
+                            df_display.to_dict("records"),
+                            title="تقرير تحليل حسابات TikTok"
                         )
-                        st.caption(f"🎯 الثقة النهائية: {record.get('final_confidence', 0)}%")
-                    with title_cols[1]:
-                        if record.get("profile_url"):
-                            st.link_button("فتح الحساب", record.get("profile_url"), use_container_width=True)
-
-                    detail1, detail2, detail3 = st.columns(3)
-                    detail1.metric("من الحساب", record.get("account_country_name_ar", "—") or "—", f"{record.get('account_confidence', 0)}%" if record.get('account_country_code') else None)
-                    detail2.metric("من الفيديوهات", record.get("video_country_name_ar", "—") or "—", f"{record.get('video_confidence', 0)}%" if record.get('video_country_code') else None)
-                    detail3.metric("أفضل توقيت", record.get("timezone_best", "—") or "—", f"{record.get('timezone_confidence', 0)}%" if record.get('timezone_best') else None)
-
-                    if record.get("evidence"):
-                        st.markdown("**الأدلة:**")
-                        for item in record.get("evidence", []):
-                            st.markdown(f"- {item}")
-
-                    if record.get("signal_breakdown"):
-                        st.caption(f"تفصيل الإشارات: {record.get('signal_breakdown')}")
-
-                    point = record.get("geo_point")
-                    if point:
-                        st.caption(
-                            f"📌 الإحداثيات: {point['lat']:.5f}, {point['lon']:.5f} — المصدر: {point.get('resolved_from', '')}"
+                        st.success("✅ تم توليد ملف Word")
+                    except Exception as e:
+                        st.error(f"تعذّر توليد Word: {e}")
+            with tt_r2:
+                if st.button("📊 توليد PowerPoint TikTok", key="tt_make_pptx", use_container_width=True):
+                    try:
+                        st.session_state["_tt_pptx_bytes"] = generate_pptx_report(
+                            df_display.to_dict("records"),
+                            title="عرض تحليل حسابات TikTok"
                         )
-                        map_links = record.get("map_links", {})
-                        if map_links:
-                            ml1, ml2, ml3, ml4 = st.columns(4)
-                            with ml1:
-                                st.link_button("Google Maps", map_links["google_maps"], use_container_width=True)
-                            with ml2:
-                                st.link_button("Yandex", map_links["yandex_maps"], use_container_width=True)
-                            with ml3:
-                                st.link_button("OpenStreetMap", map_links["openstreetmap"], use_container_width=True)
-                            with ml4:
-                                st.link_button("Apple Maps", map_links["apple_maps"], use_container_width=True)
+                        st.success("✅ تم توليد ملف PowerPoint")
+                    except Exception as e:
+                        st.error(f"تعذّر توليد PowerPoint: {e}")
+            if st.session_state.get("_tt_docx_bytes"):
+                st.download_button(
+                    "⬇️ تحميل Word TikTok",
+                    st.session_state["_tt_docx_bytes"],
+                    file_name=f"tiktok_integrated_accounts_{export_name}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="tt_download_docx",
+                )
+            if st.session_state.get("_tt_pptx_bytes"):
+                st.download_button(
+                    "⬇️ تحميل PowerPoint TikTok",
+                    st.session_state["_tt_pptx_bytes"],
+                    file_name=f"tiktok_integrated_accounts_{export_name}.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True,
+                    key="tt_download_pptx",
+                )
 
-            export_geo_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-            st.download_button(
-                "📥 تصدير تقرير الموقع JSON",
-                data=json.dumps(geo_records, ensure_ascii=False, indent=2).encode("utf-8"),
-                file_name=f"tiktok_integrated_geo_{export_geo_name}.json",
-                mime="application/json",
-                use_container_width=True,
-                key="tt_integrated_geo_json",
-            )
+        st.markdown("#### 🎴 بطاقات مختصرة")
+        cards = [row for row in tt_results if row.get("status") == "✅ نجح"][:9]
+        if cards:
+            cols = st.columns(3)
+            for idx, row in enumerate(cards):
+                metrics = calculate_engagement_metrics(row)
+                with cols[idx % 3]:
+                    with st.container(border=True):
+                        if row.get("avatar_medium"):
+                            try:
+                                st.image(row["avatar_medium"], width=90)
+                            except Exception:
+                                pass
+                        title = row.get("nickname") or row.get("username") or "TikTok"
+                        flags = f" {row.get('region_flag', '')}" if row.get("region_flag") else ""
+                        st.markdown(f"### {title}{' ✓' if row.get('verified') else ''}")
+                        st.caption(f"@{row.get('username', '')}{flags}")
+                        if row.get("region_name_ar") and safe_int(row.get("region_confidence", 0)) >= min_confidence:
+                            st.caption(
+                                f"📍 {row.get('region_name_ar')} • {row.get('region_source', '')} ({row.get('region_confidence', 0)}%)"
+                            )
+                        c_a, c_b = st.columns(2)
+                        c_a.metric("👥 متابعون", row.get("follower_count_formatted", "0"))
+                        c_b.metric("❤️ إعجابات", row.get("heart_count_formatted", "0"))
+                        c_a.metric("🎬 فيديوهات", f"{safe_int(row.get('video_count', 0)):,}")
+                        c_b.metric("📊 التفاعل", f"{metrics.get('engagement_rate', 0)}%")
+                        if row.get("signature"):
+                            st.caption(row.get("signature", "")[:120])
+                        if row.get("bio_link"):
+                            st.markdown(f"[رابط البايو ↗]({row.get('bio_link')})")
+                        if row.get("profile_url"):
+                            st.markdown(f"[فتح الحساب ↗]({row.get('profile_url')})")
+
+
+    st.markdown("---")
+    st.markdown("#### 🗺️ الخريطة التفاعلية")
+    if not geo_records:
+        st.info("ℹ️ لا توجد بيانات كافية لرسم الخريطة بعد")
+    else:
+        st.markdown("#### 🗺️ خريطة TikTok التفاعلية")
+        render_tiktok_interactive_map(
+            [record for record in geo_records if record.get("final_country_code") and record.get("final_confidence", 0) >= max(20, min_confidence)],
+            map_key="tt_integrated_map_view",
+        )
+
+        fallback_rows = []
+        for record in geo_records:
+            point = record.get("geo_point")
+            if not point:
+                continue
+            fallback_rows.append({
+                "المستخدم": record.get("username", ""),
+                "النتيجة": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
+                "الثقة": record.get("final_confidence", 0),
+                "الإحداثيات": f"{point['lat']:.5f}, {point['lon']:.5f}",
+                "المصدر": point.get("resolved_from", ""),
+            })
+        if fallback_rows:
+            st.markdown("#### 📋 نقاط الخريطة")
+            st.dataframe(pd.DataFrame(fallback_rows), use_container_width=True, hide_index=True)
+
+
+    st.markdown("---")
+    if not geo_records:
+        st.info("ℹ️ لا توجد إشارات كافية بعد. حلّل حسابات أو فيديوهات TikTok أولاً.")
+    else:
+        st.markdown(
+            """
+            <div class="info-box">
+            يتم دمج 3 مصادر رئيسية: <strong>بيانات الحساب</strong>، <strong>موقع الفيديو</strong>، و<strong>المنطقة الزمنية</strong>.
+            النتيجة النهائية تُعرض مع نسبة الثقة والأدلة وروابط الخرائط.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        geo_rows = []
+        for record in geo_records:
+            tz_candidates = []
+            for code in record.get("timezone_candidates", [])[:4]:
+                flag, name = get_tiktok_country_meta(code)
+                tz_candidates.append(f"{flag} {name}")
+            geo_rows.append({
+                "username": record.get("username", ""),
+                "الحساب": record.get("account_country_name_ar", "") or "—",
+                "ثقة الحساب": record.get("account_confidence", 0),
+                "الفيديو": record.get("video_country_name_ar", "") or "—",
+                "ثقة الفيديو": record.get("video_confidence", 0),
+                "أفضل توقيت": record.get("timezone_best", "—") or "—",
+                "الدول الزمنية": "، ".join(tz_candidates) if tz_candidates else "—",
+                "النتيجة النهائية": f"{record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}",
+                "الثقة النهائية": record.get("final_confidence", 0),
+                "عدد الفيديوهات": record.get("matched_video_count", 0),
+                "الملف": record.get("profile_url", f"https://www.tiktok.com/@{record.get('username', '')}"),
+            })
+
+        df_geo = pd.DataFrame(geo_rows)
+        st.dataframe(
+            df_geo,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "الملف": st.column_config.LinkColumn("🔗 الحساب"),
+                "الثقة النهائية": st.column_config.ProgressColumn("الثقة النهائية", min_value=0, max_value=100, format="%d%%"),
+                "ثقة الحساب": st.column_config.ProgressColumn("ثقة الحساب", min_value=0, max_value=100, format="%d%%"),
+                "ثقة الفيديو": st.column_config.ProgressColumn("ثقة الفيديو", min_value=0, max_value=100, format="%d%%"),
+            },
+        )
+
+        if video_results:
+            successful_videos = [row for row in video_results if row.get("status") == "✅ نجح"]
+            with_location = [row for row in successful_videos if row.get("location_created")]
+            v1, v2, v3, v4 = st.columns(4)
+            v1.metric("🎬 فيديوهات ناجحة", len(successful_videos))
+            v2.metric("📍 لها locationCreated", len(with_location))
+            v3.metric("👤 حسابات مرتبطة", len({normalize_tiktok_username(row.get('username')) for row in successful_videos if row.get('username')}))
+            v4.metric("👁️ المشاهدات", tt_format_count(sum(safe_int(row.get("video_views", 0)) for row in successful_videos)))
+
+        for record in geo_records:
+            with st.container(border=True):
+                title_cols = st.columns([3, 1])
+                with title_cols[0]:
+                    st.markdown(
+                        f"### @{record.get('username', '')} — {record.get('final_flag', '🌍')} {record.get('final_country_name_ar', 'غير محدد')}"
+                    )
+                    st.caption(f"🎯 الثقة النهائية: {record.get('final_confidence', 0)}%")
+                with title_cols[1]:
+                    if record.get("profile_url"):
+                        st.link_button("فتح الحساب", record.get("profile_url"), use_container_width=True)
+
+                detail1, detail2, detail3 = st.columns(3)
+                detail1.metric("من الحساب", record.get("account_country_name_ar", "—") or "—", f"{record.get('account_confidence', 0)}%" if record.get('account_country_code') else None)
+                detail2.metric("من الفيديوهات", record.get("video_country_name_ar", "—") or "—", f"{record.get('video_confidence', 0)}%" if record.get('video_country_code') else None)
+                detail3.metric("أفضل توقيت", record.get("timezone_best", "—") or "—", f"{record.get('timezone_confidence', 0)}%" if record.get('timezone_best') else None)
+
+                if record.get("evidence"):
+                    st.markdown("**الأدلة:**")
+                    for item in record.get("evidence", []):
+                        st.markdown(f"- {item}")
+
+                if record.get("signal_breakdown"):
+                    st.caption(f"تفصيل الإشارات: {record.get('signal_breakdown')}")
+
+                point = record.get("geo_point")
+                if point:
+                    st.caption(
+                        f"📌 الإحداثيات: {point['lat']:.5f}, {point['lon']:.5f} — المصدر: {point.get('resolved_from', '')}"
+                    )
+                    map_links = record.get("map_links", {})
+                    if map_links:
+                        ml1, ml2, ml3, ml4 = st.columns(4)
+                        with ml1:
+                            st.link_button("Google Maps", map_links["google_maps"], use_container_width=True)
+                        with ml2:
+                            st.link_button("Yandex", map_links["yandex_maps"], use_container_width=True)
+                        with ml3:
+                            st.link_button("OpenStreetMap", map_links["openstreetmap"], use_container_width=True)
+                        with ml4:
+                            st.link_button("Apple Maps", map_links["apple_maps"], use_container_width=True)
+
+        export_geo_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+        st.download_button(
+            "📥 تصدير تقرير الموقع JSON",
+            data=json.dumps(geo_records, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name=f"tiktok_integrated_geo_{export_geo_name}.json",
+            mime="application/json",
+            use_container_width=True,
+            key="tt_integrated_geo_json",
+        )
 
 # ============ تبويب تحليل تغريدات X ============
 with tab_x:
