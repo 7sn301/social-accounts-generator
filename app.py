@@ -1089,10 +1089,10 @@ import math as _math
 
 # ── استخراج منطقة المستخدم - نسخة v11 المُصلحة ──
 def fetch_region_from_video_page(username: str) -> dict:
-    """Wrapper إلى محرك v13 متعدد الطبقات."""
+    """Wrapper إلى محرك v14 متعدد الطبقات (5 طبقات + تصويت موزون)."""
     try:
-        from tiktok_region_v13 import fetch_region_from_video_page as _fetch_v13
-        return _fetch_v13(username)
+        from tiktok_region_v14 import fetch_region_from_video_page as _fetch_v14
+        return _fetch_v14(username)
     except Exception as ex:
         # Direct fallback using requests
         import requests, json, re
@@ -1718,12 +1718,11 @@ def render_tiktok_interactive_map(records, map_key="tt_integrated_geo_map"):
 
 
 # ============ التبويبات ============
-(tab_tt, tab_x, tab_postloc, tab_geo,
+(tab_tt, tab_x, tab_postloc,
  tab_rss, tab_buffin, tab_manual, tab_excel, tab_help) = st.tabs([
     "محلل حسابات TikTok المتكامل",
     "🐦 تحليل تغريدات X + OSINT",
     "🌍 موقع المنشور + كاشف VPN",
-    "🛰️ Geo-Engine (GeoSpy + EXIF + Yandex)",
     "📡 أداة RSS",
     "🔍 BUFFIN - بحث المنصات",
     "📝 إدخال يدوي (كل المنصات)",
@@ -1779,11 +1778,21 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
     c_count3.metric("🗺️ الخريطة", "Folium" if FOLIUM_AVAILABLE else "غير مفعلة")
     c_count4.metric("📍 الموقع", "متكامل")
 
-    b1, b2, b3 = st.columns(3)
-    analyze_accounts_btn = b1.button("🚀 تحليل الحسابات", type="primary", use_container_width=True, key="tt_integrated_analyze_accounts")
-    analyze_videos_btn = False  # محذوف
-    analyze_all_btn = b2.button("🧠 التحليل المتكامل", use_container_width=True, key="tt_integrated_analyze_all")
-    enrich_region_btn = b3.button("🔍 تحسين الموقع", use_container_width=True, key="tt_enrich_region", help="يحاول تحديد الدولة للحسابات التي لم يُعثر على موقعها")
+    b1, b2 = st.columns(2)
+    analyze_accounts_btn = b1.button(
+        "🚀 تحليل + كشف الموقع المتكامل",
+        type="primary",
+        use_container_width=True,
+        key="tt_integrated_analyze_accounts",
+        help="يحلل الحسابات ويكشف الدولة تلقائياً بـ 5 طبقات ذكية في خطوة واحدة"
+    )
+    analyze_videos_btn = False
+    analyze_all_btn = b2.button(
+        "🧠 تحليل متكامل (حسابات + فيديوهات)",
+        use_container_width=True,
+        key="tt_integrated_analyze_all"
+    )
+    enrich_region_btn = False  # مدمج في التحليل الرئيسي
 
     if analyze_accounts_btn or analyze_all_btn:
         if not usernames:
@@ -1818,7 +1827,7 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
                         _uname = _row.get("username", "")
                         if _uname:
                             _enriched = fetch_region_from_video_page(_uname)
-                            if _enriched.get("region") and _enriched.get("confidence", 0) >= 42:
+                            if _enriched.get("region") and _enriched.get("confidence", 0) >= 35:
                                 _flag, _name_ar = TIKTOK_REGION_MAP.get(_enriched["region"], ("🌍", _enriched["region"]))
                                 sorted_results[_idx]["region"] = _enriched["region"]
                                 sorted_results[_idx]["region_flag"] = _flag
@@ -1838,34 +1847,6 @@ https://www.tiktok.com/@khaby.lame/video/7402695860712164641
             st.session_state["tt_elapsed"] = time.time() - start
             st.success(f"✅ تم تحليل {len(tt_results)} حساب TikTok")
 
-    # ── زر تحسين الموقع ──
-    if enrich_region_btn:
-        existing = st.session_state.get("tt_results") or []
-        if not existing:
-            st.warning("⚠️ حلل الحسابات أولاً ثم اضغط تحسين الموقع")
-        else:
-            no_region = [r for r in existing if safe_int(r.get("region_confidence", 0)) < 50]
-            if not no_region:
-                st.success("✅ جميع الحسابات لديها موقع بثقة كافية")
-            else:
-                enrich_prog = st.progress(0)
-                enrich_status = st.empty()
-                enriched_count = 0
-                for idx, row in enumerate(existing):
-                    if safe_int(row.get("region_confidence", 0)) < 50:
-                        enrich_status.text(f"🔍 استخراج موقع @{row.get('username', '')} ({idx+1}/{len(no_region)})")
-                        enriched = enrich_tiktok_region(row)
-                        existing[idx] = enriched
-                        if enriched.get("region_enriched"):
-                            enriched_count += 1
-                    enrich_prog.progress((idx + 1) / len(existing))
-                enrich_prog.empty()
-                enrich_status.empty()
-                st.session_state["tt_results"] = existing
-                st.success(f"✅ تم تحسين الموقع لـ {enriched_count} حساب من أصل {len(no_region)} حساب بلا موقع")
-                if enriched_count < len(no_region):
-                    st.info(f"ℹ️ {len(no_region) - enriched_count} حساب لا يزال بلا موقع — يمكنك تحديده يدوياً أدناه")
-                st.rerun()
 
     if analyze_videos_btn or analyze_all_btn:
         if not video_urls:
