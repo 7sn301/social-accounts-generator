@@ -1,34 +1,47 @@
-# 🛰️ مولد معلومات حسابات التواصل الاجتماعي v6
+# 🛰️ TikTok Region Analyzer v7.0 — GDPR-Compliant Edition
 
-نسخة مُصلَحة بالكامل من التطبيق الأصلي مع معالجة جميع الأدوات المعطلة.
+تطبيق احترافي لاستخراج الموقع الجغرافي لحسابات TikTok بطريقة قانونية تماماً.
 
-## 🚀 الميزات
+## ✨ المميزات
 
-- 🎵 **TikTok Analyzer** — مع Confidence Score
-- 🐦 **X (Twitter)** — عبر Nitter mirrors
-- 📡 **RSS Reader** — مع retry logic
-- 🔍 **BUFFIN** — Username finder عبر 10 منصات
-- 🛰️ **Geo-OSINT** — تحليل جغرافي بدرجة ثقة
-- 🗺️ **Map** — خريطة تفاعلية
+- 🎯 **5 طبقات تحليل** ذكية للموقع
+- 🛡️ **GDPR Compliant** بالكامل
+- 🔒 **PDPL** متوافق
+- 🌍 **40+ دولة** مدعومة
+- 🗺️ **خريطة تفاعلية** مع كل تحليل
+- 📊 **Confidence Score** شفاف
+- 🔐 **Privacy Policy** مدمجة
 
-## ⚙️ التشغيل المحلي
+## 🧠 منهجية التحليل
+
+| الطبقة | الوزن | المصدر |
+|--------|------|--------|
+| Profile Region | 50% | TikTok API |
+| Profile Language | 10% | تفضيل اللغة |
+| Text Language Detection | 5-20% | BIO + nickname |
+| Geographic Keywords | 8-25% | hashtags جغرافية |
+| Currency Indicators | 15% | عملات في النص |
+
+## 🚀 التشغيل
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## ☁️ النشر على Streamlit Cloud
+## 🛡️ امتثال GDPR
 
-1. ارفع المحتوى إلى GitHub
-2. اربط الـ repo على [share.streamlit.io](https://share.streamlit.io)
-3. اختر `app.py` كملف رئيسي
+- Article 6(1)(f) — Legitimate Interest كأساس قانوني
+- Data Minimization (cache 1 ساعة فقط)
+- لا تخزين دائم
+- لا logging للـ usernames
+- DNT header مفعَّل
 
-## ⚠️ ملاحظات
+## 📚 المراجع
 
-- **Streamlit Cloud** له حدود (1GB RAM, 30s timeout)
-- **استخدم بمسؤولية:** الأدوات للبحث المشروع فقط
+- [GDPR Official](https://gdpr-info.eu/)
+- [TikTok Creator Regions](https://scrapecreators.com/blog/tiktok-creator-regions)
 
-## 📅 الإصدار
+---
 
-**v6.0.0** — 2026
+**v7.0.0** | 2026
