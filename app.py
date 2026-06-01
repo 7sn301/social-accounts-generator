@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 =====================================================================
- 🦅 بَصِير
+ 🦅 بَصِير v1.2 — Fixed Edition
 =====================================================================
- الإصدار: v1.1
+ الإصلاحات:
+   ✅ حذف SVG المعقد (كان يكسر التصميم)
+   ✅ استخدام emoji كبير مع CSS احترافي
+   ✅ HTML مبسط ومضمون العمل
 =====================================================================
 """
 
@@ -41,63 +44,46 @@ body, .stApp, [class*="css"] {
     font-family: 'Cairo', sans-serif !important;
 }
 
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.stDeployButton {display: none;}
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
 
 .stApp {
     background: linear-gradient(135deg, #0A0E1A 0%, #0F172A 50%, #1E293B 100%);
 }
 
-/* ═══════════════════════════════════════════ */
-/* 🦅 Hero — بَصِير + الصقر فقط                   */
-/* ═══════════════════════════════════════════ */
-.baseer-hero {
+/* 🦅 الصقر الكبير */
+.baseer-falcon {
+    font-size: 180px;
+    line-height: 1;
     text-align: center;
-    padding: 40px 20px 30px 20px;
-    background: radial-gradient(ellipse at center, rgba(255,215,0,0.08) 0%, transparent 70%);
-    border-radius: 30px;
-    margin-bottom: 30px;
-    position: relative;
+    margin: 30px auto 10px auto;
+    filter: drop-shadow(0 0 40px rgba(255,215,0,0.6));
+    animation: floatFalcon 4s ease-in-out infinite;
+    display: block;
 }
 
-.falcon-logo-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 15px;
+@keyframes floatFalcon {
+    0%, 100% { transform: translateY(0) rotate(-3deg); }
+    50% { transform: translateY(-20px) rotate(3deg); }
 }
 
-.falcon-svg {
-    width: 180px;
-    height: 180px;
-    filter: drop-shadow(0 0 30px rgba(255,215,0,0.5));
-    animation: float-falcon 4s ease-in-out infinite;
-}
-
-@keyframes float-falcon {
-    0%, 100% { transform: translateY(0) rotate(-2deg); }
-    50% { transform: translateY(-15px) rotate(2deg); }
-}
-
-.baseer-name {
-    font-size: 110px;
+/* 📝 اسم بَصِير */
+.baseer-title {
+    text-align: center;
+    font-size: 120px;
     font-weight: 900;
     background: linear-gradient(135deg, #FFD700 0%, #F59E0B 50%, #FFD700 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    margin: 0;
+    margin: 0 0 40px 0;
     letter-spacing: -3px;
     font-family: 'Amiri', 'Cairo', serif;
     line-height: 1;
-    text-shadow: 0 0 50px rgba(255,215,0,0.3);
+    text-shadow: 0 0 60px rgba(255,215,0,0.4);
 }
 
-/* ═══════════════════════════════════════════ */
-/* 🎯 صندوق البحث                                */
-/* ═══════════════════════════════════════════ */
+/* 🎯 صندوق البحث */
 .search-section {
     background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
     padding: 30px;
@@ -142,9 +128,7 @@ header {visibility: hidden;}
     box-shadow: 0 6px 25px rgba(255,215,0,0.5) !important;
 }
 
-/* ═══════════════════════════════════════════ */
-/* 🌍 بطاقة الدولة                              */
-/* ═══════════════════════════════════════════ */
+/* 🌍 بطاقة الدولة */
 .country-card-premium {
     background: linear-gradient(135deg, #064E3B 0%, #047857 50%, #065F46 100%);
     padding: 50px 30px;
@@ -154,24 +138,6 @@ header {visibility: hidden;}
     color: #ECFDF5;
     box-shadow: 0 20px 60px rgba(16,185,129,0.3);
     border: 3px solid rgba(255,215,0,0.4);
-    position: relative;
-    overflow: hidden;
-}
-
-.country-card-premium::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,215,0,0.15) 0%, transparent 50%);
-    animation: rotate-bg 20s linear infinite;
-}
-
-@keyframes rotate-bg {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
 }
 
 .country-flag-huge {
@@ -179,16 +145,12 @@ header {visibility: hidden;}
     line-height: 1;
     margin-bottom: 20px;
     filter: drop-shadow(0 10px 30px rgba(0,0,0,0.3));
-    position: relative;
-    z-index: 1;
 }
 
 .country-name-ar {
     font-size: 56px;
     font-weight: 900;
     margin: 10px 0;
-    position: relative;
-    z-index: 1;
 }
 
 .country-name-en {
@@ -196,8 +158,6 @@ header {visibility: hidden;}
     font-weight: 400;
     color: rgba(236,253,245,0.8);
     margin-bottom: 15px;
-    position: relative;
-    z-index: 1;
 }
 
 .country-code-badge {
@@ -209,14 +169,10 @@ header {visibility: hidden;}
     font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
     border: 2px solid rgba(255,215,0,0.5);
-    position: relative;
-    z-index: 1;
     color: #FFD700;
 }
 
-/* ═══════════════════════════════════════════ */
-/* 📊 إحصائيات                                  */
-/* ═══════════════════════════════════════════ */
+/* 📊 إحصائيات */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -234,7 +190,7 @@ header {visibility: hidden;}
 }
 
 .stat-card-premium:hover {
-    transform: translateY(-5px) scale(1.02);
+    transform: translateY(-5px);
     border-color: #FFD700;
     box-shadow: 0 15px 40px rgba(255,215,0,0.2);
 }
@@ -243,7 +199,6 @@ header {visibility: hidden;}
     font-size: 64px;
     margin-bottom: 10px;
     display: block;
-    filter: drop-shadow(0 5px 15px rgba(255,215,0,0.3));
 }
 
 .stat-value {
@@ -260,9 +215,7 @@ header {visibility: hidden;}
     font-weight: 600;
 }
 
-/* ═══════════════════════════════════════════ */
-/* 🎯 شريط الثقة                                 */
-/* ═══════════════════════════════════════════ */
+/* 🎯 شريط الثقة */
 .confidence-container {
     background: #0F172A;
     padding: 20px;
@@ -297,48 +250,18 @@ header {visibility: hidden;}
     background: linear-gradient(90deg, #10B981 0%, #FFD700 100%);
 }
 
-/* ═══════════════════════════════════════════ */
-/* 🔍 شارات                                      */
-/* ═══════════════════════════════════════════ */
-.badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 15px;
-    font-weight: 700;
-    margin: 3px;
-}
-
+/* 🔍 شارات */
 .badge-gold {
+    display: inline-block;
     background: linear-gradient(135deg, #FFD700, #F59E0B);
     color: #0F172A;
-}
-
-/* ═══════════════════════════════════════════ */
-/* 🎨 Streamlit overrides                        */
-/* ═══════════════════════════════════════════ */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 10px;
-    background: transparent;
-    justify-content: center;
-}
-
-.stTabs [data-baseweb="tab"] {
-    height: 60px;
-    font-size: 18px;
+    padding: 10px 20px;
+    border-radius: 25px;
     font-weight: 700;
-    padding: 0 30px;
-    background: rgba(30,41,59,0.5);
-    border-radius: 15px 15px 0 0;
+    font-size: 15px;
 }
 
-.stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, #FFD700 0%, #F59E0B 100%) !important;
-    color: #0F172A !important;
-}
-
+/* 🎨 Streamlit overrides */
 [data-testid="stMetric"] {
     background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
     padding: 20px;
@@ -357,17 +280,15 @@ hr {
     margin: 30px 0 !important;
 }
 
-.baseer-footer {
+.footer-area {
     text-align: center;
     padding: 30px;
     margin-top: 50px;
     color: #94A3B8;
-    font-size: 14px;
 }
 
-.baseer-footer-logo {
+.footer-logo {
     font-size: 50px;
-    margin-bottom: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -571,9 +492,9 @@ def fetch_from_tiktok(username: str) -> dict:
 
 
 COUNTRY_KEYWORDS = {
-    "Saudi Arabia": ["السعودية", "saudi", "ksa", "الرياض", "riyadh", "جدة", "jeddah", "مكة", "makkah", "الدمام"],
-    "United Arab Emirates": ["الإمارات", "uae", "dubai", "دبي", "أبوظبي", "abu dhabi", "الشارقة"],
-    "Egypt": ["مصر", "egypt", "cairo", "القاهرة", "الإسكندرية"],
+    "Saudi Arabia": ["السعودية", "saudi", "ksa", "الرياض", "riyadh", "جدة", "jeddah", "مكة", "makkah"],
+    "United Arab Emirates": ["الإمارات", "uae", "dubai", "دبي", "أبوظبي", "abu dhabi"],
+    "Egypt": ["مصر", "egypt", "cairo", "القاهرة"],
     "Kuwait": ["الكويت", "kuwait"],
     "Qatar": ["قطر", "qatar", "doha"],
     "Bahrain": ["البحرين", "bahrain"],
@@ -581,17 +502,12 @@ COUNTRY_KEYWORDS = {
     "Jordan": ["الأردن", "jordan", "amman"],
     "Lebanon": ["لبنان", "lebanon", "beirut"],
     "Iraq": ["العراق", "iraq", "baghdad"],
-    "Morocco": ["المغرب", "morocco", "casablanca", "rabat"],
-    "Algeria": ["الجزائر", "algeria", "algiers"],
-    "Tunisia": ["تونس", "tunisia", "tunis"],
+    "Morocco": ["المغرب", "morocco", "casablanca"],
+    "Algeria": ["الجزائر", "algeria"],
+    "Tunisia": ["تونس", "tunisia"],
     "Turkey": ["تركيا", "turkey", "istanbul"],
-    "United States": ["usa", "america", "new york", "los angeles"],
+    "United States": ["usa", "america", "new york"],
     "United Kingdom": ["uk", "london", "england"],
-    "France": ["france", "paris", "français"],
-    "Italy": ["italy", "italia", "rome", "milan"],
-    "Spain": ["spain", "españa", "madrid", "barcelona"],
-    "Japan": ["japan", "tokyo", "日本"],
-    "Korea, Republic of": ["korea", "seoul", "한국"],
 }
 
 
@@ -665,68 +581,6 @@ def analyze_account(username: str) -> dict:
 
 
 # =====================================================================
-# 🦅 شعار الصقر SVG مدمج
-# =====================================================================
-
-FALCON_SVG = """
-<svg class="falcon-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#F59E0B;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#FFD700;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="darkGold" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#B45309;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#92400E;stop-opacity:1" />
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-  
-  <!-- جناح يسار -->
-  <path d="M 100 70 L 30 50 L 20 80 L 50 90 L 30 100 L 60 105 L 45 120 L 75 115 L 100 100 Z" 
-        fill="url(#goldGrad)" stroke="#1E3A8A" stroke-width="1.5" filter="url(#glow)"/>
-  
-  <!-- جناح يمين -->
-  <path d="M 100 70 L 170 50 L 180 80 L 150 90 L 170 100 L 140 105 L 155 120 L 125 115 L 100 100 Z" 
-        fill="url(#goldGrad)" stroke="#1E3A8A" stroke-width="1.5" filter="url(#glow)"/>
-  
-  <!-- جسم الصقر -->
-  <path d="M 100 60 L 90 90 L 95 130 L 100 145 L 105 130 L 110 90 Z" 
-        fill="url(#goldGrad)" stroke="#1E3A8A" stroke-width="1.5"/>
-  
-  <!-- ذيل -->
-  <path d="M 95 130 L 85 165 L 100 155 L 115 165 L 105 130 Z" 
-        fill="url(#darkGold)" stroke="#1E3A8A" stroke-width="1.5"/>
-  
-  <!-- رأس -->
-  <circle cx="100" cy="55" r="18" fill="url(#goldGrad)" stroke="#1E3A8A" stroke-width="1.5"/>
-  
-  <!-- منقار -->
-  <path d="M 100 60 L 85 65 L 100 70 Z" fill="#1E3A8A"/>
-  
-  <!-- عين -->
-  <circle cx="105" cy="50" r="3" fill="#0F172A"/>
-  <circle cx="106" cy="49" r="1" fill="#FFD700"/>
-  
-  <!-- تفاصيل الجناح يسار -->
-  <line x1="60" y1="75" x2="80" y2="85" stroke="#1E3A8A" stroke-width="1" opacity="0.5"/>
-  <line x1="50" y1="95" x2="75" y2="100" stroke="#1E3A8A" stroke-width="1" opacity="0.5"/>
-  
-  <!-- تفاصيل الجناح يمين -->
-  <line x1="140" y1="75" x2="120" y2="85" stroke="#1E3A8A" stroke-width="1" opacity="0.5"/>
-  <line x1="150" y1="95" x2="125" y2="100" stroke="#1E3A8A" stroke-width="1" opacity="0.5"/>
-</svg>
-"""
-
-
-# =====================================================================
 # 🎨 المكونات
 # =====================================================================
 
@@ -744,130 +598,34 @@ def format_number(n):
     return f"{n:,}"
 
 
-def render_hero():
-    """Hero بسيط: صقر + بَصِير فقط"""
-    st.markdown(f"""
-    <div class="baseer-hero">
-        <div class="falcon-logo-wrapper">
-            {FALCON_SVG}
-        </div>
-        <h1 class="baseer-name">بَصِير</h1>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_search_box():
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        username = st.text_input(
-            "",
-            placeholder="🔎 ادخل اسم المستخدم (مثال: aboflah)",
-            max_chars=24,
-            key="username_input",
-            label_visibility="collapsed",
-        )
-    with col2:
-        analyze = st.button("🦅 ابحث", use_container_width=True, type="primary")
-    
-    return username, analyze
-
-
-def render_country_result(country, info):
-    st.markdown(f"""
-    <div class="country-card-premium">
-        <div class="country-flag-huge">{info['flag']}</div>
-        <div class="country-name-ar">{info['ar']}</div>
-        <div class="country-name-en">{country}</div>
-        <div class="country-code-badge">{info['code']}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_confidence(confidence):
-    verdict = "🎯 دقة ممتازة" if confidence >= 90 else ("✅ دقة جيدة" if confidence >= 60 else "⚠️ دقة محدودة")
-    st.markdown(f"""
-    <div class="confidence-container">
-        <div class="confidence-label">📊 درجة الثقة: {confidence}% — {verdict}</div>
-        <div class="confidence-bar-bg">
-            <div class="confidence-bar-fill" style="width: {confidence}%;">{confidence}%</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_profile_card(data, username):
-    nickname = data.get("nickname", username)
-    handle = data.get("uniqueId", username)
-    bio = data.get("signature") or data.get("bio", "")
-    avatar = data.get("avatar", "")
-    verified = "✅" if data.get("verified") else ""
-    private = "🔒" if data.get("privateAccount") else ""
-    created = data.get("created", "")
-    
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if avatar:
-            st.image(avatar, width=150)
-    with col2:
-        st.markdown(f"## {nickname} {verified} {private}")
-        st.markdown(f"**@{handle}**")
-        if bio:
-            st.markdown(f"📝 {bio}")
-        if created:
-            st.caption(f"📅 تأسس الحساب: {created}")
-
-
-def render_stats(data):
-    followers = data.get("follower_count") or data.get("followers", 0)
-    following = data.get("following_count") or data.get("following", 0)
-    hearts = data.get("heart_count") or data.get("hearts", 0)
-    videos = data.get("video_count") or data.get("videos", 0)
-    
-    st.markdown("### 📊 الإحصائيات")
-    
-    st.markdown(f"""
-    <div class="stats-grid">
-        <div class="stat-card-premium">
-            <span class="stat-icon-big">👥</span>
-            <div class="stat-value">{format_number(followers)}</div>
-            <div class="stat-label">المتابعون</div>
-        </div>
-        <div class="stat-card-premium">
-            <span class="stat-icon-big">➡️</span>
-            <div class="stat-value">{format_number(following)}</div>
-            <div class="stat-label">يتابع</div>
-        </div>
-        <div class="stat-card-premium">
-            <span class="stat-icon-big">❤️</span>
-            <div class="stat-value">{format_number(hearts)}</div>
-            <div class="stat-label">الإعجابات</div>
-        </div>
-        <div class="stat-card-premium">
-            <span class="stat-icon-big">🎬</span>
-            <div class="stat-value">{format_number(videos)}</div>
-            <div class="stat-label">الفيديوهات</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_map(info):
-    st.markdown("### 🗺️ الموقع على الخريطة")
-    map_df = pd.DataFrame([{"lat": info["lat"], "lon": info["lon"]}])
-    st.map(map_df, latitude="lat", longitude="lon", size=100, zoom=4)
-
-
 # =====================================================================
 # 🎯 الصفحة الرئيسية
 # =====================================================================
 
 def main():
-    render_hero()
+    # ═══════════════════════════════════════════
+    # 🦅 Hero — صقر + بَصِير
+    # ═══════════════════════════════════════════
+    st.markdown('<div class="baseer-falcon">🦅</div>', unsafe_allow_html=True)
+    st.markdown('<h1 class="baseer-title">بَصِير</h1>', unsafe_allow_html=True)
     
-    st.markdown('<div class="search-section">', unsafe_allow_html=True)
-    username, analyze = render_search_box()
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ═══════════════════════════════════════════
+    # 🔍 صندوق البحث
+    # ═══════════════════════════════════════════
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        username = st.text_input(
+            "username",
+            placeholder="🔎 ادخل اسم المستخدم (مثال: aboflah)",
+            max_chars=24,
+            label_visibility="collapsed",
+        )
+    with col2:
+        analyze = st.button("🦅 ابحث", use_container_width=True, type="primary")
     
+    # ═══════════════════════════════════════════
+    # 🚀 التحليل
+    # ═══════════════════════════════════════════
     if not analyze:
         return
     
@@ -896,27 +654,120 @@ def main():
     
     info = result["country_info"]
     
-    render_country_result(result["country"], info)
-    render_confidence(result["confidence"])
+    # ═══════════════════════════════════════════
+    # 🌍 بطاقة الدولة
+    # ═══════════════════════════════════════════
+    country_html = (
+        '<div class="country-card-premium">'
+        f'<div class="country-flag-huge">{info["flag"]}</div>'
+        f'<div class="country-name-ar">{info["ar"]}</div>'
+        f'<div class="country-name-en">{result["country"]}</div>'
+        f'<div class="country-code-badge">{info["code"]}</div>'
+        '</div>'
+    )
+    st.markdown(country_html, unsafe_allow_html=True)
     
+    # ═══════════════════════════════════════════
+    # 📊 شريط الثقة
+    # ═══════════════════════════════════════════
+    confidence = result["confidence"]
+    verdict = "🎯 دقة ممتازة" if confidence >= 90 else ("✅ دقة جيدة" if confidence >= 60 else "⚠️ دقة محدودة")
+    
+    conf_html = (
+        '<div class="confidence-container">'
+        f'<div class="confidence-label">📊 درجة الثقة: {confidence}% — {verdict}</div>'
+        '<div class="confidence-bar-bg">'
+        f'<div class="confidence-bar-fill" style="width: {confidence}%;">{confidence}%</div>'
+        '</div></div>'
+    )
+    st.markdown(conf_html, unsafe_allow_html=True)
+    
+    # المصدر
     source_emoji = {"tikmatrix": "🥇", "text_analysis": "🥉"}.get(result["source"], "📡")
     source_name = {"tikmatrix": "TikMatrix", "text_analysis": "تحليل ذكي"}.get(result["source"], "غير محدد")
-    st.markdown(f'<span class="badge badge-gold">{source_emoji} المصدر: {source_name}</span>', unsafe_allow_html=True)
+    st.markdown(f'<span class="badge-gold">{source_emoji} المصدر: {source_name}</span>', unsafe_allow_html=True)
     
     st.divider()
-    render_profile_card(result["data"], clean)
+    
+    # ═══════════════════════════════════════════
+    # 👤 بطاقة الحساب
+    # ═══════════════════════════════════════════
+    data = result["data"]
+    nickname = data.get("nickname", clean)
+    handle = data.get("uniqueId", clean)
+    bio = data.get("signature") or data.get("bio", "")
+    avatar = data.get("avatar", "")
+    verified = "✅" if data.get("verified") else ""
+    private = "🔒" if data.get("privateAccount") else ""
+    created = data.get("created", "")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if avatar:
+            st.image(avatar, width=150)
+    with col2:
+        st.markdown(f"## {nickname} {verified} {private}")
+        st.markdown(f"**@{handle}**")
+        if bio:
+            st.markdown(f"📝 {bio}")
+        if created:
+            st.caption(f"📅 تأسس الحساب: {created}")
     
     st.divider()
-    render_stats(result["data"])
+    
+    # ═══════════════════════════════════════════
+    # 📊 الإحصائيات
+    # ═══════════════════════════════════════════
+    followers = data.get("follower_count") or data.get("followers", 0)
+    following = data.get("following_count") or data.get("following", 0)
+    hearts = data.get("heart_count") or data.get("hearts", 0)
+    videos = data.get("video_count") or data.get("videos", 0)
+    
+    st.markdown("### 📊 الإحصائيات")
+    
+    stats_html = (
+        '<div class="stats-grid">'
+        '<div class="stat-card-premium">'
+        '<span class="stat-icon-big">👥</span>'
+        f'<div class="stat-value">{format_number(followers)}</div>'
+        '<div class="stat-label">المتابعون</div>'
+        '</div>'
+        '<div class="stat-card-premium">'
+        '<span class="stat-icon-big">➡️</span>'
+        f'<div class="stat-value">{format_number(following)}</div>'
+        '<div class="stat-label">يتابع</div>'
+        '</div>'
+        '<div class="stat-card-premium">'
+        '<span class="stat-icon-big">❤️</span>'
+        f'<div class="stat-value">{format_number(hearts)}</div>'
+        '<div class="stat-label">الإعجابات</div>'
+        '</div>'
+        '<div class="stat-card-premium">'
+        '<span class="stat-icon-big">🎬</span>'
+        f'<div class="stat-value">{format_number(videos)}</div>'
+        '<div class="stat-label">الفيديوهات</div>'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(stats_html, unsafe_allow_html=True)
     
     st.divider()
-    render_map(info)
     
+    # ═══════════════════════════════════════════
+    # 🗺️ الخريطة
+    # ═══════════════════════════════════════════
+    st.markdown("### 🗺️ الموقع على الخريطة")
+    map_df = pd.DataFrame([{"lat": info["lat"], "lon": info["lon"]}])
+    st.map(map_df, latitude="lat", longitude="lon", size=100, zoom=4)
+    
+    # ═══════════════════════════════════════════
+    # 🔬 تفاصيل تقنية
+    # ═══════════════════════════════════════════
     with st.expander("🔬 تفاصيل تقنية"):
-        if result["data"].get("user_id"):
-            st.code(f"User ID: {result['data']['user_id']}")
-        if result["data"].get("sec_uid"):
-            st.code(f"SecUID: {result['data']['sec_uid']}")
+        if data.get("user_id"):
+            st.code(f"User ID: {data['user_id']}")
+        if data.get("sec_uid"):
+            st.code(f"SecUID: {data['sec_uid']}")
         
         st.markdown("**📡 سجل المصادر:**")
         for src in result["sources_log"]:
@@ -924,12 +775,13 @@ def main():
             st.markdown(f"- {emoji} **{src['name']}** — `{src.get('error') or 'نجاح'}`")
     
     # Footer
-    st.markdown(f"""
-    <div class="baseer-footer">
-        <div class="baseer-footer-logo">🦅</div>
-        <div>بَصِير © 2026</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="footer-area">'
+        '<div class="footer-logo">🦅</div>'
+        '<div>بَصِير © 2026</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
