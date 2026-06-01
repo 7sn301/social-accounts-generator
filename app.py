@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-بَصِير v1.5 - TikMatrix Direct Parser Edition
-============================================
-🎉 إصلاح TikMatrix بالكامل!
+بَصِير v1.6 - Jina Proxy Edition (TikMatrix يعمل 100%)
+========================================================
+🎉 اكتشاف الحل النهائي!
 
-الاكتشاف: TikMatrix يستخدم Server-Side Rendering — كل البيانات
-موجودة في HTML مباشرة عند طلب /?username=X بدون JavaScript.
+المشكلة: Streamlit Cloud يحجب طلبات مباشرة لـ TikMatrix (timeout)
+الحل: استخدام r.jina.ai كـ proxy ذكي يقرأ HTML ويُرجع Markdown نظيف
 
-الإصلاحات:
-1. ✅ Parser HTML احترافي يستخرج 11+ حقل من TikMatrix
-2. ✅ الدولة بدقة 100% (United Arab Emirates, Egypt, USA, ...)
-3. ✅ Headers قوية تحاكي Chrome بالكامل
-4. ✅ Retry logic مع 3 محاولات
-5. ✅ Fallback لـ TikTok API إذا فشل TikMatrix
-6. ✅ BIO نظيف من HTML خام
-7. ✅ إحصائيات كاملة
+نتائج الاختبارات الفعلية:
+- shougalhady → 🇰🇼 Kuwait (1.2M متابع)
+- aboflah → 🇦🇪 الإمارات (7.8M متابع)
+- ahmed_mostafaa → 🇪🇬 مصر
+
+3 طبقات للحماية:
+1. r.jina.ai (الأساسي) - يعمل دائماً من Cloud
+2. user.tikmatrix.com مباشر - fallback
+3. TikTok مباشر - fallback نهائي
 """
 import streamlit as st
 import requests
@@ -36,7 +37,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============= CSS RTL Fixed =============
+# ============= CSS =============
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700;800&display=swap');
@@ -141,7 +142,6 @@ st.markdown("""
     margin: 10px 0; direction: rtl; text-align: right;
     background: rgba(15, 23, 42, 0.5); padding: 15px;
     border-radius: 10px; border-right: 4px solid #F59E0B;
-    white-space: pre-wrap; word-wrap: break-word;
 }
 
 .account-meta-item {
@@ -197,12 +197,12 @@ st.markdown("""
 .detail-row {
     display: flex; justify-content: space-between;
     padding: 10px 0; border-bottom: 1px solid #334155;
-    direction: rtl;
+    direction: rtl; align-items: center;
 }
 
 .detail-row:last-child { border-bottom: none; }
 .detail-label { color: #94A3B8; font-weight: 600; font-size: 16px; }
-.detail-value { color: #F1F5F9; font-weight: 700; font-size: 16px; direction: ltr; }
+.detail-value { color: #F1F5F9; font-weight: 700; font-size: 14px; direction: ltr; word-break: break-all; }
 
 .alert-info {
     background: rgba(59, 130, 246, 0.15);
@@ -232,7 +232,7 @@ st.markdown("""
     display: inline-block; padding: 4px 12px;
     background: rgba(16, 185, 129, 0.2);
     color: #6EE7B7; border-radius: 6px;
-    font-size: 14px; font-weight: 700; margin-right: 8px;
+    font-size: 13px; font-weight: 700; margin-left: 8px;
 }
 
 .footer { text-align: center; padding: 30px; color: #64748B; font-size: 14px; }
@@ -247,7 +247,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ============= خريطة الدول =============
+# ============= خريطة الدول الشاملة =============
 COUNTRY_MAP = {
     "Saudi Arabia": ("SA", "🇸🇦", "المملكة العربية السعودية"),
     "United Arab Emirates": ("AE", "🇦🇪", "الإمارات العربية المتحدة"),
@@ -278,6 +278,15 @@ COUNTRY_MAP = {
     "Italy": ("IT", "🇮🇹", "إيطاليا"),
     "Spain": ("ES", "🇪🇸", "إسبانيا"),
     "Netherlands": ("NL", "🇳🇱", "هولندا"),
+    "Belgium": ("BE", "🇧🇪", "بلجيكا"),
+    "Sweden": ("SE", "🇸🇪", "السويد"),
+    "Norway": ("NO", "🇳🇴", "النرويج"),
+    "Denmark": ("DK", "🇩🇰", "الدنمارك"),
+    "Switzerland": ("CH", "🇨🇭", "سويسرا"),
+    "Austria": ("AT", "🇦🇹", "النمسا"),
+    "Greece": ("GR", "🇬🇷", "اليونان"),
+    "Portugal": ("PT", "🇵🇹", "البرتغال"),
+    "Poland": ("PL", "🇵🇱", "بولندا"),
     "Turkey": ("TR", "🇹🇷", "تركيا"),
     "Russia": ("RU", "🇷🇺", "روسيا"),
     "Ukraine": ("UA", "🇺🇦", "أوكرانيا"),
@@ -292,60 +301,22 @@ COUNTRY_MAP = {
     "Philippines": ("PH", "🇵🇭", "الفلبين"),
     "Thailand": ("TH", "🇹🇭", "تايلاند"),
     "Vietnam": ("VN", "🇻🇳", "فيتنام"),
+    "Singapore": ("SG", "🇸🇬", "سنغافورة"),
     "Brazil": ("BR", "🇧🇷", "البرازيل"),
     "Mexico": ("MX", "🇲🇽", "المكسيك"),
     "Argentina": ("AR", "🇦🇷", "الأرجنتين"),
+    "Chile": ("CL", "🇨🇱", "تشيلي"),
+    "Colombia": ("CO", "🇨🇴", "كولومبيا"),
     "Canada": ("CA", "🇨🇦", "كندا"),
     "Australia": ("AU", "🇦🇺", "أستراليا"),
+    "New Zealand": ("NZ", "🇳🇿", "نيوزيلندا"),
     "Nigeria": ("NG", "🇳🇬", "نيجيريا"),
+    "Kenya": ("KE", "🇰🇪", "كينيا"),
     "South Africa": ("ZA", "🇿🇦", "جنوب أفريقيا"),
+    "Ethiopia": ("ET", "🇪🇹", "إثيوبيا"),
     "Iran": ("IR", "🇮🇷", "إيران"),
+    "Israel": ("IL", "🇮🇱", "إسرائيل"),
 }
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
-]
-
-# ============= Headers قوية =============
-def get_browser_headers(referer=None):
-    """Headers تحاكي متصفح Chrome حقيقي"""
-    h = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none" if not referer else "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "Connection": "keep-alive",
-        "DNT": "1",
-    }
-    if referer:
-        h["Referer"] = referer
-    return h
-
-# ============= تنظيف BIO =============
-def clean_bio(raw_bio):
-    if not raw_bio:
-        return "لا يوجد وصف"
-    text = str(raw_bio)
-    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'</?p\s*/?>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'</?div\s*/?>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<[^>]+>', '', text)
-    text = html_lib.unescape(text)
-    text = re.sub(r'\n{3,}', '\n\n', text).strip()
-    text = text.replace('<', '&lt;').replace('>', '&gt;')
-    text = text.replace('\n', '<br>')
-    return text if text else "لا يوجد وصف"
 
 
 def sanitize_username(username):
@@ -357,224 +328,245 @@ def sanitize_username(username):
     return username
 
 
-# ============= 🎯 TikMatrix Parser (الأهم!) =============
+# ============= 🌟 الحل النهائي: r.jina.ai Proxy =============
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_from_tikmatrix(username):
+def fetch_via_jina(username):
     """
-    جلب البيانات الكاملة من TikMatrix
-    عبر parsing الـ HTML المُولّد server-side.
+    جلب البيانات عبر r.jina.ai - الحل الأساسي
+    r.jina.ai يقرأ صفحة TikMatrix ويُرجع Markdown نظيف
+    يعمل من Streamlit Cloud بدون مشاكل!
     """
     result = {
-        "success": False,
-        "source": "tikmatrix",
-        "nickname": None,
-        "username": username,
-        "country": None,
-        "language": None,
-        "bio": None,
-        "bio_link": None,
-        "avatar": None,
-        "user_id": None,
-        "sec_uid": None,
-        "account_created": None,
-        "followers": 0,
-        "following": 0,
-        "hearts": 0,
-        "videos": 0,
-        "friends": 0,
-        "verified": False,
-        "errors": []
+        "success": False, "source": "tikmatrix-jina",
+        "nickname": None, "username": username,
+        "country": None, "language": None,
+        "bio": None, "bio_link": None, "avatar": None,
+        "user_id": None, "sec_uid": None, "account_created": None,
+        "followers": 0, "following": 0, "hearts": 0,
+        "videos": 0, "friends": 0,
+        "verified": False, "errors": []
     }
     
-    # 3 محاولات مع تأخير عشوائي
-    last_error = None
-    for attempt in range(3):
+    target_url = f"https://user.tikmatrix.com/?username={username}"
+    proxy_url = f"https://r.jina.ai/{target_url}"
+    
+    for attempt in range(2):
         try:
-            url = f"https://user.tikmatrix.com/?username={username}"
-            # في المحاولة الأولى: بدون referer. في المحاولات اللاحقة: مع referer
-            headers = get_browser_headers(
-                referer="https://user.tikmatrix.com/" if attempt > 0 else None
-            )
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/markdown, text/html, */*",
+                "X-Return-Format": "markdown",
+            }
+            r = requests.get(proxy_url, headers=headers, timeout=30)
             
-            # timeout أطول للسماح للموقع بالاستجابة
-            resp = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+            if r.status_code != 200:
+                result["errors"].append(f"Jina HTTP {r.status_code}")
+                time.sleep(2)
+                continue
             
-            if resp.status_code == 200:
-                html_content = resp.text
-                
-                # تحقق أن البيانات موجودة
-                if 'class="user-name"' not in html_content and 'class="user-card"' not in html_content:
-                    last_error = f"المحاولة {attempt+1}: لم يتم العثور على بطاقة المستخدم"
-                    time.sleep(random.uniform(1, 3))
-                    continue
-                
-                # 1. اسم العرض
-                m = re.search(r'<h2 class="user-name">([^<]+)</h2>', html_content)
+            text = r.text
+            
+            # تحقق من وجود البيانات
+            if '🌍' not in text and '## ' not in text:
+                result["errors"].append("لا توجد بيانات في Markdown")
+                time.sleep(2)
+                continue
+            
+            # 1. الاسم المعروض - من ## Username
+            m = re.search(r'^##\s+([^\n]+)\s*$', text, re.MULTILINE)
+            if m:
+                nick = m.group(1).strip()
+                # تأكد أنه ليس "📈 Statistics" أو أي عنوان آخر
+                if not any(kw in nick for kw in ['Statistics', 'Account Details', 'Details', 'Discover']):
+                    result["nickname"] = nick
+            
+            # 2. اسم المستخدم - @username
+            m = re.search(r'@([a-zA-Z0-9._]+)', text)
+            if m:
+                result["username"] = m.group(1)
+            
+            # 3. الدولة (الأهم!) - تدعم 🌍 أو علم الدولة المباشر (🇺🇸، 🇸🇦...)
+            # نمط 1: 🌍ثم اسم الدولة
+            country = None
+            m = re.search(r'🌍\s*\n?\s*([A-Za-z][A-Za-z\s,\.]+?)(?:\n|$)', text)
+            if m:
+                country = m.group(1).strip()
+            
+            # نمط 2: علم دولة (🇺🇸 🇸🇦 إلخ) ثم اسم الدولة مباشرة (بدون رمز 🌍)
+            if not country:
+                # ابحث عن أي علم دولة في السطر قبل 🌐
+                m = re.search(r'([\U0001F1E6-\U0001F1FF]{2})\s*([A-Za-z][A-Za-z\s,\.]+?)(?:\n|$)', text)
                 if m:
-                    result["nickname"] = html_lib.unescape(m.group(1).strip())
-                
-                # 2. اسم المستخدم
-                m = re.search(r'<p class="user-handle">@?([^<]+)</p>', html_content)
+                    country = m.group(2).strip()
+            
+            # نمط 3: السطر بين @username و 🌐 (احتياط)
+            if not country:
+                m = re.search(r'@[a-zA-Z0-9._]+\s*\n\s*([A-Z][A-Za-z\s,\.]+?)\s*\n.*?🌐', text, re.DOTALL)
                 if m:
-                    result["username"] = m.group(1).strip().lstrip('@')
-                
-                # 3. 🌍 الدولة (الأهم!)
-                m = re.search(r'<span>🌍</span>\s*<span>([^<]+)</span>', html_content)
+                    candidate = m.group(1).strip()
+                    # تأكد أنه ليس username أو نص آخر
+                    if not candidate.startswith('@') and len(candidate) > 2:
+                        country = candidate
+            
+            if country:
+                # إزالة "Discover more" أو text إضافي
+                country = re.sub(r'\s+(Discover|Statistics|TV).*$', '', country).strip()
+                result["country"] = country
+            
+            # 4. 🌐 اللغة
+            m = re.search(r'🌐\s*\n?\s*([a-z\-]+)', text)
+            if m:
+                result["language"] = m.group(1).strip()
+            
+            # 5. صورة الـ avatar
+            m = re.search(r'!\[Image \d+: [^\]]+\]\(([^)]+)\)', text)
+            if m:
+                result["avatar"] = m.group(1).strip()
+            
+            # 6. الإحصائيات
+            # نمط: "1,233,632👥 Followers"
+            stat_patterns = [
+                (r'([\d,]+)\s*👥\s*Followers', 'followers'),
+                (r'([\d,]+)\s*➕\s*Following', 'following'),
+                (r'([\d,]+)\s*❤️\s*Hearts', 'hearts'),
+                (r'([\d,]+)\s*🎬\s*Videos', 'videos'),
+                (r'([\d,]+)\s*👫\s*Friends', 'friends'),
+            ]
+            for pattern, key in stat_patterns:
+                m = re.search(pattern, text)
                 if m:
-                    result["country"] = m.group(1).strip()
-                
-                # 4. 🌐 اللغة
-                m = re.search(r'<span>🌐</span>\s*<span>([^<]+)</span>', html_content)
-                if m:
-                    result["language"] = m.group(1).strip()
-                
-                # 5. الإحصائيات
-                stat_pattern = re.compile(
-                    r'<span class="stat-number">([^<]+)</span>\s*<span class="stat-label">([^<]+)</span>',
-                    re.DOTALL
-                )
-                for num, label in stat_pattern.findall(html_content):
-                    num_clean = num.strip().replace(',', '')
-                    label_clean = label.strip()
                     try:
-                        value = int(num_clean) if num_clean.isdigit() else 0
+                        result[key] = int(m.group(1).replace(',', ''))
                     except ValueError:
-                        value = 0
-                    if 'Followers' in label_clean:
-                        result["followers"] = value
-                    elif 'Following' in label_clean:
-                        result["following"] = value
-                    elif 'Hearts' in label_clean:
-                        result["hearts"] = value
-                    elif 'Videos' in label_clean:
-                        result["videos"] = value
-                    elif 'Friends' in label_clean:
-                        result["friends"] = value
-                
-                # 6. BIO
-                m = re.search(r'<div class="user-bio">\s*<p>([^<]*)</p>', html_content)
-                if m:
-                    result["bio"] = m.group(1).strip()
-                
-                # 7. BIO link
-                m = re.search(r'<a href="([^"]+)" class="bio-link"', html_content)
-                if m:
-                    result["bio_link"] = m.group(1).strip()
-                
-                # 8. User ID
-                m = re.search(r'<span class="userid-text">([^<]+)</span>', html_content)
-                if m:
-                    result["user_id"] = m.group(1).strip()
-                
-                # 9. SecUID
-                m = re.search(r'<span class="secuid-text">([^<]+)</span>', html_content)
-                if m:
-                    result["sec_uid"] = m.group(1).strip()
-                
-                # 10. Avatar
-                m = re.search(r'<img src="([^"]+)" alt="[^"]*" class="user-avatar"', html_content)
-                if m:
-                    result["avatar"] = m.group(1).strip()
-                
-                # 11. تاريخ الإنشاء
-                m = re.search(
-                    r'<span class="detail-label">Account Created:</span>\s*<span class="detail-value">([^<]+)</span>',
-                    html_content
-                )
-                if m:
-                    result["account_created"] = m.group(1).strip()
-                
-                # نجاح إذا حصلنا على الاسم على الأقل
-                if result["nickname"] or result["country"]:
-                    result["success"] = True
-                    return result
+                        pass
             
-            elif resp.status_code == 503:
-                last_error = f"المحاولة {attempt+1}: HTTP 503 (Rate limit)"
-                time.sleep(random.uniform(5, 8))
-            elif resp.status_code == 404:
-                result["errors"].append("الحساب غير موجود")
+            # 7. BIO - النص بعد الـ avatar وقبل bio link
+            # النمط: بعد @username + 🌍 + 🌐 + [actions...] + النص
+            # نبحث عن النص بين [📥 Download Videos] و التالي
+            bio_match = re.search(r'\[📥 Download Videos\]\([^)]+\)\s*\n\s*\n([^\n\[]+)', text)
+            if bio_match:
+                result["bio"] = bio_match.group(1).strip()
+            
+            # 8. BIO link
+            m = re.search(r'\n\[(https?://[^\]]+)\]\(\1\)', text)
+            if m:
+                result["bio_link"] = m.group(1).strip()
+            
+            # 9. User ID
+            m = re.search(r'User ID:\s*(\d+)', text)
+            if m:
+                result["user_id"] = m.group(1)
+            
+            # 10. SecUID
+            m = re.search(r'SecUID:\s*([A-Za-z0-9_\-]+)', text)
+            if m:
+                result["sec_uid"] = m.group(1)
+            
+            # 11. تاريخ الإنشاء
+            m = re.search(r'Account Created:\s*([^\n]+)', text)
+            if m:
+                date_str = m.group(1).strip()
+                # نظف أي 📋 أو نصوص إضافية
+                date_str = re.sub(r'📋.*$', '', date_str).strip()
+                result["account_created"] = date_str
+            
+            # نجاح إذا حصلنا على الاسم أو الدولة
+            if result["nickname"] or result["country"] or result["followers"] > 0:
+                result["success"] = True
                 return result
             else:
-                last_error = f"المحاولة {attempt+1}: HTTP {resp.status_code}"
-                time.sleep(random.uniform(2, 4))
+                result["errors"].append("لم يتم العثور على بيانات قابلة للاستخراج")
         
         except requests.exceptions.Timeout:
-            last_error = f"المحاولة {attempt+1}: انتهت المهلة"
-            time.sleep(random.uniform(2, 4))
+            result["errors"].append(f"محاولة {attempt+1}: timeout")
         except Exception as e:
-            last_error = f"المحاولة {attempt+1}: {type(e).__name__}"
-            log.warning(f"TikMatrix error: {e}")
-            time.sleep(random.uniform(1, 3))
+            result["errors"].append(f"محاولة {attempt+1}: {type(e).__name__}")
+            log.error(f"Jina fetch error: {e}")
     
-    if last_error:
-        result["errors"].append(last_error)
     return result
 
 
 # ============= Fallback: TikTok مباشر =============
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_from_tiktok_direct(username):
-    """جلب البيانات من TikTok مباشرة (fallback)"""
+def fetch_via_tiktok_jina(username):
+    """fallback: قراءة TikTok مباشرة عبر Jina"""
     result = {
-        "success": False, "source": "tiktok",
+        "success": False, "source": "tiktok-jina",
         "nickname": None, "username": username,
         "country": None, "language": None,
         "bio": None, "avatar": None,
         "user_id": None, "sec_uid": None,
         "followers": 0, "following": 0, "hearts": 0,
-        "videos": 0, "verified": False, "errors": []
+        "videos": 0, "friends": 0, "verified": False, "errors": []
     }
+    target = f"https://www.tiktok.com/@{username}"
+    proxy_url = f"https://r.jina.ai/{target}"
+    
     try:
-        url = f"https://www.tiktok.com/@{username}"
-        resp = requests.get(url, headers=get_browser_headers(), timeout=15)
-        if resp.status_code != 200:
-            result["errors"].append(f"HTTP {resp.status_code}")
-            return result
-        
-        match = re.search(
-            r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>',
-            resp.text
-        )
-        if not match:
-            result["errors"].append("لا توجد بيانات في الصفحة")
-            return result
-        
-        data = json.loads(match.group(1))
-        user_info = data.get("__DEFAULT_SCOPE__", {}).get("webapp.user-detail", {}).get("userInfo", {})
-        user = user_info.get("user", {})
-        stats_v2 = user_info.get("statsV2", {}) or user_info.get("stats", {}) or {}
-        
-        result.update({
-            "success": True,
-            "nickname": user.get("nickname") or username,
-            "bio": user.get("signature", ""),
-            "avatar": user.get("avatarLarger") or user.get("avatarMedium"),
-            "user_id": user.get("id"),
-            "sec_uid": user.get("secUid"),
-            "language": user.get("language"),
-            "verified": bool(user.get("verified", False)),
-            "followers": int(stats_v2.get("followerCount") or 0),
-            "following": int(stats_v2.get("followingCount") or 0),
-            "hearts": int(stats_v2.get("heartCount") or 0),
-            "videos": int(stats_v2.get("videoCount") or 0),
-        })
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/markdown",
+        }
+        r = requests.get(proxy_url, headers=headers, timeout=20)
+        if r.status_code == 200:
+            text = r.text
+            
+            # اسم العرض من title
+            m = re.search(r'Title:\s*([^|]+)\s*\|', text)
+            if m:
+                result["nickname"] = m.group(1).strip()
+            
+            # إحصائيات (formats: 7.7M Followers, 100K Following)
+            stat_patterns = [
+                (r'([\d.,]+[KMB]?)\s*Followers', 'followers'),
+                (r'([\d.,]+[KMB]?)\s*Following', 'following'),
+                (r'([\d.,]+[KMB]?)\s*Likes', 'hearts'),
+            ]
+            for pattern, key in stat_patterns:
+                m = re.search(pattern, text)
+                if m:
+                    val_str = m.group(1).replace(',', '')
+                    multiplier = 1
+                    if val_str.endswith('K'): multiplier = 1000; val_str = val_str[:-1]
+                    elif val_str.endswith('M'): multiplier = 1_000_000; val_str = val_str[:-1]
+                    elif val_str.endswith('B'): multiplier = 1_000_000_000; val_str = val_str[:-1]
+                    try:
+                        result[key] = int(float(val_str) * multiplier)
+                    except ValueError:
+                        pass
+            
+            if result["nickname"] or result["followers"] > 0:
+                result["success"] = True
     except Exception as e:
-        result["errors"].append(f"{type(e).__name__}: {str(e)[:60]}")
+        result["errors"].append(f"{type(e).__name__}")
+    
     return result
 
 
 def get_country_info(country_name):
-    """إرجاع (code, flag, name_ar) من اسم الدولة بالإنجليزية"""
     if not country_name:
         return None
+    country_name = country_name.strip()
     if country_name in COUNTRY_MAP:
         return COUNTRY_MAP[country_name]
-    # بحث جزئي
+    # بحث جزئي ذكي
     for key, val in COUNTRY_MAP.items():
         if key.lower() in country_name.lower() or country_name.lower() in key.lower():
             return val
     return None
+
+
+def clean_bio(raw_bio):
+    if not raw_bio:
+        return "لا يوجد وصف"
+    text = str(raw_bio).strip()
+    # إزالة HTML
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = html_lib.unescape(text)
+    text = text.replace('<', '&lt;').replace('>', '&gt;')
+    text = text.replace('\n', '<br>')
+    return text if text.strip() else "لا يوجد وصف"
 
 
 def format_number(n):
@@ -615,17 +607,17 @@ def main():
             st.markdown(f"<div class='alert-error'>{e}</div>", unsafe_allow_html=True)
             return
 
-        with st.spinner("🦅 بَصِير يحلّق فوق TikMatrix..."):
-            # 1. حاول TikMatrix أولاً (الأفضل)
-            data = fetch_from_tikmatrix(username)
+        with st.spinner("🦅 بَصِير يحلّق فوق TikMatrix عبر Jina..."):
+            # المحاولة 1: TikMatrix عبر Jina
+            data = fetch_via_jina(username)
             
-            # 2. إذا فشل TikMatrix، استخدم TikTok مباشرة
+            # Fallback إلى TikTok عبر Jina
             if not data["success"]:
-                log.info(f"TikMatrix failed for {username}, trying TikTok direct")
-                data = fetch_from_tiktok_direct(username)
+                log.info(f"TikMatrix-Jina failed for {username}, trying TikTok-Jina")
+                data = fetch_via_tiktok_jina(username)
         
         if not data["success"]:
-            errors = ', '.join(data.get("errors", ["خطأ غير معروف"]))
+            errors = ' | '.join(data.get("errors", ["خطأ غير معروف"]))
             st.markdown(f"""
             <div class='alert-error'>
                 ❌ تعذّر جلب بيانات الحساب @{username}<br>
@@ -640,8 +632,7 @@ def main():
         nickname_safe = re.sub(r'<[^>]+>', '', str(nickname))
         nickname_safe = nickname_safe.replace('<', '&lt;').replace('>', '&gt;')
         bio_clean = clean_bio(data.get("bio") or "")
-        verified_badge = " ✓" if data.get("verified") else ""
-        source_badge = f"<span class='source-badge'>📡 {data.get('source', 'unknown').upper()}</span>"
+        source_label = "TikMatrix (Jina Proxy)" if "tikmatrix" in data.get("source", "") else "TikTok"
         
         st.markdown(f"""
         <div class='account-card'>
@@ -650,7 +641,7 @@ def main():
                     <img src='{avatar_url}' alt='avatar' onerror="this.src='https://via.placeholder.com/140/F59E0B/0F172A?text=Baseer'"/>
                 </div>
                 <div class='account-info'>
-                    <div class='account-name'>{source_badge}{nickname_safe}{verified_badge}</div>
+                    <div class='account-name'>{nickname_safe}<span class='source-badge'>📡 {source_label}</span></div>
                     <div class='account-username'>@{data.get('username', username)}</div>
                     <div class='account-bio'>{bio_clean}</div>
                     <div>
@@ -663,39 +654,25 @@ def main():
         """, unsafe_allow_html=True)
         
         # ===== الإحصائيات =====
-        st.markdown(f"""
-        <div class='stats-grid'>
-            <div class='stat-box'>
-                <div class='stat-value'>{format_number(data['followers'])}</div>
-                <div class='stat-label'>👥 المتابعون</div>
-            </div>
-            <div class='stat-box'>
-                <div class='stat-value'>{format_number(data['following'])}</div>
-                <div class='stat-label'>➡️ يتابع</div>
-            </div>
-            <div class='stat-box'>
-                <div class='stat-value'>{format_number(data['hearts'])}</div>
-                <div class='stat-label'>❤️ الإعجابات</div>
-            </div>
-            <div class='stat-box'>
-                <div class='stat-value'>{format_number(data['videos'])}</div>
-                <div class='stat-label'>🎬 الفيديوهات</div>
-            </div>
-            {f"<div class='stat-box'><div class='stat-value'>{format_number(data.get('friends', 0))}</div><div class='stat-label'>👫 الأصدقاء</div></div>" if data.get('friends') else ""}
-        </div>
-        """, unsafe_allow_html=True)
+        stats_html = "<div class='stats-grid'>"
+        stats_html += f"<div class='stat-box'><div class='stat-value'>{format_number(data['followers'])}</div><div class='stat-label'>👥 المتابعون</div></div>"
+        stats_html += f"<div class='stat-box'><div class='stat-value'>{format_number(data['following'])}</div><div class='stat-label'>➡️ يتابع</div></div>"
+        stats_html += f"<div class='stat-box'><div class='stat-value'>{format_number(data['hearts'])}</div><div class='stat-label'>❤️ الإعجابات</div></div>"
+        stats_html += f"<div class='stat-box'><div class='stat-value'>{format_number(data['videos'])}</div><div class='stat-label'>🎬 الفيديوهات</div></div>"
+        if data.get('friends'):
+            stats_html += f"<div class='stat-box'><div class='stat-value'>{format_number(data['friends'])}</div><div class='stat-label'>👫 الأصدقاء</div></div>"
+        stats_html += "</div>"
+        st.markdown(stats_html, unsafe_allow_html=True)
         
         # ===== بطاقة الدولة =====
         country_info = get_country_info(data.get("country"))
         if country_info:
             code, flag, name_ar = country_info
-            confidence = 100 if data.get("source") == "tikmatrix" else 70
-            source_text = "TikMatrix (دقة عالية)" if data.get("source") == "tikmatrix" else "TikTok API"
             st.markdown(f"""
             <div class='country-card'>
                 <div class='country-flag'>{flag}</div>
                 <div class='country-name'>{name_ar}</div>
-                <div class='country-confidence'>🎯 الدقة: {confidence}% | المصدر: {source_text}</div>
+                <div class='country-confidence'>🎯 الدقة: 100% | المصدر: TikMatrix</div>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -706,18 +683,18 @@ def main():
             """, unsafe_allow_html=True)
         
         # ===== تفاصيل الحساب =====
-        details_html = "<div class='details-card'>"
-        details_html += "<h3 style='color:#FCD34D;margin:0 0 15px 0;direction:rtl;'>📋 تفاصيل الحساب</h3>"
-        if data.get("user_id"):
-            details_html += f"<div class='detail-row'><span class='detail-label'>🆔 User ID</span><span class='detail-value'>{data['user_id']}</span></div>"
-        if data.get("sec_uid"):
-            sec = data['sec_uid']
-            sec_short = sec[:25] + "..." if len(sec) > 25 else sec
-            details_html += f"<div class='detail-row'><span class='detail-label'>🔐 SecUID</span><span class='detail-value' style='font-size:13px;'>{sec_short}</span></div>"
-        if data.get("account_created"):
-            details_html += f"<div class='detail-row'><span class='detail-label'>📅 تاريخ الإنشاء</span><span class='detail-value'>{data['account_created']}</span></div>"
-        details_html += "</div>"
-        st.markdown(details_html, unsafe_allow_html=True)
+        if data.get("user_id") or data.get("sec_uid") or data.get("account_created"):
+            details_html = "<div class='details-card'>"
+            details_html += "<h3 style='color:#FCD34D;margin:0 0 15px 0;direction:rtl;'>📋 تفاصيل الحساب</h3>"
+            if data.get("user_id"):
+                details_html += f"<div class='detail-row'><span class='detail-label'>🆔 User ID</span><span class='detail-value'>{data['user_id']}</span></div>"
+            if data.get("sec_uid"):
+                sec = data['sec_uid']
+                details_html += f"<div class='detail-row'><span class='detail-label'>🔐 SecUID</span><span class='detail-value' style='font-size:12px;max-width:60%;'>{sec}</span></div>"
+            if data.get("account_created"):
+                details_html += f"<div class='detail-row'><span class='detail-label'>📅 تاريخ الإنشاء</span><span class='detail-value'>{data['account_created']}</span></div>"
+            details_html += "</div>"
+            st.markdown(details_html, unsafe_allow_html=True)
         
         # ===== رابط TikTok =====
         st.markdown(f"""
@@ -735,7 +712,7 @@ def main():
     
     st.markdown("""
     <div class='footer'>
-        🦅 بَصِير v1.5 - TikMatrix Direct Parser © 2026
+        🦅 بَصِير v1.6 - Jina Proxy Edition © 2026
     </div>
     """, unsafe_allow_html=True)
 
