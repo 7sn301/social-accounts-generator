@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-بَصِير v1.7 - Smart Multi-Source Edition
+بَصِير v1.8 - Global Coverage Edition Edition
 ============================================
 🎯 يدمج 3 مصادر بنظام ذكي:
 
@@ -283,6 +283,7 @@ st.markdown("""
 
 # ============= خريطة الدول الشاملة =============
 COUNTRY_MAP = {
+    # ============ 🌍 الدول العربية (22) ============
     "Saudi Arabia": ("SA", "🇸🇦", "المملكة العربية السعودية"),
     "United Arab Emirates": ("AE", "🇦🇪", "الإمارات العربية المتحدة"),
     "UAE": ("AE", "🇦🇪", "الإمارات العربية المتحدة"),
@@ -305,77 +306,324 @@ COUNTRY_MAP = {
     "Sudan": ("SD", "🇸🇩", "السودان"),
     "Somalia": ("SO", "🇸🇴", "الصومال"),
     "Mauritania": ("MR", "🇲🇷", "موريتانيا"),
+    "Djibouti": ("DJ", "🇩🇯", "جيبوتي"),
+    "Comoros": ("KM", "🇰🇲", "جزر القمر"),
+
+    # ============ 🌏 شرق آسيا (10) ============
+    "China": ("CN", "🇨🇳", "الصين"),
+    "Japan": ("JP", "🇯🇵", "اليابان"),
+    "South Korea": ("KR", "🇰🇷", "كوريا الجنوبية"),
+    "Korea": ("KR", "🇰🇷", "كوريا الجنوبية"),
+    "North Korea": ("KP", "🇰🇵", "كوريا الشمالية"),
+    "Taiwan": ("TW", "🇹🇼", "تايوان"),
+    "Hong Kong": ("HK", "🇭🇰", "هونغ كونغ"),
+    "Macau": ("MO", "🇲🇴", "ماكاو"),
+    "Macao": ("MO", "🇲🇴", "ماكاو"),
+    "Mongolia": ("MN", "🇲🇳", "منغوليا"),
+
+    # ============ 🌏 جنوب شرق آسيا (11) ============
+    "Indonesia": ("ID", "🇮🇩", "إندونيسيا"),
+    "Malaysia": ("MY", "🇲🇾", "ماليزيا"),
+    "Singapore": ("SG", "🇸🇬", "سنغافورة"),
+    "Thailand": ("TH", "🇹🇭", "تايلاند"),
+    "Vietnam": ("VN", "🇻🇳", "فيتنام"),
+    "Viet Nam": ("VN", "🇻🇳", "فيتنام"),
+    "Philippines": ("PH", "🇵🇭", "الفلبين"),
+    "Cambodia": ("KH", "🇰🇭", "كمبوديا"),
+    "Laos": ("LA", "🇱🇦", "لاوس"),
+    "Myanmar": ("MM", "🇲🇲", "ميانمار"),
+    "Burma": ("MM", "🇲🇲", "ميانمار"),
+    "Brunei": ("BN", "🇧🇳", "بروناي"),
+    "Timor-Leste": ("TL", "🇹🇱", "تيمور الشرقية"),
+    "East Timor": ("TL", "🇹🇱", "تيمور الشرقية"),
+
+    # ============ 🌏 جنوب آسيا (8) ============
+    "India": ("IN", "🇮🇳", "الهند"),
+    "Pakistan": ("PK", "🇵🇰", "باكستان"),
+    "Bangladesh": ("BD", "🇧🇩", "بنغلاديش"),
+    "Sri Lanka": ("LK", "🇱🇰", "سريلانكا"),
+    "Nepal": ("NP", "🇳🇵", "نيبال"),
+    "Bhutan": ("BT", "🇧🇹", "بوتان"),
+    "Maldives": ("MV", "🇲🇻", "المالديف"),
     "Afghanistan": ("AF", "🇦🇫", "أفغانستان"),
+
+    # ============ 🌏 وسط آسيا (5) ============
+    "Kazakhstan": ("KZ", "🇰🇿", "كازاخستان"),
+    "Uzbekistan": ("UZ", "🇺🇿", "أوزبكستان"),
+    "Kyrgyzstan": ("KG", "🇰🇬", "قيرغيزستان"),
+    "Tajikistan": ("TJ", "🇹🇯", "طاجيكستان"),
+    "Turkmenistan": ("TM", "🇹🇲", "تركمانستان"),
+
+    # ============ 🌏 غرب آسيا / القوقاز (6) ============
+    "Turkey": ("TR", "🇹🇷", "تركيا"),
+    "Iran": ("IR", "🇮🇷", "إيران"),
+    "Israel": ("IL", "🇮🇱", "إسرائيل"),
+    "Armenia": ("AM", "🇦🇲", "أرمينيا"),
+    "Azerbaijan": ("AZ", "🇦🇿", "أذربيجان"),
+    "Georgia": ("GE", "🇬🇪", "جورجيا"),
+
+    # ============ 🇺🇸 أمريكا الشمالية (3) ============
     "United States": ("US", "🇺🇸", "الولايات المتحدة"),
     "USA": ("US", "🇺🇸", "الولايات المتحدة"),
+    "Canada": ("CA", "🇨🇦", "كندا"),
+    "Mexico": ("MX", "🇲🇽", "المكسيك"),
+
+    # ============ 🇧🇷 أمريكا اللاتينية (15) ============
+    "Brazil": ("BR", "🇧🇷", "البرازيل"),
+    "Argentina": ("AR", "🇦🇷", "الأرجنتين"),
+    "Chile": ("CL", "🇨🇱", "تشيلي"),
+    "Colombia": ("CO", "🇨🇴", "كولومبيا"),
+    "Peru": ("PE", "🇵🇪", "بيرو"),
+    "Venezuela": ("VE", "🇻🇪", "فنزويلا"),
+    "Ecuador": ("EC", "🇪🇨", "الإكوادور"),
+    "Bolivia": ("BO", "🇧🇴", "بوليفيا"),
+    "Paraguay": ("PY", "🇵🇾", "باراغواي"),
+    "Uruguay": ("UY", "🇺🇾", "أوروغواي"),
+    "Cuba": ("CU", "🇨🇺", "كوبا"),
+    "Dominican Republic": ("DO", "🇩🇴", "جمهورية الدومينيكان"),
+    "Puerto Rico": ("PR", "🇵🇷", "بورتوريكو"),
+    "Guatemala": ("GT", "🇬🇹", "غواتيمالا"),
+    "Honduras": ("HN", "🇭🇳", "هندوراس"),
+
+    # ============ 🇪🇺 أوروبا (25) ============
     "United Kingdom": ("GB", "🇬🇧", "المملكة المتحدة"),
     "France": ("FR", "🇫🇷", "فرنسا"),
     "Germany": ("DE", "🇩🇪", "ألمانيا"),
     "Italy": ("IT", "🇮🇹", "إيطاليا"),
     "Spain": ("ES", "🇪🇸", "إسبانيا"),
+    "Portugal": ("PT", "🇵🇹", "البرتغال"),
     "Netherlands": ("NL", "🇳🇱", "هولندا"),
-    "Turkey": ("TR", "🇹🇷", "تركيا"),
+    "Belgium": ("BE", "🇧🇪", "بلجيكا"),
+    "Sweden": ("SE", "🇸🇪", "السويد"),
+    "Norway": ("NO", "🇳🇴", "النرويج"),
+    "Denmark": ("DK", "🇩🇰", "الدنمارك"),
+    "Finland": ("FI", "🇫🇮", "فنلندا"),
+    "Iceland": ("IS", "🇮🇸", "أيسلندا"),
+    "Ireland": ("IE", "🇮🇪", "أيرلندا"),
+    "Switzerland": ("CH", "🇨🇭", "سويسرا"),
+    "Austria": ("AT", "🇦🇹", "النمسا"),
+    "Greece": ("GR", "🇬🇷", "اليونان"),
+    "Poland": ("PL", "🇵🇱", "بولندا"),
+    "Czech Republic": ("CZ", "🇨🇿", "التشيك"),
+    "Czechia": ("CZ", "🇨🇿", "التشيك"),
+    "Hungary": ("HU", "🇭🇺", "المجر"),
+    "Romania": ("RO", "🇷🇴", "رومانيا"),
+    "Bulgaria": ("BG", "🇧🇬", "بلغاريا"),
     "Russia": ("RU", "🇷🇺", "روسيا"),
-    "China": ("CN", "🇨🇳", "الصين"),
-    "Japan": ("JP", "🇯🇵", "اليابان"),
-    "South Korea": ("KR", "🇰🇷", "كوريا الجنوبية"),
-    "Korea": ("KR", "🇰🇷", "كوريا الجنوبية"),
-    "India": ("IN", "🇮🇳", "الهند"),
-    "Pakistan": ("PK", "🇵🇰", "باكستان"),
-    "Indonesia": ("ID", "🇮🇩", "إندونيسيا"),
-    "Malaysia": ("MY", "🇲🇾", "ماليزيا"),
-    "Brazil": ("BR", "🇧🇷", "البرازيل"),
-    "Mexico": ("MX", "🇲🇽", "المكسيك"),
-    "Canada": ("CA", "🇨🇦", "كندا"),
+    "Ukraine": ("UA", "🇺🇦", "أوكرانيا"),
+    "Croatia": ("HR", "🇭🇷", "كرواتيا"),
+    "Serbia": ("RS", "🇷🇸", "صربيا"),
+
+    # ============ 🌍 أفريقيا (15) ============
+    "Nigeria": ("NG", "🇳🇬", "نيجيريا"),
+    "South Africa": ("ZA", "🇿🇦", "جنوب أفريقيا"),
+    "Kenya": ("KE", "🇰🇪", "كينيا"),
+    "Ethiopia": ("ET", "🇪🇹", "إثيوبيا"),
+    "Ghana": ("GH", "🇬🇭", "غانا"),
+    "Tanzania": ("TZ", "🇹🇿", "تنزانيا"),
+    "Uganda": ("UG", "🇺🇬", "أوغندا"),
+    "Senegal": ("SN", "🇸🇳", "السنغال"),
+    "Ivory Coast": ("CI", "🇨🇮", "ساحل العاج"),
+    "Côte d'Ivoire": ("CI", "🇨🇮", "ساحل العاج"),
+    "Cameroon": ("CM", "🇨🇲", "الكاميرون"),
+    "Madagascar": ("MG", "🇲🇬", "مدغشقر"),
+    "Zimbabwe": ("ZW", "🇿🇼", "زيمبابوي"),
+    "Angola": ("AO", "🇦🇴", "أنغولا"),
+    "Mozambique": ("MZ", "🇲🇿", "موزمبيق"),
+
+    # ============ 🇦🇺 أوقيانوسيا (3) ============
     "Australia": ("AU", "🇦🇺", "أستراليا"),
-    "Iran": ("IR", "🇮🇷", "إيران"),
+    "New Zealand": ("NZ", "🇳🇿", "نيوزيلندا"),
+    "Fiji": ("FJ", "🇫🇯", "فيجي"),
 }
 
 # ============= ربط اللغة بالدول المحتملة =============
 LANGUAGE_TO_COUNTRY = {
-    "ar": ["Saudi Arabia", "Egypt", "United Arab Emirates"],  # العربية → دول عربية
-    "en": ["United States"],
-    "fr": ["France"],
-    "es": ["Spain"],
-    "it": ["Italy"],
-    "de": ["Germany"],
-    "pt": ["Brazil"],
-    "ko": ["South Korea"],
+    # 🌍 العربية
+    "ar": ["Saudi Arabia", "Egypt", "United Arab Emirates", "Morocco", "Kuwait"],
+    
+    # 🌏 شرق آسيا
+    "zh": ["China", "Taiwan", "Hong Kong", "Singapore"],
+    "zh-cn": ["China"],
+    "zh-tw": ["Taiwan"],
+    "zh-hk": ["Hong Kong"],
     "ja": ["Japan"],
-    "zh": ["China"],
-    "tr": ["Turkey"],
-    "ru": ["Russia"],
-    "hi": ["India"],
+    "ko": ["South Korea"],
+    "mn": ["Mongolia"],
+    
+    # 🌏 جنوب شرق آسيا
     "id": ["Indonesia"],
+    "ms": ["Malaysia"],
+    "th": ["Thailand"],
+    "vi": ["Vietnam"],
+    "tl": ["Philippines"],
+    "fil": ["Philippines"],
+    "km": ["Cambodia"],
+    "lo": ["Laos"],
+    "my": ["Myanmar"],
+    
+    # 🌏 جنوب آسيا
+    "hi": ["India"],
+    "bn": ["Bangladesh", "India"],
+    "ur": ["Pakistan", "India"],
+    "ta": ["India", "Sri Lanka"],
+    "te": ["India"],
+    "mr": ["India"],
+    "gu": ["India"],
+    "pa": ["India", "Pakistan"],
+    "ne": ["Nepal"],
+    "si": ["Sri Lanka"],
+    "dv": ["Maldives"],
+    
+    # 🌏 وسط/غرب آسيا
+    "kk": ["Kazakhstan"],
+    "uz": ["Uzbekistan"],
+    "ky": ["Kyrgyzstan"],
+    "tg": ["Tajikistan"],
+    "tk": ["Turkmenistan"],
+    "tr": ["Turkey"],
+    "fa": ["Iran", "Afghanistan"],
+    "ps": ["Afghanistan", "Pakistan"],
+    "he": ["Israel"],
+    "iw": ["Israel"],
+    "hy": ["Armenia"],
+    "az": ["Azerbaijan"],
+    "ka": ["Georgia"],
+    
+    # 🌍 أوروبا
+    "en": ["United States", "United Kingdom"],
+    "en-us": ["United States"],
+    "en-gb": ["United Kingdom"],
+    "fr": ["France"],
+    "de": ["Germany"],
+    "es": ["Spain", "Mexico", "Argentina"],
+    "it": ["Italy"],
+    "pt": ["Brazil", "Portugal"],
+    "pt-br": ["Brazil"],
+    "pt-pt": ["Portugal"],
+    "nl": ["Netherlands"],
+    "sv": ["Sweden"],
+    "no": ["Norway"],
+    "da": ["Denmark"],
+    "fi": ["Finland"],
+    "pl": ["Poland"],
+    "cs": ["Czech Republic"],
+    "hu": ["Hungary"],
+    "ro": ["Romania"],
+    "bg": ["Bulgaria"],
+    "el": ["Greece"],
+    "ru": ["Russia"],
+    "uk": ["Ukraine"],
+    "hr": ["Croatia"],
+    "sr": ["Serbia"],
+    
+    # 🌍 أفريقيا
+    "sw": ["Kenya", "Tanzania"],
+    "am": ["Ethiopia"],
+    "ha": ["Nigeria"],
+    "yo": ["Nigeria"],
+    "ig": ["Nigeria"],
+    "zu": ["South Africa"],
 }
 
 # ============= كلمات جغرافية في BIO =============
 GEO_KEYWORDS = {
-    "Saudi Arabia": ["السعودية", "السعوديه", "saudi", "ksa", "riyadh", "الرياض", "جدة", "مكة"],
-    "United Arab Emirates": ["الإمارات", "الامارات", "uae", "emirates", "dubai", "دبي", "أبوظبي", "ابوظبي"],
-    "Egypt": ["مصر", "egypt", "cairo", "القاهرة", "alexandria", "الإسكندرية"],
-    "Kuwait": ["الكويت", "kuwait", "kw"],
+    # 🌍 الدول العربية
+    "Saudi Arabia": ["السعودية", "السعوديه", "saudi", "ksa", "riyadh", "الرياض", "جدة", "مكة", "المدينة", "الدمام"],
+    "United Arab Emirates": ["الإمارات", "الامارات", "uae", "emirates", "dubai", "دبي", "أبوظبي", "ابوظبي", "الشارقة", "العين"],
+    "Egypt": ["مصر", "egypt", "cairo", "القاهرة", "alexandria", "الإسكندرية", "الاسكندرية", "الجيزة"],
+    "Kuwait": ["الكويت", "kuwait", "kw", "السالمية"],
     "Qatar": ["قطر", "qatar", "doha", "الدوحة"],
-    "Bahrain": ["البحرين", "bahrain", "manama"],
-    "Oman": ["عُمان", "عمان", "oman", "muscat"],
+    "Bahrain": ["البحرين", "bahrain", "manama", "المنامة"],
+    "Oman": ["عُمان", "عمان", "oman", "muscat", "مسقط"],
     "Jordan": ["الأردن", "الاردن", "jordan", "amman", "عمّان"],
     "Lebanon": ["لبنان", "lebanon", "beirut", "بيروت"],
-    "Iraq": ["العراق", "iraq", "baghdad", "بغداد"],
-    "Morocco": ["المغرب", "morocco", "rabat", "casablanca"],
+    "Iraq": ["العراق", "iraq", "baghdad", "بغداد", "البصرة"],
+    "Morocco": ["المغرب", "morocco", "rabat", "casablanca", "الدار البيضاء", "marrakech"],
     "Algeria": ["الجزائر", "algeria", "algiers"],
     "Tunisia": ["تونس", "tunisia", "tunis"],
-    "Palestine": ["فلسطين", "palestine"],
-    "Syria": ["سوريا", "syria", "damascus", "دمشق"],
-    "Yemen": ["اليمن", "yemen", "sanaa", "صنعاء"],
-    "United States": ["usa", "america", "ny", "la", "california", "texas"],
-    "United Kingdom": ["uk", "london", "britain", "england"],
-    "France": ["france", "paris", "français"],
-    "Italy": ["italy", "italia", "roma", "milano"],
-    "Spain": ["spain", "españa", "madrid"],
-    "Germany": ["germany", "berlin", "deutschland"],
-    "Turkey": ["turkey", "türkiye", "istanbul"],
-    "Korea": ["korea", "한국", "seoul"],
-    "Japan": ["japan", "日本", "tokyo"],
+    "Palestine": ["فلسطين", "palestine", "gaza", "غزة", "القدس", "jerusalem"],
+    "Syria": ["سوريا", "syria", "damascus", "دمشق", "حلب", "aleppo"],
+    "Yemen": ["اليمن", "yemen", "sanaa", "صنعاء", "عدن", "aden"],
+    "Libya": ["ليبيا", "libya", "tripoli", "طرابلس"],
+    "Sudan": ["السودان", "sudan", "khartoum", "الخرطوم"],
+    
+    # 🌏 شرق آسيا
+    "China": ["china", "中国", "beijing", "shanghai", "北京", "上海"],
+    "Japan": ["japan", "日本", "tokyo", "東京", "osaka", "kyoto", "京都"],
+    "South Korea": ["korea", "한국", "seoul", "서울", "busan", "kpop", "k-pop"],
+    "Taiwan": ["taiwan", "台灣", "taipei", "台北"],
+    "Hong Kong": ["hong kong", "hongkong", "香港", "hk"],
+    "Macau": ["macau", "macao", "澳門"],
+    "Mongolia": ["mongolia", "ulaanbaatar", "монгол"],
+    
+    # 🌏 جنوب شرق آسيا
+    "Indonesia": ["indonesia", "jakarta", "bali", "bahasa indonesia"],
+    "Malaysia": ["malaysia", "kuala lumpur", "kl", "bahasa malaysia"],
+    "Singapore": ["singapore", "sg", "singapura"],
+    "Thailand": ["thailand", "bangkok", "ประเทศไทย", "กรุงเทพ", "thai"],
+    "Vietnam": ["vietnam", "viet nam", "hanoi", "hồ chí minh", "saigon"],
+    "Philippines": ["philippines", "manila", "pinas", "filipino", "tagalog"],
+    "Cambodia": ["cambodia", "phnom penh", "កម្ពុជា"],
+    "Laos": ["laos", "vientiane"],
+    "Myanmar": ["myanmar", "burma", "yangon", "မြန်မာ"],
+    "Brunei": ["brunei"],
+    
+    # 🌏 جنوب آسيا
+    "India": ["india", "delhi", "mumbai", "bangalore", "भारत", "indian", "desi"],
+    "Pakistan": ["pakistan", "islamabad", "karachi", "lahore", "پاکستان"],
+    "Bangladesh": ["bangladesh", "dhaka", "বাংলাদেশ"],
+    "Sri Lanka": ["sri lanka", "colombo", "ශ්‍රී ලංකා"],
+    "Nepal": ["nepal", "kathmandu", "नेपाल"],
+    
+    # 🌏 وسط/غرب آسيا
+    "Turkey": ["turkey", "türkiye", "istanbul", "ankara", "turkish"],
+    "Iran": ["iran", "tehran", "ایران", "persian"],
+    "Israel": ["israel", "tel aviv", "ישראל"],
+    "Kazakhstan": ["kazakhstan", "almaty", "astana"],
+    "Uzbekistan": ["uzbekistan", "tashkent"],
+    "Afghanistan": ["afghanistan", "kabul", "افغانستان"],
+    "Armenia": ["armenia", "yerevan", "հայաստան"],
+    "Azerbaijan": ["azerbaijan", "baku"],
+    "Georgia": ["georgia", "tbilisi", "საქართველო"],
+    
+    # 🇺🇸 الأمريكتان
+    "United States": ["usa", "america", "ny", "nyc", "la", "california", "texas", "florida", "boston"],
+    "Canada": ["canada", "toronto", "vancouver", "montreal"],
+    "Mexico": ["mexico", "méxico", "mexico city", "cdmx", "mexicano"],
+    "Brazil": ["brazil", "brasil", "rio", "são paulo", "sao paulo", "português"],
+    "Argentina": ["argentina", "buenos aires", "argentino"],
+    "Colombia": ["colombia", "bogotá", "medellín"],
+    "Chile": ["chile", "santiago"],
+    "Peru": ["peru", "lima", "perú"],
+    "Cuba": ["cuba", "havana", "la habana"],
+    "Puerto Rico": ["puerto rico", "pr", "boricua"],
+    
+    # 🌍 أوروبا
+    "United Kingdom": ["uk", "london", "britain", "england", "british"],
+    "France": ["france", "paris", "français", "française"],
+    "Italy": ["italy", "italia", "roma", "milano", "italian"],
+    "Spain": ["spain", "españa", "madrid", "barcelona"],
+    "Germany": ["germany", "berlin", "deutschland", "münchen"],
+    "Netherlands": ["netherlands", "holland", "amsterdam"],
+    "Portugal": ["portugal", "lisboa", "lisbon"],
+    "Sweden": ["sweden", "stockholm", "sverige"],
+    "Norway": ["norway", "oslo", "norge"],
+    "Russia": ["russia", "moscow", "россия"],
+    "Ukraine": ["ukraine", "kiev", "kyiv", "україна"],
+    "Poland": ["poland", "warsaw", "polska"],
+    "Greece": ["greece", "athens", "ελλάδα"],
+    
+    # 🌍 أفريقيا
+    "Nigeria": ["nigeria", "lagos", "abuja", "naija"],
+    "South Africa": ["south africa", "cape town", "johannesburg", "joburg"],
+    "Kenya": ["kenya", "nairobi"],
+    "Ethiopia": ["ethiopia", "addis ababa"],
+    "Ghana": ["ghana", "accra"],
+    
+    # 🇦🇺 أوقيانوسيا
+    "Australia": ["australia", "sydney", "melbourne", "aussie"],
+    "New Zealand": ["new zealand", "auckland", "wellington", "kiwi"],
 }
 
 
@@ -630,10 +878,31 @@ def smart_country_analysis(bio, language, nickname):
                 candidates[country] = candidates.get(country, 0) + 30
                 break
 
-    # 2. تحليل اللغة (وزن أقل لأنها أقل دقة)
+    # 2. تحليل اللغة - أوزان متفاوتة (اللغات النادرة أكثر دقة)
+    # لغات تشير لدولة واحدة بقوة (ko=كوريا، ja=اليابان، vi=فيتنام...)
+    HIGH_CONFIDENCE_LANGS = {
+        "ko": 50, "ja": 50, "th": 50, "vi": 50, "tl": 45, "fil": 45,
+        "km": 50, "lo": 50, "my": 50, "mn": 50, "si": 45, "ne": 45,
+        "kk": 45, "uz": 45, "ky": 45, "tg": 45, "tk": 45,
+        "fa": 40, "ps": 40, "he": 45, "iw": 45,
+        "hy": 50, "az": 45, "ka": 50,
+        "el": 45, "uk": 35, "pl": 30, "cs": 35, "hu": 40, "ro": 35,
+        "sv": 35, "no": 35, "da": 35, "fi": 40, "nl": 30,
+        "tr": 35, "ru": 25, "ar": 15,  # ar منخفض لأنه يشمل دول كثيرة
+        "en": 8, "es": 10, "fr": 12, "de": 25, "it": 25, "pt": 15,
+        "zh-tw": 50, "zh-hk": 50, "zh-cn": 40, "zh": 25,
+        "en-us": 25, "en-gb": 30,
+    }
     if language and language in LANGUAGE_TO_COUNTRY:
-        for country in LANGUAGE_TO_COUNTRY[language]:
-            candidates[country] = candidates.get(country, 0) + 10
+        # خذ أول دولة في القائمة (الأكثر احتمالاً) وأعطها الوزن الأعلى
+        weight = HIGH_CONFIDENCE_LANGS.get(language, 10)
+        countries_list = LANGUAGE_TO_COUNTRY[language]
+        if countries_list:
+            # الدولة الأولى تأخذ الوزن الكامل
+            candidates[countries_list[0]] = candidates.get(countries_list[0], 0) + weight
+            # الدول الأخرى تأخذ نصف الوزن
+            for c in countries_list[1:]:
+                candidates[c] = candidates.get(c, 0) + weight // 3
 
     # 3. حروف عربية في الـ BIO
     if bio:
@@ -932,7 +1201,7 @@ def main():
 
     st.markdown("""
     <div class='footer'>
-        🦅 بَصِير v1.7 - Smart Multi-Source © 2026
+        🦅 بَصِير v1.8 - Global Coverage Edition © 2026
     </div>
     """, unsafe_allow_html=True)
 
