@@ -1,7 +1,8 @@
 """
-🦅 بَصِير v1.9.3 - النسخة المستقلة (Standalone)
+🦅 بَصِير v1.9.4 - النسخة المستقلة (Standalone)
 ═══════════════════════════════════════════════════════════════
-الإصلاح v1.9.3: حل خطأ تصحيح الدول الموثوقة (Egypt, Saudi Arabia...)
+التحديث v1.9.4: عرض الجنسية + الإقامة الحالية معاً
+مثال: حساب كويتي مقيم في السعودية → يُعرض الاثنان
 ═══════════════════════════════════════════════════════════════
 ملف واحد يحوي كل شيء - لا يحتاج imports من ملفات أخرى
 حلّ مشكلة ModuleNotFoundError على Streamlit Cloud
@@ -21,7 +22,7 @@ from pathlib import Path
 # 🎨 إعدادات الصفحة
 # ═══════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="بَصِير v1.9.3 | مولّد معلومات TikTok",
+    page_title="بَصِير v1.9.4 | مولّد معلومات TikTok",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -564,7 +565,7 @@ p, span, div { color: #F1F5F9; }
 # ═══════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("## 🦅 بَصِير")
-    st.markdown("### الإصدار 1.9.3")
+    st.markdown("### الإصدار 1.9.4")
     st.markdown("---")
     st.markdown("### 📊 الإحصائيات")
     st.markdown("- 🎯 **الدقة**: 91% (91/100)")
@@ -618,13 +619,41 @@ if search_btn and username:
             flag = result.get('country_flag', '')
             country_ar = COUNTRY_AR.get(country, country)
             
+            # v1.9.4: الدولة الأصلية من TikMatrix (موقع الإقامة الحالي)
+            residence = result.get('country_original')
+            residence_flag = ''
+            residence_ar = ''
+            show_residence = False
+            
+            if residence and residence != country:
+                # استخراج علم دولة الإقامة
+                for emoji, c in FLAG_EMOJI_TO_COUNTRY.items():
+                    if c == residence:
+                        residence_flag = emoji
+                        break
+                residence_ar = COUNTRY_AR.get(residence, residence)
+                show_residence = True
+            
+            # بطاقة الجنسية (الأصلية)
             st.markdown(f"""
-            <div class="country-card">
+            <div class="country-card" dir="rtl">
+                <div style="color: #FCD34D; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">🎟️ الجنسية</div>
                 <div class="country-flag">{flag}</div>
                 <div class="country-name">{country_ar}</div>
                 <div style="color: #93C5FD; font-size: 0.9rem; margin-top: 0.5rem;">{country}</div>
             </div>
             """, unsafe_allow_html=True)
+            
+            # v1.9.4: بطاقة الإقامة الحالية (إذا مختلفة)
+            if show_residence:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #065F46, #10B981); border-radius: 16px; padding: 1.5rem; text-align: center; margin: 1rem 0; box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);" dir="rtl">
+                    <div style="color: #D1FAE5; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">📍 موقع الإقامة الحالي</div>
+                    <div style="font-size: 3rem; line-height: 1; margin-bottom: 0.5rem;">{residence_flag}</div>
+                    <div style="color: #F1F5F9; font-size: 1.4rem; font-weight: 700;">{residence_ar}</div>
+                    <div style="color: #A7F3D0; font-size: 0.85rem; margin-top: 0.5rem;">{residence}</div>
+                </div>
+                """, unsafe_allow_html=True)
             
             conf = result.get('confidence', 0)
             if conf >= 90:
@@ -634,7 +663,7 @@ if search_btn and username:
             else:
                 conf_class, conf_text = "confidence-low", "تحقق يدوي"
             
-            st.markdown(f'<div style="text-align: center; margin: 1rem 0;"><span class="{conf_class}">🛡️ {conf_text} ({conf}%)</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="text-align: center; margin: 1rem 0;" dir="rtl"><span class="{conf_class}">🛡️ {conf_text} ({conf}%)</span></div>', unsafe_allow_html=True)
         
         with col_b:
             nickname = result.get('nickname', username)
@@ -671,12 +700,13 @@ if search_btn and username:
         
         corrections = result.get('corrections_log', [])
         if corrections:
-            st.markdown("### 🔧 سجل اكتشاف الدولة")
+            st.markdown("### 🔧 سجل اكتشاف الجنسية")
             for c in corrections:
-                st.markdown(f'<div class="correction-log">{c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="correction-log" dir="rtl">{c}</div>', unsafe_allow_html=True)
             original = result.get('country_original')
             if original and original != country:
-                st.warning(f"⚠️ TikMatrix أعطى دولة خاطئة: **{original}** — تم التصحيح إلى **{country}**")
+                # v1.9.4: رسالة توضيحية بدلاً من تحذير
+                st.info(f"ℹ️ **توضيح**: TikMatrix يعرض **{original}** (موقع الجهاز الحالي). الجنسية الحقيقية المستخرجة من BIO: **{country}**")
         
         source = result.get('country_source', 'tikmatrix')
         source_ar = SOURCE_AR.get(source, source)
@@ -694,12 +724,12 @@ if search_btn and username:
                     sec_uid = sec_uid[:30] + "..."
                 st.text(f"SecUID: {sec_uid}")
                 st.text(f"المصدر: {source}")
-                st.text("الإصدار: v1.9.3")
+                st.text("الإصدار: v1.9.4")
 
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #64748B; padding: 2rem; direction: rtl;">
-    <p>🦅 <strong style="color: #F59E0B;">بَصِير v1.9.3</strong> - مولّد ذكي لمعلومات حسابات TikTok</p>
+    <p>🦅 <strong style="color: #F59E0B;">بَصِير v1.9.4</strong> - مولّد ذكي لمعلومات حسابات TikTok</p>
     <p>دقة 91% | 100 حساب تجريبي | 6 قارات | 100 مشهور</p>
     <p style="font-size: 0.85rem;">معتمَد من لجنة التطوير 7/7 | نسخة مستقلة Standalone</p>
 </div>
