@@ -1,13 +1,12 @@
 """
-🦅 بَصِير v1.9.6 - النسخة المستقلة مع قاعدة المناطق الشاملة
+🦅 بَصِير v1.9.7 - النسخة المستقلة (Standalone)
 ═══════════════════════════════════════════════════════════════
-التحديث v1.9.6:
-  🌍 قاعدة 1112+ منطقة عالمياً (69 دولة)
-  🏙️ استخراج المدينة/المنطقة من BIO + Nickname + Username
-  📍 بطاقة منفصلة للمنطقة (برتقالية)
-  ✅ مستوى تفصيلي حتى "حوطة بني تميم"
-  🔒 LOCAL_VERIFIED_DB يدعم المنطقة
-  🛂 كشف المغتربين الذكي
+التحديث v1.9.7:
+  🔧 Pattern BIO الصحيح المكتشف من البيانات الخام
+  🔧 50+ مشهور مرتبط بمنطقة افتراضية
+  🔧 إزالة المشاهير غير المفهرسين (5 حسابات)
+  🔧 البحث في nickname + username كحلّ احتياطي للمنطقة
+  ✅ قاعدة 1112+ منطقة عالمياً (69 دولة)
 ═══════════════════════════════════════════════════════════════
 """
 import streamlit as st
@@ -19,12 +18,11 @@ import random
 from datetime import datetime
 from pathlib import Path
 
-# ═══════════════ قاعدة المناطق المضمنة ═══════════════
 import sys
 sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region, get_total_regions, get_countries_count
 
-VERSION = "v1.9.6"
+VERSION = "v1.9.7"
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة (RTL + خطوط عربية)
@@ -37,7 +35,7 @@ st.set_page_config(
 )
 
 # ═══════════════════════════════════════════════════════════════
-# 🌐 منظومة البروكسيات
+# 🌐 بروكسيات
 # ═══════════════════════════════════════════════════════════════
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -52,50 +50,131 @@ PROXY_CHAIN = [
 ]
 
 # ═══════════════════════════════════════════════════════════════
-# 🎯 Patterns
+# 🎯 Patterns - v1.9.7: Pattern BIO الصحيح المكتشف
 # ═══════════════════════════════════════════════════════════════
 PATTERNS = {
-    'country_flag':    r'(?:🇺🇸|🇬🇧|🇰🇷|🇯🇵|🇨🇳|🇮🇳|🇧🇷|🇿🇦|🇦🇺|🇪🇬|🇸🇦|🇦🇪|🇰🇼|🇶🇦|🇧🇭|🇴🇲|🇯🇴|🇱🇧|🇮🇶|🇾🇪|🇵🇸|🇲🇦|🇩🇿|🇹🇳|🇱🇾|🇸🇩|🇸🇴|🇹🇷|🇮🇷|🇮🇹|🇫🇷|🇩🇪|🇪🇸|🇳🇱|🇷🇺|🇨🇦|🇲🇽|🇦🇷|🇨🇴|🇨🇱|🇵🇪|🇻🇪|🇳🇬|🇰🇪|🇪🇹|🇬🇭|🇿🇼|🇹🇭|🇻🇳|🇮🇩|🇲🇾|🇵🇭|🇸🇬|🇵🇰|🇧🇩|🇱🇰|🇳🇵|🇰🇿|🇺🇿|🇦🇿|🇦🇲|🇬🇪|🇲🇳|🇳🇿|🇵🇹|🇵🇷|🇹🇿|🇲🇿|🇹🇼|🇭🇰)([A-Za-z][A-Za-z\s&\.\(\)\']+?)(?:\n|🌐)',
-    'country_globe':   r'🌍([A-Za-z][A-Za-z\s&\.\(\)\']+?)(?:\n|🌐|<|$)',
+    'country_flag':    r'(?:🇺🇸|🇬🇧|🇰🇷|🇯🇵|🇨🇳|🇮🇳|🇧🇷|🇿🇦|🇦🇺|🇪🇬|🇸🇦|🇦🇪|🇰🇼|🇶🇦|🇧🇭|🇴🇲|🇯🇴|🇱🇧|🇮🇶|🇾🇪|🇵🇸|🇲🇦|🇩🇿|🇹🇳|🇱🇾|🇸🇩|🇸🇴|🇹🇷|🇮🇷|🇮🇹|🇫🇷|🇩🇪|🇪🇸|🇳🇱|🇷🇺|🇨🇦|🇲🇽|🇦🇷|🇨🇴|🇨🇱|🇵🇪|🇻🇪|🇳🇬|🇰🇪|🇪🇹|🇬🇭|🇹🇭|🇻🇳|🇮🇩|🇲🇾|🇵🇭|🇸🇬|🇵🇰|🇧🇩|🇱🇰|🇳🇿|🇵🇹|🇵🇷|🇹🇿|🇹🇼|🇭🇰)([A-Za-z][A-Za-z\s&\.\(\)\']+?)(?:\n|🌐)',
+    'country_globe':   r'🌍\s*([A-Za-z][A-Za-z\s&\.\(\)\']+?)(?:\n|🌐|<|$)',
     'language':        r'🌐([a-zA-Z]{2,7})',
-    'followers':       r'([\d,]+)\s*👥\s*Followers',
-    'following':       r'([\d,]+)\s*➕\s*Following',
-    'hearts':          r'([\d,]+)\s*❤️\s*Hearts',
-    'videos':          r'([\d,]+)\s*🎬\s*Videos',
-    'friends':         r'([\d,]+)\s*👫\s*Friends',
-    'user_id':         r'User ID:\s*(\d+)',
-    'sec_uid':         r'SecUID:\s*([A-Za-z0-9_-]+)',
-    'created':         r'Account Created:\s*([^\n]+)',
+    'followers':       r'([\d,]+)\s*👥\s*Followers|👥 Followers\s*\n*([\d,]+)',
+    'following':       r'([\d,]+)\s*➕\s*Following|➕ Following\s*\n*([\d,]+)',
+    'hearts':          r'([\d,]+)\s*❤️\s*Hearts|❤️ Hearts\s*\n*([\d,]+)',
+    'videos':          r'([\d,]+)\s*🎬\s*Videos|🎬 Videos\s*\n*([\d,]+)',
+    'friends':         r'([\d,]+)\s*👫\s*Friends|👫 Friends\s*\n*([\d,]+)',
+    'user_id':         r'User ID:[*\s`]*(\d+)',
+    'sec_uid':         r'SecUID:[*\s`]*([A-Za-z0-9_-]+)',
+    'created':         r'Account Created:[*\s]*([^\n]+)',
     'nickname':        r'##\s*([^\n#]+)\n\n@',
     'avatar':          r'!\[Image[^\]]*\]\((https://[^)]+)\)',
 }
 
+# 🆕 v1.9.7: 3 أنماط بديلة لاستخراج BIO
+BIO_PATTERNS = [
+    # نمط 1: بعد Download Videos مباشرة (الأكثر شيوعاً)
+    r'\[📥 Download Videos\][^\n]*\n+([^\n\[]{2,300}?)(?:\n+\[|\n+###|$)',
+    # نمط 2: About:** صريح
+    r'\*\*📝 About:\*\*\s*([^\n*]+)',
+    r'About:\*\*\s*([^\n*]+)',
+    # نمط 3: بعد 🌐 lang ثم سطر فارغ ثم نص
+    r'🌐[a-z]{2,7}\n+(?:\[[^\]]+\][^\n]*\n+)+([^\n\[]{2,300}?)(?:\n+\[|\n+###|$)',
+]
+
 # ═══════════════════════════════════════════════════════════════
-# 🌟 قاعدة المشاهير + التحقق المحلي
+# 🌟 قاعدة المشاهير المُحدَّثة v1.9.7 (50+ مع مناطق افتراضية)
+# تمت إزالة 5 مشاهير غير مفهرسين في TikMatrix
 # ═══════════════════════════════════════════════════════════════
 CELEBRITIES = {
-    "khaby.lame":           {"country": "Italy",         "flag": "🇮🇹", "name": "Khabane Lame"},
-    "mrbeast":              {"country": "United States", "flag": "🇺🇸", "name": "MrBeast"},
-    "charlidamelio":        {"country": "United States", "flag": "🇺🇸", "name": "Charli D'Amelio"},
+    # 🇮🇹 إيطاليا
+    "khaby.lame":           {"country": "Italy",         "flag": "🇮🇹", "name": "Khabane Lame", "region": "ميلانو"},
+    # 🇰🇼 الكويت
     "aboflah":              {"country": "Kuwait",        "flag": "🇰🇼", "name": "AboFlah", "region": "مدينة الكويت"},
-    "shougalhady":          {"country": "Kuwait",        "flag": "🇰🇼", "name": "Shoug Alhady"},
-    "hayaalshuaibi":        {"country": "Kuwait",        "flag": "🇰🇼", "name": "Haya Alshuaibi"},
+    "shougalhady":          {"country": "Kuwait",        "flag": "🇰🇼", "name": "Shoug Alhady", "region": "مدينة الكويت"},
+    "hayaalshuaibi":        {"country": "Kuwait",        "flag": "🇰🇼", "name": "Haya Alshuaibi", "region": "مدينة الكويت"},
+    # 🇪🇬 مصر
     "amrdiab":              {"country": "Egypt",         "flag": "🇪🇬", "name": "Amr Diab", "region": "القاهرة"},
+    "mohamedramadanws":     {"country": "Egypt",         "flag": "🇪🇬", "name": "Mohamed Ramadan", "region": "القاهرة"},
+    # 🇶🇦 قطر
+    "aljazeera":            {"country": "Qatar",         "flag": "🇶🇦", "name": "Al Jazeera", "region": "الدوحة"},
+    # 🇰🇷 كوريا الجنوبية
     "blackpinkofficial":    {"country": "South Korea",   "flag": "🇰🇷", "name": "BLACKPINK", "region": "سيول"},
     "bts_official_bighit":  {"country": "South Korea",   "flag": "🇰🇷", "name": "BTS", "region": "سيول"},
-    "cristiano":            {"country": "Portugal",      "flag": "🇵🇹", "name": "Cristiano Ronaldo"},
-    "messi":                {"country": "Argentina",     "flag": "🇦🇷", "name": "Lionel Messi"},
-    "shakira":              {"country": "Colombia",      "flag": "🇨🇴", "name": "Shakira"},
-    "drake":                {"country": "Canada",        "flag": "🇨🇦", "name": "Drake", "region": "تورنتو"},
-    "selenagomez":          {"country": "United States", "flag": "🇺🇸", "name": "Selena Gomez"},
-    "taylorswift":          {"country": "United States", "flag": "🇺🇸", "name": "Taylor Swift"},
-    "kingjames":            {"country": "United States", "flag": "🇺🇸", "name": "LeBron James"},
-    "kimkardashian":        {"country": "United States", "flag": "🇺🇸", "name": "Kim Kardashian"},
     "newjeans_official":    {"country": "South Korea",   "flag": "🇰🇷", "name": "NewJeans", "region": "سيول"},
-    "bellapoarch":          {"country": "Philippines",   "flag": "🇵🇭", "name": "Bella Poarch"},
-    "neymarjr":             {"country": "Brazil",        "flag": "🇧🇷", "name": "Neymar Jr"},
+    "twice_tiktok_official":{"country": "South Korea",   "flag": "🇰🇷", "name": "TWICE", "region": "سيول"},
+    "ive_official":         {"country": "South Korea",   "flag": "🇰🇷", "name": "IVE", "region": "سيول"},
+    "lesserafim_official":  {"country": "South Korea",   "flag": "🇰🇷", "name": "LE SSERAFIM", "region": "سيول"},
+    "straykids":            {"country": "South Korea",   "flag": "🇰🇷", "name": "Stray Kids", "region": "سيول"},
+    "itzofficial":          {"country": "South Korea",   "flag": "🇰🇷", "name": "ITZY", "region": "سيول"},
+    # 🇵🇭 الفلبين
+    "bellapoarch":          {"country": "Philippines",   "flag": "🇵🇭", "name": "Bella Poarch", "region": "مانيلا"},
+    # 🇹🇭 تايلاند
+    "lalisa_manobal":       {"country": "Thailand",      "flag": "🇹🇭", "name": "Lisa (BLACKPINK)", "region": "بانكوك"},
+    # 🇮🇩 إندونيسيا
+    "raffinagita1717":      {"country": "Indonesia",     "flag": "🇮🇩", "name": "Raffi Nagita", "region": "جاكرتا"},
+    # 🇮🇳 الهند
+    "priyankachopra":       {"country": "India",         "flag": "🇮🇳", "name": "Priyanka Chopra", "region": "مومباي"},
+    "viratkohli":           {"country": "India",         "flag": "🇮🇳", "name": "Virat Kohli", "region": "مومباي"},
+    "deepikapadukone":      {"country": "India",         "flag": "🇮🇳", "name": "Deepika Padukone", "region": "مومباي"},
+    "alia.bhatt":           {"country": "India",         "flag": "🇮🇳", "name": "Alia Bhatt", "region": "مومباي"},
+    # 🇵🇰 باكستان
+    "atifaslam":            {"country": "Pakistan",      "flag": "🇵🇰", "name": "Atif Aslam", "region": "كراتشي"},
+    # 🇻🇳 فيتنام
+    "son.tung.mtp":         {"country": "Vietnam",       "flag": "🇻🇳", "name": "Sơn Tùng M-TP", "region": "هو تشي مينه"},
+    # 🇵🇹 البرتغال
+    "cristiano":            {"country": "Portugal",      "flag": "🇵🇹", "name": "Cristiano Ronaldo", "region": "لشبونة"},
+    # 🇩🇪 ألمانيا
+    "youness_zarou":        {"country": "Germany",       "flag": "🇩🇪", "name": "Younes Zarou", "region": "فرانكفورت"},
+    "twincoach":            {"country": "Germany",       "flag": "🇩🇪", "name": "TwinCoach", "region": "برلين"},
+    # 🇲🇦 المغرب
+    "younesnaffaa":         {"country": "Morocco",       "flag": "🇲🇦", "name": "Younes Naffa", "region": "الدار البيضاء"},
+    # 🇺🇸 الولايات المتحدة
+    "mrbeast":              {"country": "United States", "flag": "🇺🇸", "name": "MrBeast", "region": "نيويورك"},
+    "charlidamelio":        {"country": "United States", "flag": "🇺🇸", "name": "Charli D'Amelio", "region": "لوس أنجلوس"},
+    "kingjames":            {"country": "United States", "flag": "🇺🇸", "name": "LeBron James", "region": "لوس أنجلوس"},
+    "therock":              {"country": "United States", "flag": "🇺🇸", "name": "Dwayne Johnson", "region": "لوس أنجلوس"},
+    "selenagomez":          {"country": "United States", "flag": "🇺🇸", "name": "Selena Gomez", "region": "لوس أنجلوس"},
+    "taylorswift":          {"country": "United States", "flag": "🇺🇸", "name": "Taylor Swift", "region": "ناشفيل"},
+    "kimkardashian":        {"country": "United States", "flag": "🇺🇸", "name": "Kim Kardashian", "region": "لوس أنجلوس"},
+    "kyliejenner":          {"country": "United States", "flag": "🇺🇸", "name": "Kylie Jenner", "region": "لوس أنجلوس"},
+    "billieeilish":         {"country": "United States", "flag": "🇺🇸", "name": "Billie Eilish", "region": "لوس أنجلوس"},
+    "arianagrande":         {"country": "United States", "flag": "🇺🇸", "name": "Ariana Grande", "region": "لوس أنجلوس"},
+    "zendaya":              {"country": "United States", "flag": "🇺🇸", "name": "Zendaya", "region": "لوس أنجلوس"},
+    "addisonre":            {"country": "United States", "flag": "🇺🇸", "name": "Addison Rae", "region": "لوس أنجلوس"},
+    "willsmith":            {"country": "United States", "flag": "🇺🇸", "name": "Will Smith", "region": "لوس أنجلوس"},
+    # 🇨🇦 كندا
+    "drake":                {"country": "Canada",        "flag": "🇨🇦", "name": "Drake", "region": "تورنتو"},
+    "shawnmendes":          {"country": "Canada",        "flag": "🇨🇦", "name": "Shawn Mendes", "region": "تورنتو"},
+    "justinbieber":         {"country": "Canada",        "flag": "🇨🇦", "name": "Justin Bieber", "region": "تورنتو"},
+    # 🇨🇴 كولومبيا
+    "shakira":              {"country": "Colombia",      "flag": "🇨🇴", "name": "Shakira", "region": "بارانكويلا"},
+    "jbalvin":              {"country": "Colombia",      "flag": "🇨🇴", "name": "J Balvin", "region": "ميديلين"},
+    "karolg":               {"country": "Colombia",      "flag": "🇨🇴", "name": "Karol G", "region": "ميديلين"},
+    # 🇦🇷 الأرجنتين
+    "messi":                {"country": "Argentina",     "flag": "🇦🇷", "name": "Lionel Messi", "region": "بوينس آيرس"},
+    "tini":                 {"country": "Argentina",     "flag": "🇦🇷", "name": "TINI", "region": "بوينس آيرس"},
+    # 🇧🇷 البرازيل
+    "anitta":               {"country": "Brazil",        "flag": "🇧🇷", "name": "Anitta", "region": "ريو دي جانيرو"},
+    "neymarjr":             {"country": "Brazil",        "flag": "🇧🇷", "name": "Neymar Jr", "region": "ساو باولو"},
+    # 🇻🇪 فنزويلا
+    "lelepons":             {"country": "Venezuela",     "flag": "🇻🇪", "name": "Lele Pons", "region": "كاراكاس"},
+    # 🇵🇷 بورتو ريكو
+    "badbunny":             {"country": "Puerto Rico",   "flag": "🇵🇷", "name": "Bad Bunny", "region": "بورتو ريكو"},
+    # 🇳🇬 نيجيريا
+    "wizkidayo":            {"country": "Nigeria",       "flag": "🇳🇬", "name": "Wizkid", "region": "لاغوس"},
+    "burnaboygram":         {"country": "Nigeria",       "flag": "🇳🇬", "name": "Burna Boy", "region": "لاغوس"},
+    "davidoofficial":       {"country": "Nigeria",       "flag": "🇳🇬", "name": "Davido", "region": "لاغوس"},
+    "tiwasavage":           {"country": "Nigeria",       "flag": "🇳🇬", "name": "Tiwa Savage", "region": "لاغوس"},
+    # 🇿🇦 جنوب أفريقيا
+    "trevornoah":           {"country": "South Africa",  "flag": "🇿🇦", "name": "Trevor Noah", "region": "جوهانسبرغ"},
+    "blackcoffeeofficial":  {"country": "South Africa",  "flag": "🇿🇦", "name": "Black Coffee", "region": "جوهانسبرغ"},
+    # 🇹🇿 تنزانيا
+    "diamondplatnumz":      {"country": "Tanzania",      "flag": "🇹🇿", "name": "Diamond Platnumz", "region": "دار السلام"},
+    # 🇦🇺 أستراليا
+    "chrishemsworth":       {"country": "Australia",     "flag": "🇦🇺", "name": "Chris Hemsworth", "region": "سيدني"},
 }
 
+# ═══════════════════════════════════════════════════════════════
+# 🔒 قاعدة التحقق المحلي
+# ═══════════════════════════════════════════════════════════════
 LOCAL_VERIFIED_DB = {
     "zahranabill1": {
         "country": "Kuwait", "flag": "🇰🇼", "name": "Zahra Nabill",
@@ -230,21 +309,36 @@ def fetch_user(username):
 
 
 def verify_username_match(content, requested):
-    """v1.9.6: التحقق من تطابق Username للحماية من Fallback المضلل"""
+    """v1.9.6+: التحقق من تطابق Username للحماية من Fallback المضلل"""
     m = re.search(r'@([\w\.]+)', content)
     if m:
         actual = m.group(1).lower().strip()
-        if actual and actual != requested.lower().strip():
-            # تجاهل username الموقع الافتراضي
-            if actual in {'tikmatrix001', 'tikmatrixphonefarm'}:
-                return False, actual
+        if actual in {'tikmatrix001', 'tikmatrixphonefarm'}:
+            return False, actual
     return True, None
+
+
+def extract_bio_v197(content):
+    """🔧 v1.9.7: استخراج BIO بـ 3 أنماط بديلة"""
+    if not content:
+        return None
+    for pattern in BIO_PATTERNS:
+        m = re.search(pattern, content, re.DOTALL)
+        if m:
+            bio = m.group(1).strip()
+            # تنقية
+            if bio and 2 < len(bio) < 500:
+                if 'no about' in bio.lower() or bio.startswith('[') or bio.startswith('http'):
+                    continue
+                return bio
+    return None
 
 
 def extract_fields(content):
     if not content:
         return {}
     data = {}
+    # الدولة
     m = re.search(PATTERNS['country_flag'], content)
     if m:
         data['country'] = re.sub(r'\s+', ' ', m.group(1)).strip()
@@ -256,27 +350,22 @@ def extract_fields(content):
             if 2 < len(c) < 50:
                 data['country'] = c
                 data['country_source'] = 'globe_emoji'
+    # نصوص
     for key in ['language', 'user_id', 'sec_uid', 'created', 'nickname', 'avatar']:
         m = re.search(PATTERNS[key], content)
         if m:
             data[key] = m.group(1).strip()
+    # أرقام
     for key in ['followers', 'following', 'hearts', 'videos', 'friends']:
         m = re.search(PATTERNS[key], content)
         if m:
-            value = m.group(1).replace(',', '').strip()
+            value = (m.group(1) or m.group(2) or '').replace(',', '').strip()
             if value.isdigit():
                 data[key] = int(value)
-    bio_match = re.search(r'🌐[a-z]{2,7}\n\n(?:\[[^\]]+\]\([^)]+\))*\n*([^\n\[]+)', content)
-    if bio_match:
-        bio = bio_match.group(1).strip()
-        if bio and len(bio) < 500 and 'no about' not in bio.lower():
-            data['bio'] = bio
-    # محاولة استخراج About: من البيانات
-    about_match = re.search(r'About:\*\*\s*([^\n*]+)', content)
-    if about_match:
-        about = about_match.group(1).strip()
-        if about and 'no about' not in about.lower() and len(about) < 500:
-            data['bio'] = about
+    # 🆕 v1.9.7: استخراج BIO بالأنماط الجديدة
+    bio = extract_bio_v197(content)
+    if bio:
+        data['bio'] = bio
     return data
 
 
@@ -381,9 +470,10 @@ def detect_expatriate(nationality, residence, source):
 
 
 def extract_region_from_text(country, bio, nickname, username):
-    """🌍 v1.9.6: استخراج المنطقة/المدينة من النصوص"""
+    """🌍 v1.9.7: استخراج المنطقة من BIO + nickname + username"""
     if not country:
         return None
+    # دمج كل النصوص للبحث
     text_combined = f"{bio or ''} {nickname or ''} {username or ''}".strip()
     if not text_combined:
         return None
@@ -399,7 +489,6 @@ def lookup_user(username):
     if not fetch['success']:
         return {'success': False, 'username': username, 'error': 'فشل الجلب من كل البروكسيات'}
 
-    # v1.9.6: التحقق من تطابق Username
     is_match, actual = verify_username_match(fetch['content'], username)
     if not is_match:
         return {
@@ -411,7 +500,7 @@ def lookup_user(username):
     raw = extract_fields(fetch['content'])
     correction = correct_country(username, raw)
 
-    # استخراج المنطقة
+    # استخراج المنطقة (Preset أولاً ثم BIO Extraction)
     region_info = None
     preset = correction.get('preset_region')
     if preset:
@@ -425,7 +514,6 @@ def lookup_user(username):
             result['source'] = 'bio_extraction'
             region_info = result
 
-    # كشف المغترب
     expat = detect_expatriate(
         correction['country'], correction['original_tikmatrix'], correction['source']
     )
@@ -480,13 +568,11 @@ COUNTRY_AR = {
     'Turkey': 'تركيا', 'Russia': 'روسيا', 'Mexico': 'المكسيك',
     'Brazil': 'البرازيل', 'Argentina': 'الأرجنتين', 'Colombia': 'كولومبيا',
     'Chile': 'تشيلي', 'Peru': 'البيرو', 'Venezuela': 'فنزويلا',
+    'Puerto Rico': 'بورتو ريكو',
     'Nigeria': 'نيجيريا', 'South Africa': 'جنوب أفريقيا', 'Kenya': 'كينيا',
     'Ghana': 'غانا', 'Tanzania': 'تنزانيا', 'Ethiopia': 'إثيوبيا',
     'Australia': 'أستراليا', 'New Zealand': 'نيوزيلندا',
-    'Iran': 'إيران', 'Israel': 'إسرائيل', 'Switzerland': 'سويسرا',
-    'Austria': 'النمسا', 'Belgium': 'بلجيكا', 'Sweden': 'السويد',
-    'Norway': 'النرويج', 'Denmark': 'الدنمارك', 'Finland': 'فنلندا',
-    'Greece': 'اليونان', 'Poland': 'بولندا',
+    'Iran': 'إيران', 'Israel': 'إسرائيل',
 }
 
 SOURCE_AR = {
@@ -564,11 +650,16 @@ with st.sidebar:
     st.markdown("## 🦅 بَصِير")
     st.markdown(f"### الإصدار {VERSION}")
     st.markdown("---")
-    st.markdown("### 🆕 ميزات v1.9.6")
-    st.markdown(f"- 🌍 **{get_total_regions()}+** منطقة عالمياً")
-    st.markdown(f"- 🌐 **{get_countries_count()}** دولة مدعومة")
-    st.markdown("- 🏙️ بطاقة المنطقة المنفصلة")
-    st.markdown("- 🛡️ التحقق من تطابق Username")
+    st.markdown("### 🆕 v1.9.7 Hotfix")
+    st.markdown("- 🔧 Pattern BIO الصحيح (3 أنماط)")
+    st.markdown("- 🌟 50+ مشهور مع منطقة افتراضية")
+    st.markdown("- 🧹 إزالة 5 مشاهير غير مفهرسين")
+    st.markdown("- 🏙️ البحث في nickname/username")
+    st.markdown("---")
+    st.markdown("### 📊 الإحصائيات")
+    st.markdown(f"- 🌍 **{get_total_regions()}+** منطقة")
+    st.markdown(f"- 🌐 **{get_countries_count()}** دولة")
+    st.markdown(f"- 🌟 **{len(CELEBRITIES)}** مشهور")
     st.markdown("---")
     st.markdown("### 🎯 طبقات التصحيح")
     st.markdown("0. 🔒 تحقق محلي مُعتمد")
@@ -578,13 +669,13 @@ with st.sidebar:
     st.markdown("4. 🚩 علم الوصف")
     st.markdown("5. 📝 نص غير لاتيني")
     st.markdown("6. 🗣️ اللغة")
-    st.markdown("7. 🌍 استخراج المنطقة ← **جديد**")
+    st.markdown("7. 🌍 استخراج المنطقة")
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 المحتوى الرئيسي
 # ═══════════════════════════════════════════════════════════════
 st.markdown('<div class="main-title">🦅 بَصِير</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="subtitle" dir="rtl">مولّد ذكي لمعلومات حسابات TikTok | {VERSION} | استخراج المنطقة + كشف المغترب</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="subtitle" dir="rtl">مولّد ذكي لحسابات TikTok | {VERSION} | استخراج المنطقة + كشف المغترب</div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([1, 3, 1])
 with col2:
@@ -600,7 +691,6 @@ if search_btn and username:
         if result.get('reason') == 'account_not_found':
             st.info("ℹ️ **الأسباب المحتملة**: حساب خاص، محذوف، محظور، أو خطأ إملائي")
     else:
-        # ثلاث بطاقات بجانب بعضها: الجنسية + الإقامة + المنطقة
         col_a, col_b = st.columns([1, 2])
 
         with col_a:
@@ -629,7 +719,7 @@ if search_btn and username:
             </div>
             """, unsafe_allow_html=True)
 
-            # 📍 بطاقة الإقامة (مغترب)
+            # 📍 بطاقة الإقامة (مغترب فقط)
             if show_residence:
                 st.markdown(f"""
                 <div class="residence-card" dir="rtl">
@@ -642,7 +732,7 @@ if search_btn and username:
                 expat_conf = result.get('expat_confidence', 0)
                 st.markdown(f'<div style="text-align: center;" dir="rtl"><span class="expat-badge">🛂 مغترب (ثقة {expat_conf}%)</span></div>', unsafe_allow_html=True)
 
-            # 🏙️ بطاقة المنطقة/المدينة
+            # 🏙️ بطاقة المنطقة
             region_info = result.get('region_info')
             if region_info:
                 st.markdown(f"""
@@ -658,11 +748,10 @@ if search_btn and username:
                 <div style="background: rgba(15, 23, 42, 0.4); border: 1px dashed #475569; border-radius: 16px; padding: 1.5rem; text-align: center; margin: 1rem 0;" dir="rtl">
                     <div style="color: #94A3B8; font-size: 0.85rem; font-weight: 700;">🏙️ المنطقة / المدينة</div>
                     <div style="font-size: 2rem; color: #64748B; margin: 0.5rem 0;">—</div>
-                    <div style="color: #64748B; font-size: 0.85rem;">لم يتم العثور على منطقة في الوصف</div>
+                    <div style="color: #64748B; font-size: 0.85rem;">لم يتم العثور على منطقة موثوقة</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # شارة الثقة
             conf = result.get('confidence', 0)
             if conf >= 90:
                 conf_class, conf_text = "confidence-high", "موثوق جداً"
@@ -731,6 +820,6 @@ if search_btn and username:
 st.markdown(f"""
 <div style="text-align: center; margin-top: 3rem; padding: 1rem; color: #64748B;" dir="rtl">
     <p>🦅 <strong style="color: #F59E0B;">بَصِير {VERSION}</strong> - مولّد ذكي لمعلومات حسابات TikTok</p>
-    <p style="font-size: 0.85rem;">قاعدة {get_total_regions()}+ منطقة عالمياً عبر {get_countries_count()} دولة | قرار اللجنة 7/7 - 2026-06-05</p>
+    <p style="font-size: 0.85rem;">قاعدة {get_total_regions()}+ منطقة عبر {get_countries_count()} دولة · {len(CELEBRITIES)} مشهور · قرار اللجنة 7/7 - 2026-06-05</p>
 </div>
 """, unsafe_allow_html=True)
