@@ -1,5 +1,7 @@
 """
-🦅 بَصِير v1.9.2 - النسخة المستقلة (Standalone)
+🦅 بَصِير v1.9.3 - النسخة المستقلة (Standalone)
+═══════════════════════════════════════════════════════════════
+الإصلاح v1.9.3: حل خطأ تصحيح الدول الموثوقة (Egypt, Saudi Arabia...)
 ═══════════════════════════════════════════════════════════════
 ملف واحد يحوي كل شيء - لا يحتاج imports من ملفات أخرى
 حلّ مشكلة ModuleNotFoundError على Streamlit Cloud
@@ -19,7 +21,7 @@ from pathlib import Path
 # 🎨 إعدادات الصفحة
 # ═══════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="بَصِير v1.9.2 | مولّد معلومات TikTok",
+    page_title="بَصِير v1.9.3 | مولّد معلومات TikTok",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -259,8 +261,30 @@ TLD_TO_COUNTRY = {
     '.au': 'Australia', '.nz': 'New Zealand',
 }
 
-EXPANDED_SUSPICIOUS = {'Turks and Caicos Islands', 'Norway', 'Sweden', 'Finland', 'Puerto Rico', 'Sri Lanka', 'Oman', 'Peru', 'Iraq', 'Nigeria'}
+EXPANDED_SUSPICIOUS = {'Turks and Caicos Islands', 'Norway', 'Sweden', 'Finland', 'Puerto Rico', 'Sri Lanka'}
 TIKTOK_SERVER_COUNTRIES = {'United States', 'United Kingdom'}
+
+# 🔧 الإصلاح v1.9.3: لغات عالمية لا تُستخدم لإلغاء دولة TikMatrix
+GLOBAL_LANGUAGES = {'en'}
+
+# 🔧 الإصلاح v1.9.3: دول TikMatrix الموثوقة (لا نُصحّحها)
+TRUSTED_TIKMATRIX_COUNTRIES = {
+    'Egypt', 'Saudi Arabia', 'United Arab Emirates', 'Kuwait',
+    'Qatar', 'Bahrain', 'Oman', 'Jordan', 'Lebanon', 'Iraq',
+    'Yemen', 'Palestine', 'Morocco', 'Algeria', 'Tunisia',
+    'Libya', 'Sudan', 'Somalia',
+    'South Korea', 'Japan', 'China', 'Taiwan', 'Hong Kong',
+    'Singapore', 'Thailand', 'Vietnam', 'Indonesia', 'Malaysia',
+    'Philippines', 'India', 'Pakistan', 'Bangladesh',
+    'France', 'Germany', 'Italy', 'Spain', 'Netherlands',
+    'Portugal', 'Turkey', 'Russia', 'Greece', 'Poland',
+    'Brazil', 'Argentina', 'Mexico', 'Colombia', 'Chile',
+    'Peru', 'Venezuela',
+    'Nigeria', 'South Africa', 'Kenya', 'Ghana', 'Tanzania',
+    'Ethiopia',
+    'Australia', 'New Zealand', 'Canada',
+    'Iran', 'Israel',
+}
 
 # ═══════════════════════════════════════════════════════════════
 # 🦅 المحرك الرئيسي
@@ -382,12 +406,16 @@ def correct_country(username, data):
                 log.append(f"🔤 {name} → {c}")
                 return _build(c, 'bio_script', original, log, 88)
     
-    # 6. Language Override
-    if language and language in LANGUAGE_TO_COUNTRY:
+    # 6. Language Override - v1.9.3 إصلاح خطأ تصحيح الدول الموثوقة
+    # القاعدة الجديدة: لا نُغيّر دولة TikMatrix إذا كانت موثوقة (مثل مصر، السعودية)
+    # ولا نستخدم 'en' كأساس لتغيير الدولة (لغة عالمية)
+    if language and language in LANGUAGE_TO_COUNTRY and language not in GLOBAL_LANGUAGES:
         primary, valid = LANGUAGE_TO_COUNTRY[language]
-        if original and original not in valid:
+        # شرط التصحيح: الدولة غير موثوقة وليست في قائمة اللغة
+        if original and original not in valid and original not in TRUSTED_TIKMATRIX_COUNTRIES:
             log.append(f"⚠️ لغة {language} ↔ {original} → {primary}")
             return _build(primary, 'language_override', original, log, 72)
+        # تصحيح سيرفر TikTok فقط للغات الواضحة (ko, ja, zh, ...)
         if original in TIKTOK_SERVER_COUNTRIES and language != 'en':
             log.append(f"⚠️ سيرفر TikTok: {original} (lang {language}) → {primary}")
             return _build(primary, 'tiktok_server_filter', original, log, 70)
@@ -536,7 +564,7 @@ p, span, div { color: #F1F5F9; }
 # ═══════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("## 🦅 بَصِير")
-    st.markdown("### الإصدار 1.9.2")
+    st.markdown("### الإصدار 1.9.3")
     st.markdown("---")
     st.markdown("### 📊 الإحصائيات")
     st.markdown("- 🎯 **الدقة**: 91% (91/100)")
@@ -666,12 +694,12 @@ if search_btn and username:
                     sec_uid = sec_uid[:30] + "..."
                 st.text(f"SecUID: {sec_uid}")
                 st.text(f"المصدر: {source}")
-                st.text("الإصدار: v1.9.2")
+                st.text("الإصدار: v1.9.3")
 
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #64748B; padding: 2rem; direction: rtl;">
-    <p>🦅 <strong style="color: #F59E0B;">بَصِير v1.9.2</strong> - مولّد ذكي لمعلومات حسابات TikTok</p>
+    <p>🦅 <strong style="color: #F59E0B;">بَصِير v1.9.3</strong> - مولّد ذكي لمعلومات حسابات TikTok</p>
     <p>دقة 91% | 100 حساب تجريبي | 6 قارات | 100 مشهور</p>
     <p style="font-size: 0.85rem;">معتمَد من لجنة التطوير 7/7 | نسخة مستقلة Standalone</p>
 </div>
