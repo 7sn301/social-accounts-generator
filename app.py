@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region, get_total_regions, get_countries_count
 
-VERSION = "v1.9.7"
+VERSION = "v1.9.9"
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة (RTL + خطوط عربية)
@@ -265,13 +265,28 @@ BIO_SCRIPT_TO_COUNTRY = [
     (r'[\u0900-\u097F]', 'India', 'Devanagari (हिन्दी)'),
 ]
 
+# 🔧 v1.9.8: توسيع TLD ليشمل المغرب العربي وأفريقيا الشمالية
 TLD_TO_COUNTRY = {
     '.sa': 'Saudi Arabia', '.ae': 'United Arab Emirates', '.kw': 'Kuwait',
-    '.qa': 'Qatar', '.eg': 'Egypt', '.kr': 'South Korea', '.jp': 'Japan',
-    '.fr': 'France', '.de': 'Germany', '.br': 'Brazil', '.au': 'Australia',
+    '.qa': 'Qatar', '.eg': 'Egypt', '.bh': 'Bahrain', '.om': 'Oman',
+    '.jo': 'Jordan', '.lb': 'Lebanon', '.iq': 'Iraq', '.ye': 'Yemen',
+    '.ps': 'Palestine', '.sy': 'Syria',
+    '.tn': 'Tunisia', '.ma': 'Morocco', '.dz': 'Algeria', '.ly': 'Libya',
+    '.sd': 'Sudan', '.so': 'Somalia',
+    '.kr': 'South Korea', '.jp': 'Japan', '.cn': 'China', '.tw': 'Taiwan',
+    '.hk': 'Hong Kong', '.sg': 'Singapore', '.th': 'Thailand', '.vn': 'Vietnam',
+    '.id': 'Indonesia', '.my': 'Malaysia', '.ph': 'Philippines',
+    '.in': 'India', '.pk': 'Pakistan', '.bd': 'Bangladesh',
+    '.fr': 'France', '.de': 'Germany', '.it': 'Italy', '.es': 'Spain',
+    '.nl': 'Netherlands', '.pt': 'Portugal', '.tr': 'Turkey', '.ru': 'Russia',
+    '.br': 'Brazil', '.ar': 'Argentina', '.mx': 'Mexico',
+    '.ng': 'Nigeria', '.za': 'South Africa', '.ke': 'Kenya', '.gh': 'Ghana',
+    '.au': 'Australia', '.nz': 'New Zealand', '.ca': 'Canada',
+    '.uk': 'United Kingdom', '.us': 'United States',
 }
 
-EXPANDED_SUSPICIOUS = {'Turks and Caicos Islands', 'Norway', 'Sweden', 'Finland', 'Puerto Rico', 'Sri Lanka'}
+# 🔧 v1.9.8: توسيع قائمة الدول المشبوهة لتشمل هولندا وإيرلندا (TikTok HQ)
+EXPANDED_SUSPICIOUS = {'Turks and Caicos Islands', 'Norway', 'Sweden', 'Finland', 'Puerto Rico', 'Sri Lanka', 'Netherlands', 'Ireland', 'Iraq'}
 TIKTOK_SERVER_COUNTRIES = {'United States', 'United Kingdom'}
 GLOBAL_LANGUAGES = {'en'}
 TRUSTED_TIKMATRIX_COUNTRIES = {
@@ -429,12 +444,50 @@ def correct_country(username, data):
             log.append(f"⚠️ سيرفر TikTok: {original} (lang {language}) → {primary}")
             return _build(primary, 'tiktok_server_filter', original, log, 70)
 
-    # 7. مشبوهة
+    # 🔧 v1.9.8 - الإصلاح الثاني: معالجة الأسماء المضللة (Misleading Names)
+    # مثال: @kingofnewyork ← TikMatrix أعطى Netherlands، لكن الاسم يحتوي 'newyork'
+    MISLEADING_PATTERNS = {
+        'newyork': 'United States', 'nyc': 'United States', 'losangeles': 'United States',
+        'california': 'United States', 'texas': 'United States', 'florida': 'United States',
+        'london': 'United Kingdom', 'england': 'United Kingdom',
+        'paris': 'France', 'berlin': 'Germany', 'roma': 'Italy', 'madrid': 'Spain',
+    }
+    for misleading, real in MISLEADING_PATTERNS.items():
+        if misleading in username_lower:
+            if original != real:
+                log.append(f"🎭 اسم مضلل: '{misleading}' → {real} (تجاوز {original})")
+                return _build(real, 'misleading_name_fix', original, log, 85)
+
+    # 7. مشبوهة (مع توسيع v1.9.8)
     if original in EXPANDED_SUSPICIOUS and language in LANGUAGE_TO_COUNTRY:
         primary, valid = LANGUAGE_TO_COUNTRY[language]
         if original not in valid:
             log.append(f"⚠️ مشبوهة: {original} → {primary}")
             return _build(primary, 'suspicious_filter', original, log, 65)
+
+    # 🔧 v1.9.9 - الحلّ الوسط المُعتمد بإجماع 7/7
+    # AMBIGUOUS_TLDS: لاحقات غامضة لا تعني دولة بالضرورة
+    AMBIGUOUS_TLDS = {'.tn', '.tv', '.io', '.ai', '.co', '.me', '.ly', '.fm'}
+
+    for tld, c in TLD_TO_COUNTRY.items():
+        if username_lower.endswith(tld):
+            # حالة 1: TLD غامض → ثقة منخفضة 50% + شارة غامض
+            if tld in AMBIGUOUS_TLDS:
+                if original and original != c:
+                    log.append(f"❓ TLD غامض {tld} (إشارة ضعيفة) و TikMatrix يقول {original}")
+                    log.append(f"⚖️ احتمالات متعددة: {c} (50%) | {original} (50%)")
+                    log.append(f"⚠️ تحقق يدوي مطلوب - لا أدلة قاطعة")
+                    result = _build(original, 'ambiguous_tld', original, log, 50, None)
+                    result['ambiguous'] = True
+                    result['alternative_country'] = c
+                    return result
+                else:
+                    log.append(f"❓ TLD غامض {tld} (ثقة منخفضة)")
+                    return _build(c, 'tld_ambiguous_weak', original, log, 55)
+            # حالة 2: TLD واضح (مثل .sa .ae .eg) → أولوية عالية
+            elif original in EXPANDED_SUSPICIOUS or (original and original != c):
+                log.append(f"🌐 TLD {tld} يتفوق على {original} → {c}")
+                return _build(c, 'tld_priority_fix', original, log, 88)
 
     if original:
         log.append(f"ℹ️ قبول TikMatrix: {original}")
@@ -451,6 +504,7 @@ def _build(country, source, original, log, confidence, region=None):
         'country': country, 'flag': flag, 'confidence': confidence,
         'source': source, 'original_tikmatrix': original, 'corrections': log,
         'preset_region': region,
+        'ambiguous': False, 'alternative_country': None,
     }
 
 
@@ -544,6 +598,9 @@ def lookup_user(username):
         'expat_confidence': expat['confidence'],
         'expat_reason': expat['reason'],
         'region_info': region_info,
+        # 🔧 v1.9.9: حقول الغموض
+        'ambiguous': correction.get('ambiguous', False),
+        'alternative_country': correction.get('alternative_country'),
     }
 
 
@@ -584,6 +641,11 @@ SOURCE_AR = {
     'suspicious_filter': '⚠️ فلتر الدول المشبوهة',
     'flag_emoji': '🚩 علم Emoji', 'globe_emoji': '🌍 الكرة الأرضية',
     'tikmatrix': '📊 TikMatrix مباشر',
+    'tld_priority_fix': '🌐 TLD ذو أولوية',
+    'misleading_name_fix': '🎭 إصلاح اسم مضلل',
+    # 🔧 v1.9.9: مصادر الغموض
+    'ambiguous_tld': '❓ TLD غامض - احتمالات متعددة (v1.9.9)',
+    'tld_ambiguous_weak': '❓ TLD غامض (ثقة ضعيفة)',
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -640,6 +702,16 @@ html, body, [class*="css"] { direction: rtl; text-align: right; }
     color: white; padding: 0.5rem 1.2rem; border-radius: 999px;
     font-weight: 700; display: inline-block; margin: 0.5rem 0;
 }
+.ambiguous-badge {
+    background: linear-gradient(135deg, #CA8A04, #FBBF24);
+    color: #0F172A; padding: 0.5rem 1.2rem; border-radius: 999px;
+    font-weight: 700; display: inline-block; margin: 0.5rem 0;
+}
+.alt-country-card {
+    background: linear-gradient(135deg, #7C2D12, #C2410C);
+    border-radius: 16px; padding: 1.5rem; text-align: center;
+    box-shadow: 0 8px 32px rgba(194, 65, 12, 0.3); margin: 1rem 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -650,11 +722,12 @@ with st.sidebar:
     st.markdown("## 🦅 بَصِير")
     st.markdown(f"### الإصدار {VERSION}")
     st.markdown("---")
-    st.markdown("### 🆕 v1.9.7 Hotfix")
-    st.markdown("- 🔧 Pattern BIO الصحيح (3 أنماط)")
-    st.markdown("- 🌟 50+ مشهور مع منطقة افتراضية")
-    st.markdown("- 🧹 إزالة 5 مشاهير غير مفهرسين")
-    st.markdown("- 🏙️ البحث في nickname/username")
+    st.markdown("### 🆕 v1.9.9 - الحلّ الوسط")
+    st.markdown("- ❓ كشف TLD الغامض")
+    st.markdown("- ⚖️ عرض احتمالات متعددة")
+    st.markdown("- ⚠️ شارة 'تحقق يدوي' للغامض")
+    st.markdown("- 🧠 ثقة مخفضة للحالات غير الحاسمة")
+    st.markdown("- ✅ صدق معرفي بدل التخمين")
     st.markdown("---")
     st.markdown("### 📊 الإحصائيات")
     st.markdown(f"- 🌍 **{get_total_regions()}+** منطقة")
@@ -731,6 +804,25 @@ if search_btn and username:
                 """, unsafe_allow_html=True)
                 expat_conf = result.get('expat_confidence', 0)
                 st.markdown(f'<div style="text-align: center;" dir="rtl"><span class="expat-badge">🛂 مغترب (ثقة {expat_conf}%)</span></div>', unsafe_allow_html=True)
+
+            # 🔧 v1.9.9: بطاقة الدولة البديلة (للغامض)
+            if result.get('ambiguous') and result.get('alternative_country'):
+                alt_c = result.get('alternative_country')
+                alt_flag = ''
+                for emoji, c in FLAG_EMOJI_TO_COUNTRY.items():
+                    if c == alt_c:
+                        alt_flag = emoji
+                        break
+                alt_ar = COUNTRY_AR.get(alt_c, alt_c)
+                st.markdown(f"""
+                <div class="alt-country-card" dir="rtl">
+                    <div style="color: #FED7AA; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">⚖️ احتمال بديل (50%)</div>
+                    <div style="font-size: 3rem; line-height: 1; margin-bottom: 0.5rem;">{alt_flag}</div>
+                    <div style="color: #F1F5F9; font-size: 1.4rem; font-weight: 700;">{alt_ar}</div>
+                    <div style="color: #FFEDD5; font-size: 0.85rem; margin-top: 0.5rem;">{alt_c}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: center;" dir="rtl"><span class="ambiguous-badge">❓ غامض - تحقق يدوي مطلوب</span></div>', unsafe_allow_html=True)
 
             # 🏙️ بطاقة المنطقة
             region_info = result.get('region_info')
