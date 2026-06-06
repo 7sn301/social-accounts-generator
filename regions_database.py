@@ -158,7 +158,7 @@ REGIONS_DATABASE = {
         'shuwaikh': 'الشويخ', 'nuzha': 'النزهة',
         'yarmouk': 'اليرموك', 'rawda': 'الروضة',
         'adailiya': 'العديلية', 'khaldiya': 'الخالدية',
-        'surra': 'السرة', 'jabriya': 'الجابرية',
+        'surra': 'السرة',
         'south surra': 'جنوب السرة',
     },
 
@@ -876,9 +876,12 @@ REGIONS_DATABASE = {
 }
 
 
+import re as _re
+
 def lookup_region(country, text):
     """
     البحث عن منطقة/مدينة داخل النص (BIO + Nickname + Username)
+    ✅ v2.1.1: حدود كلمات + دعم العربية
     Returns: dict | None
     """
     if not country or not text:
@@ -887,11 +890,24 @@ def lookup_region(country, text):
         return None
     text_lower = text.lower()
     regions = REGIONS_DATABASE[country]
-    # ترتيب بالأطول أولاً لتجنب الالتباس (مثل "new york" قبل "york")
     sorted_keys = sorted(regions.keys(), key=lambda k: -len(k))
+    
+    # الطبقة 1: بحث بالعربية الأولاي (تطوير #2)
     for key_en in sorted_keys:
-        # بحث بمراعاة حدود الكلمات
-        if key_en in text_lower:
+        region_ar = regions[key_en]
+        # بحث عن الاسم العربي في النص مباشرة
+        if region_ar in text:
+            return {
+                'region_en': key_en.title(),
+                'region_ar': region_ar,
+                'confidence': 92,
+            }
+    
+    # الطبقة 2: بحث بالإنجليزية بحدود الكلمات (تطوير #1)
+    for key_en in sorted_keys:
+        # بحدود الكلمة - تجنب المطابقة الجزئية
+        pattern = r'\b' + _re.escape(key_en) + r'\b'
+        if _re.search(pattern, text_lower):
             return {
                 'region_en': key_en.title(),
                 'region_ar': regions[key_en],
