@@ -25,7 +25,8 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
-from capitals_database import lookup_capital
+# ❌ v2.1.2 - تعطيل استيراد lookup_capital (ليس مستخدماً بعد حذف تخمين العاصمة)
+# from capitals_database import lookup_capital  # DEPRECATED
 
 VERSION = "v2.1.0"  # لا يُعرض في الواجهة
 
@@ -459,17 +460,28 @@ def detect_expatriate(nationality, residence, source):
 
 
 def get_smart_region(country, residence, bio, nickname, username, preset_region=None):
+    """
+    ✅ v2.1.2 Emergency Fix - حذف نهائي للعاصمة الافتراضية
+    لا تخمين الرياض للسعوديين أو أي عاصمة لأي جنسية
+    الصدق أولاً: إرجاع None عند عدم وجود دليل فعلي
+    """
+    # الطبقة 1: حساب موثق يدوياً (99%)
     if preset_region:
         return {'region_ar': preset_region, 'region_en': preset_region,
                 'confidence': 99, 'source': 'preset', 'is_estimate': False}
+    
     actual_location = residence if residence else country
     text = f"{bio or ''} {nickname or ''} {username or ''}".strip()
+    
+    # الطبقة 2: بحث فعلي في BIO/Nickname/Username (90%)
     if text and actual_location:
         r = lookup_region(actual_location, text)
         if r:
             r['source'] = 'bio_extraction'
             r['is_estimate'] = False
             return r
+    
+    # الطبقة 3: بحث بدولة الجنسية إذا اختلفت (85%)
     if text and country and country != actual_location:
         r = lookup_region(country, text)
         if r:
@@ -477,19 +489,13 @@ def get_smart_region(country, residence, bio, nickname, username, preset_region=
             r['confidence'] = 85
             r['is_estimate'] = False
             return r
-    if actual_location:
-        cap = lookup_capital(actual_location)
-        if cap:
-            cap['source'] = 'capital_residence'
-            cap['estimate_note'] = f'مدينة رئيسية في {actual_location}'
-            return cap
-    if country and country != actual_location:
-        cap = lookup_capital(country)
-        if cap:
-            cap['source'] = 'capital_nationality'
-            cap['confidence'] = 35
-            cap['estimate_note'] = f'مدينة رئيسية للجنسية {country}'
-            return cap
+    
+    # ❌ محذوف نهائياً v2.1.2:
+    # - lookup_capital(actual_location) للإقامة
+    # - lookup_capital(country) للجنسية
+    # السبب: المستخدم رفض تخمين العاصمة لأنه غير علمي
+    
+    # الصدق: لا نجد دليل = إرجاع None
     return None
 
 
