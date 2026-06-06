@@ -21,8 +21,9 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region, get_total_regions, get_countries_count
+from capitals_database import lookup_capital, get_capitals_count
 
-VERSION = "v1.9.9"
+VERSION = "v2.0.0"
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة (RTL + خطوط عربية)
@@ -524,14 +525,69 @@ def detect_expatriate(nationality, residence, source):
 
 
 def extract_region_from_text(country, bio, nickname, username):
-    """🌍 v1.9.7: استخراج المنطقة من BIO + nickname + username"""
+    """🌍 v2.0.0: استخراج المنطقة من BIO + nickname + username"""
     if not country:
         return None
-    # دمج كل النصوص للبحث
     text_combined = f"{bio or ''} {nickname or ''} {username or ''}".strip()
     if not text_combined:
         return None
     return lookup_region(country, text_combined)
+
+
+def get_smart_region(country, residence, bio, nickname, username, preset_region=None):
+    """🧠 v2.0.0: التحليل الذكي للمنطقة بخمس طبقات
+    طبقة 1: preset_region من قاعدة المشاهير (ثقة 99%)
+    طبقة 2: استخراج من BIO+Nickname+Username في دولة الإقامة (ثقة 90%)
+    طبقة 3: استخراج من BIO+Nickname+Username في دولة الجنسية (ثقة 85%)
+    طبقة 4: عاصمة/مدينة كبرى لدولة الإقامة (تقديري 40%)
+    طبقة 5: عاصمة/مدينة كبرى لدولة الجنسية (تقديري 35%)
+    """
+    # طبقة 1: preset من المشاهير
+    if preset_region:
+        return {
+            'region_ar': preset_region, 'region_en': preset_region,
+            'confidence': 99, 'source': 'preset', 'is_estimate': False,
+        }
+
+    # تحديد الدولة الأقرب للموقع الفعلي
+    actual_location = residence if residence else country
+
+    # طبقة 2: BIO + nickname + username في دولة الإقامة
+    text = f"{bio or ''} {nickname or ''} {username or ''}".strip()
+    if text and actual_location:
+        r = lookup_region(actual_location, text)
+        if r:
+            r['source'] = 'bio_extraction'
+            r['is_estimate'] = False
+            return r
+
+    # طبقة 3: BIO + nickname + username في دولة الجنسية (إن اختلفت عن الإقامة)
+    if text and country and country != actual_location:
+        r = lookup_region(country, text)
+        if r:
+            r['source'] = 'bio_nationality'
+            r['confidence'] = 85
+            r['is_estimate'] = False
+            return r
+
+    # طبقة 4: عاصمة/مدينة كبرى للإقامة (تقديري)
+    if actual_location:
+        cap = lookup_capital(actual_location)
+        if cap:
+            cap['source'] = 'capital_residence'
+            cap['estimate_note'] = f'مدينة رئيسية في {actual_location}'
+            return cap
+
+    # طبقة 5: عاصمة/مدينة كبرى للجنسية (أخير احتياطي)
+    if country and country != actual_location:
+        cap = lookup_capital(country)
+        if cap:
+            cap['source'] = 'capital_nationality'
+            cap['confidence'] = 35
+            cap['estimate_note'] = f'مدينة رئيسية لدولة الجنسية {country}'
+            return cap
+
+    return None
 
 
 def lookup_user(username):
@@ -554,19 +610,15 @@ def lookup_user(username):
     raw = extract_fields(fetch['content'])
     correction = correct_country(username, raw)
 
-    # استخراج المنطقة (Preset أولاً ثم BIO Extraction)
-    region_info = None
-    preset = correction.get('preset_region')
-    if preset:
-        region_info = {'region_ar': preset, 'region_en': preset, 'confidence': 99, 'source': 'preset'}
-    else:
-        result = extract_region_from_text(
-            correction['country'],
-            raw.get('bio'), raw.get('nickname'), username
-        )
-        if result:
-            result['source'] = 'bio_extraction'
-            region_info = result
+    # 🧠 v2.0.0: استخراج المنطقة بخمس طبقات ذكية
+    region_info = get_smart_region(
+        country=correction['country'],
+        residence=correction['original_tikmatrix'],
+        bio=raw.get('bio'),
+        nickname=raw.get('nickname'),
+        username=username,
+        preset_region=correction.get('preset_region'),
+    )
 
     expat = detect_expatriate(
         correction['country'], correction['original_tikmatrix'], correction['source']
@@ -643,9 +695,16 @@ SOURCE_AR = {
     'tikmatrix': '📊 TikMatrix مباشر',
     'tld_priority_fix': '🌐 TLD ذو أولوية',
     'misleading_name_fix': '🎭 إصلاح اسم مضلل',
-    # 🔧 v1.9.9: مصادر الغموض
-    'ambiguous_tld': '❓ TLD غامض - احتمالات متعددة (v1.9.9)',
+    'ambiguous_tld': '❓ TLD غامض - احتمالات متعددة',
     'tld_ambiguous_weak': '❓ TLD غامض (ثقة ضعيفة)',
+    # 🔧 v2.0.0: مصادر المنطقة الذكية
+    'preset': '🌟 منطقة مُعدّة مع المشهور',
+    'bio_extraction': '📝 مستخرجة من الوصف',
+    'bio_nationality': '📝 مستخرجة من دولة الجنسية',
+    'capital_residence': '🏛️ تقدير عاصمة الإقامة',
+    'capital_nationality': '🏛️ تقدير عاصمة الجنسية',
+    'major_city_estimate': '🏙️ تقدير المدينة الكبرى',
+    'capital_estimate': '🏛️ تقدير العاصمة',
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -677,6 +736,17 @@ html, body, [class*="css"] { direction: rtl; text-align: right; }
     background: linear-gradient(135deg, #7C2D12, #F97316);
     border-radius: 16px; padding: 1.5rem; text-align: center;
     box-shadow: 0 8px 32px rgba(249, 115, 22, 0.3); margin: 1rem 0;
+}
+.region-card-estimate {
+    background: linear-gradient(135deg, #713F12, #CA8A04);
+    border-radius: 16px; padding: 1.5rem; text-align: center;
+    box-shadow: 0 8px 32px rgba(202, 138, 4, 0.3); margin: 1rem 0;
+    border: 2px dashed #FBBF24;
+}
+.estimate-badge {
+    background: #FBBF24; color: #0F172A; padding: 0.4rem 1rem;
+    border-radius: 999px; font-weight: 700; display: inline-block;
+    margin-top: 0.8rem; font-size: 0.8rem;
 }
 .country-flag { font-size: 3rem; line-height: 1; margin-bottom: 0.5rem; }
 .country-name { color: #F1F5F9; font-size: 1.4rem; font-weight: 700; }
@@ -722,12 +792,13 @@ with st.sidebar:
     st.markdown("## 🦅 بَصِير")
     st.markdown(f"### الإصدار {VERSION}")
     st.markdown("---")
-    st.markdown("### 🆕 v1.9.9 - الحلّ الوسط")
-    st.markdown("- ❓ كشف TLD الغامض")
-    st.markdown("- ⚖️ عرض احتمالات متعددة")
-    st.markdown("- ⚠️ شارة 'تحقق يدوي' للغامض")
-    st.markdown("- 🧠 ثقة مخفضة للحالات غير الحاسمة")
-    st.markdown("- ✅ صدق معرفي بدل التخمين")
+    st.markdown("### 🆕 v2.0.0 - تحليل ذكي")
+    st.markdown("- 🧠 5 طبقات لاستخراج المنطقة")
+    st.markdown("- 🏛️ عاصمة الإقامة كتقدير ذكي")
+    st.markdown("- 🏙️ مدينة كبرى بديلة")
+    st.markdown("- 🟡 شارة 'تقديري' واضحة")
+    st.markdown("- ✅ ثقة شفافة لكل طبقة")
+    st.markdown(f"- 🏛️ **{get_capitals_count()}** عاصمة/مدينة")
     st.markdown("---")
     st.markdown("### 📊 الإحصائيات")
     st.markdown(f"- 🌍 **{get_total_regions()}+** منطقة")
@@ -824,15 +895,20 @@ if search_btn and username:
                 """, unsafe_allow_html=True)
                 st.markdown(f'<div style="text-align: center;" dir="rtl"><span class="ambiguous-badge">❓ غامض - تحقق يدوي مطلوب</span></div>', unsafe_allow_html=True)
 
-            # 🏙️ بطاقة المنطقة
+            # 🏙️ بطاقة المنطقة الذكية v2.0.0
             region_info = result.get('region_info')
             if region_info:
+                is_estimate = region_info.get('is_estimate', False)
+                estimate_note = region_info.get('estimate_note', '')
+                card_class = 'region-card-estimate' if is_estimate else 'region-card'
+                title = '🏙️ المنطقة / المدينة (تقديري)' if is_estimate else '🏙️ المنطقة / المدينة'
                 st.markdown(f"""
-                <div class="region-card" dir="rtl">
-                    <div style="color: #FED7AA; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">🏙️ المنطقة / المدينة</div>
+                <div class="{card_class}" dir="rtl">
+                    <div style="color: #FED7AA; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">{title}</div>
                     <div style="font-size: 3rem; line-height: 1; margin-bottom: 0.5rem;">📍</div>
                     <div style="color: #F1F5F9; font-size: 1.4rem; font-weight: 700;">{region_info.get('region_ar')}</div>
                     <div style="color: #FFEDD5; font-size: 0.85rem; margin-top: 0.5rem;">{region_info.get('region_en')} · ثقة {region_info.get('confidence', 90)}%</div>
+                    {f'<div class="estimate-badge">🟡 {estimate_note}</div>' if is_estimate else ''}
                 </div>
                 """, unsafe_allow_html=True)
             else:
