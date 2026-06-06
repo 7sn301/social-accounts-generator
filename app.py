@@ -988,16 +988,20 @@ def process_bulk(usernames, progress_bar, status_text):
 
 
 def results_to_dataframe(results):
-    """تحويل النتائج لـ DataFrame جميل"""
+    """تحويل النتائج لـ DataFrame جميل - ✅ v2.1.3 إضافة عمود رابط الحساب"""
     try:
         import pandas as pd
     except ImportError:
         return None
     rows = []
     for r in results:
+        username = r.get('username', '?')
+        tiktok_url = f"https://www.tiktok.com/@{username}"
+        
         if not r.get('success'):
             rows.append({
-                'الحساب': f"@{r.get('username', '?')}",
+                'الحساب': f"@{username}",
+                '🔗 رابط الحساب': tiktok_url,
                 'الحالة': '❌ فشل',
                 'السبب': r.get('error', '—'),
             })
@@ -1006,7 +1010,8 @@ def results_to_dataframe(results):
         residence = r.get('country_original') if r.get('is_expatriate') else None
         region = r.get('region_info', {}).get('region_ar') if r.get('region_info') else None
         rows.append({
-            'الحساب': f"@{r.get('username')}",
+            'الحساب': f"@{username}",
+            '🔗 رابط الحساب': tiktok_url,  # ✅ عمود جديد v2.1.3
             'الاسم': r.get('nickname', '—'),
             'الجنسية': COUNTRY_AR.get(country, country),
             'العلم': r.get('country_flag', ''),
@@ -1123,11 +1128,23 @@ with tab2:
         status_text.markdown('<div dir="rtl" style="color: #10B981; font-weight: 700;">✅ اكتملت المعالجة!</div>', unsafe_allow_html=True)
         st.session_state['bulk_results'] = results
 
-        # عرض الجدول
+        # عرض الجدول - ✅ v2.1.3 رابط قابل للنقر
         df = results_to_dataframe(results)
         if df is not None:
             st.markdown('<h3 dir="rtl" style="color: #F59E0B; margin-top: 1.5rem;">📊 جدول النتائج</h3>', unsafe_allow_html=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "🔗 رابط الحساب": st.column_config.LinkColumn(
+                        "🔗 رابط الحساب",
+                        help="اضغط لفتح الحساب في TikTok",
+                        display_text="🔗 فتح",
+                        width="small",
+                    ),
+                },
+            )
 
             # تصدير Excel
             excel_bytes = export_to_excel(df)
@@ -1180,7 +1197,20 @@ with tab3:
 
                     df_results = results_to_dataframe(results)
                     if df_results is not None:
-                        st.dataframe(df_results, use_container_width=True, hide_index=True)
+                        # ✅ v2.1.3 رابط قابل للنقر في Excel tab
+                        st.dataframe(
+                            df_results,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "🔗 رابط الحساب": st.column_config.LinkColumn(
+                                    "🔗 رابط الحساب",
+                                    help="اضغط لفتح الحساب في TikTok",
+                                    display_text="🔗 فتح",
+                                    width="small",
+                                ),
+                            },
+                        )
                         excel_out = export_to_excel(df_results)
                         if excel_out:
                             st.download_button(
