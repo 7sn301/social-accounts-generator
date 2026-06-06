@@ -1156,29 +1156,210 @@ with tab2:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-# ─────── تاب 3: استيراد Excel ───────
+# ─────── تاب 3: استيراد Excel - ✅ v2.1.4 ───────
 with tab3:
     st.markdown('<div dir="rtl" style="color: #94A3B8; margin-bottom: 1rem;">📊 ارفع ملف Excel يحتوي على عمود <code>username</code> أو <code>url</code></div>', unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader("اختر ملف Excel", type=['xlsx', 'xls'], key="excel_upload")
+    # ✅ v2.1.4 - زر تحميل نموذج Excel جاهز
+    st.markdown('<div dir="rtl" style="background:#1E3A8A; color:#F1F5F9; padding:14px; border-radius:10px; border-right:4px solid #F59E0B; margin-bottom:14px; font-family:Noto Sans Arabic,Tajawal,sans-serif;">💡 <strong>ليس لديك ملف جاهز؟</strong> حمّل النموذج أدناه، املأه بالحسابات، ثم ارفعه هنا.</div>', unsafe_allow_html=True)
+    
+    col_template1, col_template2, col_template3 = st.columns([1, 1, 1])
+    
+    with col_template1:
+        # ✅ إنشاء نموذج Excel جاهز للتحميل
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            
+            template_wb = Workbook()
+            template_ws = template_wb.active
+            template_ws.title = "قالب بَصِير"
+            template_ws.sheet_view.rightToLeft = True
+            
+            # رأس الجدول
+            headers = ['username', 'الملاحظات (اختياري)']
+            thin_border = Border(
+                left=Side(style='thin', color='F59E0B'),
+                right=Side(style='thin', color='F59E0B'),
+                top=Side(style='thin', color='F59E0B'),
+                bottom=Side(style='thin', color='F59E0B'),
+            )
+            
+            for col_num, header in enumerate(headers, 1):
+                cell = template_ws.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF", size=12, name='Tajawal')
+                cell.fill = PatternFill("solid", fgColor="F59E0B")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = thin_border
+            
+            # أمثلة توضيحية
+            examples = [
+                ['abu_ali838', 'مثال حساب مباشر'],
+                ['@rsn0077', 'مثال برمز @ - سيلّخص تلقائياً'],
+                ['https://www.tiktok.com/@aboflah', 'مثال رابط كامل'],
+                ['khaby.lame', ''],
+                ['samira.tn', ''],
+                ['', ''],  # صفوف فارغة للتعبئة
+                ['', ''],
+                ['', ''],
+                ['', ''],
+                ['', ''],
+            ]
+            
+            for row_num, row_data in enumerate(examples, 2):
+                for col_num, value in enumerate(row_data, 1):
+                    cell = template_ws.cell(row=row_num, column=col_num, value=value)
+                    cell.font = Font(name='Tajawal', size=11)
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                    cell.border = thin_border
+            
+            # عرض الأعمدة
+            template_ws.column_dimensions['A'].width = 35
+            template_ws.column_dimensions['B'].width = 45
+            
+            # ورقة تعليمات
+            instructions_ws = template_wb.create_sheet("التعليمات")
+            instructions_ws.sheet_view.rightToLeft = True
+            instructions = [
+                ['📖 دليل استخدام النموذج'],
+                [''],
+                ['1. أدخل حسابات TikTok في عمود "username"'],
+                ['2. الصيغ المدعومة:'],
+                ['   - abu_ali838 (بدون @)'],
+                ['   - @abu_ali838 (مع @)'],
+                ['   - https://www.tiktok.com/@abu_ali838 (رابط كامل)'],
+                ['3. الحد الأقصى: 50 حساب لكل ملف'],
+                ['4. احفظ الملف بصيغة .xlsx'],
+                ['5. ارفعه في التبويب أعلاه'],
+                [''],
+                ['⚠️ ملاحظات مهمة:'],
+                ['- احذف صفوف الأمثلة قبل الرفع (اختياري)'],
+                ['- لا تغير اسم عمود "username"'],
+                ['- الصفوف الفارغة ستُتجاهل تلقائياً'],
+                [''],
+                ['🔖 الإصدار: Baseer v2.1.4'],
+                ['📅 التاريخ: 2026-06-05'],
+            ]
+            for row_num, row_data in enumerate(instructions, 1):
+                for col_num, value in enumerate(row_data, 1):
+                    cell = instructions_ws.cell(row=row_num, column=col_num, value=value)
+                    cell.font = Font(name='Tajawal', size=12, bold=(row_num == 1))
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+            instructions_ws.column_dimensions['A'].width = 65
+            
+            template_buffer = io.BytesIO()
+            template_wb.save(template_buffer)
+            template_buffer.seek(0)
+            
+            st.download_button(
+                label="📄 تحميل النموذج",
+                data=template_buffer.getvalue(),
+                file_name="baseer_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="download_template",
+            )
+        except Exception as e:
+            st.error(f"تعذّر إنشاء النموذج: {str(e)[:100]}")
+    
+    with col_template2:
+        # ✅ نموذج CSV بديل
+        try:
+            csv_template = "username,الملاحظات\nabu_ali838,مثال\n@rsn0077,مثال برمز\nhttps://www.tiktok.com/@aboflah,رابط كامل\n,\n,\n,\n,\n,\n,\n"
+            csv_bytes = csv_template.encode('utf-8-sig')  # BOM لدعم العربية في Excel
+            st.download_button(
+                label="📝 تحميل CSV",
+                data=csv_bytes,
+                file_name="baseer_template.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="download_csv",
+            )
+        except Exception:
+            pass
+    
+    with col_template3:
+        st.markdown('<div dir="rtl" style="color:#94A3B8; padding-top:8px; font-family:Noto Sans Arabic,sans-serif;">✨ يمكنك رفع .xlsx أو .xls أو .csv</div>', unsafe_allow_html=True)
+
+    st.divider()
+    
+    uploaded_file = st.file_uploader(
+        "اختر ملف (Excel أو CSV)",
+        type=['xlsx', 'xls', 'csv'],
+        key="excel_upload",
+        help="الصيغ المدعومة: xlsx, xls, csv — الحد الأقصى 50 حساب",
+    )
 
     if uploaded_file is not None:
         try:
             import pandas as pd
-            df_input = pd.read_excel(uploaded_file)
-            st.markdown('<div dir="rtl" style="color: #10B981;">✅ تم رفع الملف بنجاح</div>', unsafe_allow_html=True)
+            
+            # ✅ v2.1.4 - دعم CSV + Excel
+            file_ext = uploaded_file.name.lower().split('.')[-1]
+            if file_ext == 'csv':
+                df_input = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+            else:
+                df_input = pd.read_excel(uploaded_file)
+            
+            # ✅ v2.1.4 - تنظيف أسماء الأعمدة
+            df_input.columns = [str(c).strip() for c in df_input.columns]
+            
+            st.markdown(f'<div dir="rtl" style="color: #10B981; font-family:Noto Sans Arabic,sans-serif;">✅ تم رفع الملف بنجاح ({len(df_input)} سطر ، {len(df_input.columns)} عمود)</div>', unsafe_allow_html=True)
+            
+            # عرض أول 10 صفوف
+            st.markdown('<div dir="rtl" style="color:#F59E0B; margin-top:12px;">👀 معاينة الملف:</div>', unsafe_allow_html=True)
             st.dataframe(df_input.head(10), use_container_width=True)
 
-            # العثور على العمود المناسب
+            # ✅ v2.1.4 - بحث جوهري في أسماء الأعمدة (غير حساس للحالة)
             col_name = None
+            preferred_cols = ['username', 'user', 'url', 'link', 'account', 'tiktok', 'handle']
+            
+            # بحث دقيق أولاً
             for col in df_input.columns:
-                if str(col).lower() in ['username', 'user', 'url', 'link', 'account']:
+                col_lower = str(col).lower().strip()
+                if col_lower in preferred_cols:
                     col_name = col
                     break
+            
+            # بحث جزئي إذا لم يوجد
+            if not col_name:
+                for col in df_input.columns:
+                    col_lower = str(col).lower().strip()
+                    if any(kw in col_lower for kw in preferred_cols):
+                        col_name = col
+                        break
+            
+            # ✅ v2.1.4 - اختيار يدوي إذا لم يتم الاكتشاف التلقائي
+            if not col_name and len(df_input.columns) > 0:
+                st.warning('⚠️ لم أتمكّن من العثور على عمود الحسابات تلقائياً - اختره يدوياً:')
+                col_name = st.selectbox(
+                    "اختر العمود الذي يحوي الحسابات:",
+                    options=list(df_input.columns),
+                    key="manual_col_select",
+                )
 
             if col_name:
-                st.markdown(f'<div dir="rtl">🎯 العمود المُكتشَف: <strong style="color: #F59E0B;">{col_name}</strong> ({len(df_input)} حساب)</div>', unsafe_allow_html=True)
-                process_excel_btn = st.button("🚀 معالجة Excel", type="primary", key="btn_excel")
+                # ✅ v2.1.4 - تصفية الصفوف الفارغة أولاً
+                valid_rows = df_input[col_name].dropna()
+                valid_rows = valid_rows[valid_rows.astype(str).str.strip() != '']
+                
+                st.markdown(
+                    f'<div dir="rtl" style="background:#0F172A; color:#F1F5F9; padding:12px; border-radius:8px; border-right:4px solid #10B981; font-family:Noto Sans Arabic,sans-serif;">'
+                    f'🎯 <strong>العمود المُكتشَف:</strong> <span style="color:#F59E0B;">{col_name}</span><br>'
+                    f'📊 <strong>عدد الصفوف الصالحة:</strong> {len(valid_rows)} حساب'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                
+                if len(valid_rows) == 0:
+                    st.error("❌ لا توجد حسابات صالحة في العمود المحدد")
+                else:
+                    process_excel_btn = st.button(
+                        f"🚀 معالجة {min(len(valid_rows), 50)} حساب",
+                        type="primary",
+                        key="btn_excel",
+                        use_container_width=True,
+                    )
 
                 if process_excel_btn:
                     usernames = df_input[col_name].dropna().astype(str).tolist()[:50]
