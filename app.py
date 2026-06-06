@@ -156,6 +156,30 @@ LOCAL_VERIFIED_DB = {
 # ═══════════════════════════════════════════════════════════════
 # 🗣️ خرائط
 # ═══════════════════════════════════════════════════════════════
+# ✅ v2.1.5 - عرض اللغة بصيغة عربية+إنجليزية واضحة
+LANGUAGE_DISPLAY_AR = {
+    'ar': 'العربية', 'en': 'الإنجليزية', 'fr': 'الفرنسية', 'es': 'الإسبانية',
+    'de': 'الألمانية', 'it': 'الإيطالية', 'pt': 'البرتغالية', 'ru': 'الروسية',
+    'tr': 'التركية', 'ko': 'الكورية', 'ja': 'اليابانية', 'zh': 'الصينية',
+    'th': 'التايلاندية', 'vi': 'الفيتنامية', 'id': 'الإندونيسية',
+    'hi': 'الهندية', 'ur': 'الأردية', 'fa': 'الفارسية', 'nl': 'الهولندية',
+    'sv': 'السويدية', 'no': 'النرويجية', 'fi': 'الفنلندية', 'da': 'الدنماركية',
+    'pl': 'البولندية', 'cs': 'التشيكية', 'el': 'اليونانية', 'he': 'العبرية',
+    'ms': 'الماليزية', 'tl': 'الفلبينية', 'bn': 'البنغالية', 'ta': 'التاميلية',
+}
+
+def _format_language_label(lang_code):
+    """✅ v2.1.5 - تنسيق اللغة بصيغة 'en — الإنجليزية' لإخفاء الرموز التقنية"""
+    if not lang_code:
+        return '—'
+    code = str(lang_code).strip().lower()[:2]
+    if not code:
+        return '—'
+    ar_name = LANGUAGE_DISPLAY_AR.get(code)
+    if ar_name:
+        return f"{code} — {ar_name}"
+    return code
+
 # ✅ إصلاح v2.1.1 - اللغة العربية لا تحدد دولة واحدة
 # (تغطي 22+ دولة) - فقط تستخدم للتحقق من ترابط الجنسية
 LANGUAGE_TO_COUNTRY = {
@@ -672,20 +696,27 @@ header {visibility: hidden;}
     display: inline-block; margin: 0.5rem 0;
 }
 
-/* بطاقة معلومات الحساب */
+/* بطاقة معلومات الحساب - ✅ v2.1.5 تحسين RTL ومسافات */
 .result-card {
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
     border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 20px; padding: 2rem; margin: 1rem 0;
+    border-radius: 20px; padding: 2rem 2.2rem; margin: 1.2rem 0;
     backdrop-filter: blur(10px);
+    direction: rtl; text-align: right;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+    line-height: 1.85;
 }
+.result-card * { font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif; }
 
-/* الإحصائيات */
+/* الإحصائيات - ✅ v2.1.5 padding أوسع */
 .stat-card {
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
     border: 1px solid rgba(245, 158, 11, 0.15);
-    border-radius: 16px; padding: 1.2rem; text-align: center;
+    border-radius: 16px; padding: 1.4rem 1rem; text-align: center;
     transition: transform 0.2s, box-shadow 0.2s;
+    direction: rtl;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+    margin: 0.4rem 0;
 }
 .stat-card:hover {
     transform: translateY(-4px);
@@ -694,11 +725,13 @@ header {visibility: hidden;}
 .stat-number { font-size: 1.8rem; font-weight: 900; color: #F59E0B; }
 .stat-label { color: #94A3B8; font-size: 0.85rem; margin-top: 0.3rem; }
 
-/* تفاصيل تقنية */
+/* تفاصيل تقنية - ✅ v2.1.5 RTL مضمون */
 .tech-details-card {
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.8));
     border: 1px solid rgba(245, 158, 11, 0.3);
-    border-radius: 16px; padding: 1.5rem; margin: 1rem 0;
+    border-radius: 16px; padding: 1.6rem 1.8rem; margin: 1.2rem 0;
+    direction: rtl; text-align: right;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
 }
 .tech-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -896,7 +929,7 @@ def display_single_result(result):
             <p style="color: #94A3B8; font-size: 1.1rem; margin: 0;">@{result.get('username')}</p>
             <p style="color: #CBD5E1; margin-top: 1.2rem; line-height: 1.8; font-size: 1rem;">{result.get('bio') or '— لا يوجد وصف —'}</p>
             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(245,158,11,0.2);">
-                <span style="color: #94A3B8;">🗣️ اللغة: <strong style="color: #F59E0B;">{result.get('language') or 'غير محددة'}</strong></span>
+                <span style="color: #94A3B8;">🗣️ اللغة: <strong style="color: #F59E0B;">{_format_language_label(result.get('language'))}</strong></span>
                 <span style="color: #94A3B8; margin-right: 1.5rem;">📅 الإنشاء: <strong style="color: #F59E0B;">{result.get('created') or 'غير متوفر'}</strong></span>
             </div>
         </div>
@@ -922,8 +955,8 @@ def display_single_result(result):
                 formatted = f"{value:,}"
             st.markdown(f'<div class="stat-card" dir="rtl"><div style="font-size: 2rem;">{icon}</div><div class="stat-number">{formatted}</div><div class="stat-label">{label}</div></div>', unsafe_allow_html=True)
 
-    # 🔧 تفاصيل تقنية مرئية وأنيقة
-    with st.expander("🔧 تفاصيل تقنية"):
+    # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
+    with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
         user_id = result.get('user_id', '—')
         sec_uid = result.get('sec_uid', '—')
         if sec_uid != '—' and len(sec_uid) > 20:
@@ -1082,12 +1115,29 @@ with tab1:
             help="أدخل اسم المستخدم بدون @ أو الصق رابط TikTok",
             key="single_search"
         )
-        search_btn = st.button("🔍 ابحث الآن", type="primary", use_container_width=True, key="btn_single")
+        # ✅ v2.1.5 - تعطيل زر البحث أثناء المعالجة
+        _is_busy_single = st.session_state.get('_single_processing', False)
+        search_btn = st.button(
+            "⏳ جاري المعالجة..." if _is_busy_single else "🔍 ابحث الآن",
+            type="primary", use_container_width=True, key="btn_single",
+            disabled=_is_busy_single,
+        )
 
-    if search_btn and username_input:
-        with st.spinner("🔍 جاري البحث..."):
-            result = lookup_user(username_input)
-        display_single_result(result)
+    # ✅ v2.1.5 - تحقق صريح قبل البحث الفردي + تعطيل الزر
+    if search_btn:
+        if not username_input or not username_input.strip():
+            st.markdown(
+                '<div dir="rtl" style="background: rgba(59,130,246,0.12); padding: 0.9rem 1rem; border-radius: 8px; border-right: 4px solid #3B82F6; color: #BFDBFE; font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;">⚠️ يُرجى إدخال اسم مستخدم أو رابط TikTok قبل الضغط على زر البحث.</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.session_state['_single_processing'] = True
+            try:
+                with st.spinner("🔍 جاري البحث..."):
+                    result = lookup_user(username_input)
+                display_single_result(result)
+            finally:
+                st.session_state['_single_processing'] = False
 
 # ─────── تاب 2: البحث الجماعي ───────
 with tab2:
@@ -1105,9 +1155,16 @@ with tab2:
     with col_a:
         max_accounts = st.slider("الحد الأقصى للحسابات", 1, 50, 10)
     with col_b:
-        bulk_btn = st.button("🚀 معالجة الجميع", type="primary", use_container_width=True, key="btn_bulk")
+        # ✅ v2.1.5 - تعطيل زر المعالجة الجماعية أثناء التشغيل
+        _is_busy_bulk = st.session_state.get('_bulk_processing', False)
+        bulk_btn = st.button(
+            "⏳ جاري المعالجة..." if _is_busy_bulk else "🚀 معالجة الجميع",
+            type="primary", use_container_width=True, key="btn_bulk",
+            disabled=_is_busy_bulk,
+        )
 
     if bulk_btn and bulk_input.strip():
+        st.session_state['_bulk_processing'] = True
         usernames = [line.strip() for line in bulk_input.strip().split('\n') if line.strip()]
         usernames = usernames[:max_accounts]
         # تنظيف
@@ -1125,8 +1182,51 @@ with tab2:
         status_text = st.empty()
 
         results = process_bulk(cleaned, progress_bar, status_text)
-        status_text.markdown('<div dir="rtl" style="color: #10B981; font-weight: 700;">✅ اكتملت المعالجة!</div>', unsafe_allow_html=True)
+        status_text.markdown('<div dir="rtl" style="color: #10B981; font-weight: 700; font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;">✅ اكتملت المعالجة!</div>', unsafe_allow_html=True)
         st.session_state['bulk_results'] = results
+
+        st.session_state['_bulk_processing'] = False
+        # ✅ v2.1.5 - صندوق ملخص النجاح/الفشل
+        total_count = len(results)
+        success_count = sum(1 for r in results if r.get('success'))
+        fail_count = total_count - success_count
+        success_pct = round((success_count / total_count * 100), 1) if total_count else 0
+        st.markdown(
+            f'''
+            <div dir="rtl" style="background:#0F172A; color:#F1F5F9; padding:18px 20px; border-radius:12px; border-right:5px solid #F59E0B; margin:18px 0; font-family:'Noto Sans Arabic','Tajawal',sans-serif;">
+                <h4 style="color:#F59E0B; margin:0 0 12px 0;">📊 ملخص المعالجة الجماعية</h4>
+                <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                    <div>✅ <strong>ناجح:</strong> <span style="color:#10B981;">{success_count}</span></div>
+                    <div>❌ <strong>فاشل:</strong> <span style="color:#EF4444;">{fail_count}</span></div>
+                    <div>📌 <strong>الإجمالي:</strong> <span style="color:#F59E0B;">{total_count}</span></div>
+                    <div>📈 <strong>نسبة النجاح:</strong> <span style="color:#3B82F6;">{success_pct}%</span></div>
+                </div>
+            </div>
+            ''',
+            unsafe_allow_html=True
+        )
+
+        # ✅ v2.1.5 - جدول أخطاء منفصل للفاشلين فقط
+        if fail_count > 0:
+            with st.expander(f"⚠️ عرض الحسابات الفاشلة ({fail_count})", expanded=False):
+                try:
+                    import pandas as _pd
+                    fail_rows = [
+                        {
+                            'الحساب': f"@{r.get('username','?')}",
+                            'سبب الفشل': r.get('error', '—'),
+                        }
+                        for r in results if not r.get('success')
+                    ]
+                    fail_df = _pd.DataFrame(fail_rows)
+                    st.dataframe(fail_df, use_container_width=True, hide_index=True)
+                except Exception:
+                    for r in results:
+                        if not r.get('success'):
+                            st.markdown(
+                                f'<div dir="rtl" style="color:#FCA5A5; font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;">❌ @{r.get("username","?")} — {r.get("error","—")}</div>',
+                                unsafe_allow_html=True
+                            )
 
         # عرض الجدول - ✅ v2.1.3 رابط قابل للنقر
         df = results_to_dataframe(results)
@@ -1354,14 +1454,18 @@ with tab3:
                 if len(valid_rows) == 0:
                     st.error("❌ لا توجد حسابات صالحة في العمود المحدد")
                 else:
+                    # ✅ v2.1.5 - تعطيل زر Excel أثناء المعالجة
+                    _is_busy_excel = st.session_state.get('_excel_processing', False)
                     process_excel_btn = st.button(
-                        f"🚀 معالجة {min(len(valid_rows), 50)} حساب",
+                        "⏳ جاري المعالجة..." if _is_busy_excel else f"🚀 معالجة {min(len(valid_rows), 50)} حساب",
                         type="primary",
                         key="btn_excel",
                         use_container_width=True,
+                        disabled=_is_busy_excel,
                     )
 
                 if process_excel_btn:
+                    st.session_state['_excel_processing'] = True
                     usernames = df_input[col_name].dropna().astype(str).tolist()[:50]
                     cleaned = []
                     for u in usernames:
@@ -1374,7 +1478,39 @@ with tab3:
                     progress = st.progress(0.0)
                     status = st.empty()
                     results = process_bulk(cleaned, progress, status)
-                    status.markdown('<div dir="rtl" style="color: #10B981; font-weight: 700;">✅ اكتملت المعالجة!</div>', unsafe_allow_html=True)
+                    st.session_state['_excel_processing'] = False
+                    status.markdown('<div dir="rtl" style="color: #10B981; font-weight: 700; font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;">✅ اكتملت المعالجة!</div>', unsafe_allow_html=True)
+
+                    # ✅ v2.1.5 - صندوق ملخص + جدول أخطاء (استيراد Excel)
+                    _total = len(results)
+                    _ok = sum(1 for r in results if r.get('success'))
+                    _fail = _total - _ok
+                    _pct = round((_ok / _total * 100), 1) if _total else 0
+                    st.markdown(
+                        f'''
+                        <div dir="rtl" style="background:#0F172A; color:#F1F5F9; padding:18px 20px; border-radius:12px; border-right:5px solid #F59E0B; margin:18px 0; font-family:'Noto Sans Arabic','Tajawal',sans-serif;">
+                            <h4 style="color:#F59E0B; margin:0 0 12px 0;">📊 ملخص معالجة Excel</h4>
+                            <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                                <div>✅ <strong>ناجح:</strong> <span style="color:#10B981;">{_ok}</span></div>
+                                <div>❌ <strong>فاشل:</strong> <span style="color:#EF4444;">{_fail}</span></div>
+                                <div>📌 <strong>الإجمالي:</strong> <span style="color:#F59E0B;">{_total}</span></div>
+                                <div>📈 <strong>نسبة النجاح:</strong> <span style="color:#3B82F6;">{_pct}%</span></div>
+                            </div>
+                        </div>
+                        ''',
+                        unsafe_allow_html=True
+                    )
+                    if _fail > 0:
+                        with st.expander(f"⚠️ عرض الحسابات الفاشلة ({_fail})", expanded=False):
+                            try:
+                                import pandas as _pd2
+                                _fail_rows = [
+                                    {'الحساب': f"@{r.get('username','?')}", 'سبب الفشل': r.get('error', '—')}
+                                    for r in results if not r.get('success')
+                                ]
+                                st.dataframe(_pd2.DataFrame(_fail_rows), use_container_width=True, hide_index=True)
+                            except Exception:
+                                pass
 
                     df_results = results_to_dataframe(results)
                     if df_results is not None:
@@ -1401,7 +1537,10 @@ with tab3:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             )
             else:
-                st.warning("⚠️ لم يتم العثور على عمود باسم username أو url. تأكد من التسمية.")
+                st.markdown(
+                    '<div dir="rtl" style="background: rgba(59,130,246,0.12); padding: 0.9rem 1rem; border-radius: 8px; border-right: 4px solid #3B82F6; color: #BFDBFE; font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;">⚠️ لم يتم العثور على عمود مناسب. التطبيق يقبل أي من: <code>username</code> | <code>url</code> | <code>name</code> | <code>account</code> | <code>الحساب</code> | <code>اسم المستخدم</code>.</div>',
+                    unsafe_allow_html=True
+                )
 
         except Exception as e:
             st.error(f"❌ خطأ في قراءة الملف: {e}")
