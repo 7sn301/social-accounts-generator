@@ -48,8 +48,12 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
 ]
 
+# ✅ تحسين v2.1.1 - سلسلة بروكسي احتياطية لتجنب فشل jina المفرد
 PROXY_CHAIN = [
     {'name': 'jina', 'url': 'https://r.jina.ai/', 'timeout': 15},
+    {'name': 'allorigins', 'url': 'https://api.allorigins.win/raw?url=', 'timeout': 18},
+    {'name': 'corsproxy', 'url': 'https://corsproxy.io/?', 'timeout': 15},
+    {'name': 'codetabs', 'url': 'https://api.codetabs.com/v1/proxy?quest=', 'timeout': 20},
 ]
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,8 +155,10 @@ LOCAL_VERIFIED_DB = {
 # ═══════════════════════════════════════════════════════════════
 # 🗣️ خرائط
 # ═══════════════════════════════════════════════════════════════
+# ✅ إصلاح v2.1.1 - اللغة العربية لا تحدد دولة واحدة
+# (تغطي 22+ دولة) - فقط تستخدم للتحقق من ترابط الجنسية
 LANGUAGE_TO_COUNTRY = {
-    'ar': ('Arab Region', ['Saudi Arabia', 'United Arab Emirates', 'Egypt', 'Kuwait', 'Qatar', 'Bahrain', 'Oman', 'Jordan', 'Lebanon', 'Iraq', 'Yemen', 'Palestine', 'Morocco', 'Algeria', 'Tunisia', 'Libya', 'Sudan']),
+    'ar': (None, ['Saudi Arabia', 'United Arab Emirates', 'Egypt', 'Kuwait', 'Qatar', 'Bahrain', 'Oman', 'Jordan', 'Lebanon', 'Iraq', 'Yemen', 'Palestine', 'Morocco', 'Algeria', 'Tunisia', 'Libya', 'Sudan']),
     'ko': ('South Korea', ['South Korea', 'Korea']),
     'ja': ('Japan', ['Japan']),
     'zh': ('China', ['China', 'Taiwan', 'Hong Kong', 'Singapore']),
@@ -201,6 +207,7 @@ FLAG_EMOJI_TO_COUNTRY = {
     '🇹🇿': 'Tanzania', '🇪🇹': 'Ethiopia', '🇦🇺': 'Australia', '🇳🇿': 'New Zealand',
 }
 
+# ✅ تطوير #4 v2.1.1 - إضافة كشف العربية (بدون تخصيص دولة واحدة)
 BIO_SCRIPT_TO_COUNTRY = [
     (r'[\uAC00-\uD7AF]', 'South Korea', 'Hangul'),
     (r'[\u3040-\u309F]', 'Japan', 'Hiragana'),
@@ -208,6 +215,9 @@ BIO_SCRIPT_TO_COUNTRY = [
     (r'[\u4E00-\u9FFF]', 'China', 'Chinese'),
     (r'[\u0E00-\u0E7F]', 'Thailand', 'Thai'),
     (r'[\u0900-\u097F]', 'India', 'Devanagari'),
+    # العربية لا تحدد دولة واحدة (22+ دولة)
+    # تستخدم فقط للإشارة أن المحتوى عربي - تترك التصحيح لبيانات TikMatrix
+    (r'[\u0600-\u06FF]', None, 'Arabic'),
 ]
 
 TLD_TO_COUNTRY = {
@@ -232,7 +242,8 @@ MISLEADING_PATTERNS = {
 # ═══════════════════════════════════════════════════════════════
 # 🦅 المحرك
 # ═══════════════════════════════════════════════════════════════
-@st.cache_data(ttl=3600, show_spinner=False)
+# ✅ تحسين v2.1.1 - تقليل ttl لتجنب بيانات قديمة
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
     target = f"https://user.tikmatrix.com/?username={username}"
     for proxy in PROXY_CHAIN:
@@ -251,11 +262,27 @@ def fetch_user(username):
     return {'success': False, 'content': None, 'proxy': None, 'time': 0}
 
 
+# ✅ تحسين v2.1.1 - كشف ديناميكي لحسابات TikMatrix التشغيلية
+TIKMATRIX_FALLBACK_ACCOUNTS = {
+    'tikmatrix001', 'tikmatrixphonefarm', 'tikmatrix002', 'tikmatrix003',
+    'tikmatrix_official', 'tikmatrixbot', 'tikmatrix_demo',
+}
+
+TIKMATRIX_FALLBACK_PATTERN = re.compile(r'^tikmatrix[\w_\-]*$', re.IGNORECASE)
+
 def verify_username_match(content, requested):
     m = re.search(r'@([\w\.]+)', content)
     if m:
         actual = m.group(1).lower().strip()
-        if actual in {'tikmatrix001', 'tikmatrixphonefarm'}:
+        requested_lower = requested.lower().strip()
+        # تحقق 1: قائمة بيضاء لحسابات fallback
+        if actual in TIKMATRIX_FALLBACK_ACCOUNTS:
+            return False, actual
+        # تحقق 2: نمط ديناميكي (يلتقط أي tikmatrixXXX جديد)
+        if TIKMATRIX_FALLBACK_PATTERN.match(actual) and actual != requested_lower:
+            return False, actual
+        # تحقق 3: عدم تطابق الجوهري (ليس مطابقاً للمطلوب)
+        if actual != requested_lower and 'tikmatrix' in actual:
             return False, actual
     return True, None
 
@@ -346,18 +373,29 @@ def correct_country(username, data):
 
     for pattern, c, name in BIO_SCRIPT_TO_COUNTRY:
         if re.search(pattern, bio + nickname):
+            # ✅ تطوير v2.1.1 - تجاوز إذا c=None (مثل العربية)
+            if c is None:
+                log.append(f"نص {name} - لا يحدد دولة")
+                continue
             if original != c:
                 log.append(f"نص: {name}")
                 return _build(c, 'bio_script', original, log, 88)
 
     if language and language in LANGUAGE_TO_COUNTRY and language not in GLOBAL_LANGUAGES:
         primary, valid = LANGUAGE_TO_COUNTRY[language]
-        if original and original not in valid and original not in TRUSTED_TIKMATRIX_COUNTRIES:
-            log.append(f"تصحيح اللغة: {language}")
-            return _build(primary, 'language_override', original, log, 72)
-        if original in TIKTOK_SERVER_COUNTRIES and language != 'en':
-            log.append(f"فلتر سيرفر TikTok")
-            return _build(primary, 'tiktok_server_filter', original, log, 70)
+        # ✅ إصلاح v2.1.1 - تجاوز إذا primary=None (مثل العربية)
+        if primary is None:
+            # اللغة تغطي عدة دول - لا نخمن، نحتفظ ببيانات TikMatrix
+            if original and original in valid:
+                log.append(f"اللغة {language} توافق بيانات TikMatrix")
+            # لا return - نترك المنطق يكمل للطبقات التالية
+        else:
+            if original and original not in valid and original not in TRUSTED_TIKMATRIX_COUNTRIES:
+                log.append(f"تصحيح اللغة: {language}")
+                return _build(primary, 'language_override', original, log, 72)
+            if original in TIKTOK_SERVER_COUNTRIES and language != 'en':
+                log.append(f"فلتر سيرفر TikTok")
+                return _build(primary, 'tiktok_server_filter', original, log, 70)
 
     for tld, c in TLD_TO_COUNTRY.items():
         if username_lower.endswith(tld):
@@ -374,13 +412,21 @@ def correct_country(username, data):
 
     if original in EXPANDED_SUSPICIOUS and language in LANGUAGE_TO_COUNTRY:
         primary, valid = LANGUAGE_TO_COUNTRY[language]
+        # ✅ إصلاح v2.1.1 - تجاوز إذا primary=None
+        if primary is None:
+            log.append(f"اللغة {language} غامضة - تخطي الفلتر")
         if original not in valid:
             log.append(f"دولة مشبوهة")
             return _build(primary, 'suspicious_filter', original, log, 65)
 
+    # ✅ إصلاح v2.1.1 - ضمان return صالح حتى عند انعدام البيانات
     if original:
         log.append(f"بيانات TikMatrix")
-    return _build(original, data.get('country_source', 'tikmatrix'), original, log, 75)
+        return _build(original, data.get('country_source', 'tikmatrix'), original, log, 75)
+    
+    # حالة original = None - إرجاع كائن صالح بدلاً من None ضمنياً
+    log.append("لا توجد بيانات دولة - إرجاع غير محدد")
+    return _build('غير محدد', 'no_data', None, log, 0, None)
 
 
 def _build(country, source, original, log, confidence, region=None):
@@ -397,7 +443,15 @@ def _build(country, source, original, log, confidence, region=None):
 
 
 def detect_expatriate(nationality, residence, source):
-    if not nationality or not residence or nationality == residence:
+    # ✅ إصلاح v2.1.1 - تحقق صارم من الإقامة الفعلية
+    if not nationality or not residence:
+        return {'is_expat': False, 'confidence': 0}
+    if nationality == residence:
+        return {'is_expat': False, 'confidence': 0}
+    # تجنب الإعلان الخاطئ للمغترب عند البيانات الخام الفارغة
+    if not nationality.strip() or not residence.strip():
+        return {'is_expat': False, 'confidence': 0}
+    if nationality.strip() == 'غير محدد' or residence.strip() == 'غير محدد':
         return {'is_expat': False, 'confidence': 0}
     conf_map = {'local_verified': 99, 'celebrity_database': 95, 'bio_flag': 90,
                 'bio_script': 85, 'tld_domain': 88, 'username_keyword': 80}
@@ -456,12 +510,28 @@ def lookup_user(username):
 
     raw = extract_fields(fetch['content'])
     correction = correct_country(username, raw)
+    
+    # ✅ إصلاح v2.1.1 - التحقق من صحة correction
+    if not correction or not isinstance(correction, dict):
+        return {'success': False, 'username': username,
+                'error': 'فشل تصحيح الجنسية',
+                'reason': 'correction_failed'}
+    
+    # ✅ إصلاح v2.1.1 - الإقامة الفعلية = بيانات TikMatrix الخام
+    raw_country = raw.get('country')
+    corrected_country = correction.get('country')
+    
+    # تحديد الإقامة الفعلية - فقط إذا اختلفت عن الجنسية المصححة
+    actual_residence = raw_country if (raw_country and raw_country != corrected_country) else None
+    
     region_info = get_smart_region(
-        correction['country'], correction['original_tikmatrix'],
+        corrected_country, actual_residence,
         raw.get('bio'), raw.get('nickname'), username,
         correction.get('preset_region'),
     )
-    expat = detect_expatriate(correction['country'], correction['original_tikmatrix'], correction['source'])
+    
+    # ✅ إصلاح v2.1.1 - استخدام الإقامة الفعلية فقط
+    expat = detect_expatriate(corrected_country, actual_residence, correction.get('source', 'unknown'))
 
     return {
         'success': True, 'username': username,
@@ -691,12 +761,59 @@ st.markdown('<div class="subtitle" dir="rtl">مولّد ذكي لمعلومات 
 # 🎨 دوال العرض
 # ═══════════════════════════════════════════════════════════════
 def display_single_result(result):
-    """عرض نتيجة حساب واحد بتصميم احترافي"""
+    """عرض نتيجة حساب واحد بتصميم احترافي - ✅ v2.1.1"""
     if not result.get('success'):
         st.error(f"❌ {result.get('error', 'فشل البحث')}")
         if result.get('reason') == 'account_not_found':
             st.info("ℹ️ **الأسباب المحتملة**: حساب خاص، محذوف، محظور، أو خطأ إملائي")
         return
+    
+    # ✅ تطوير #5 v2.1.1 - عرض الأفاتار + الاسم بصورة بارزة
+    avatar = result.get('avatar')
+    nickname = result.get('nickname', 'غير معروف')
+    username_display = result.get('username', '')
+    
+    if avatar:
+        st.markdown(f'''
+        <div dir="rtl" style="
+            background:#0F172A; padding:16px; border-radius:12px;
+            display:flex; align-items:center; gap:16px; margin-bottom:12px;
+            border-right:4px solid #F59E0B;
+            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+        ">
+            <img src="{avatar}" style="width:80px;height:80px;border-radius:50%;border:3px solid #F59E0B;object-fit:cover;" />
+            <div style="color:#F1F5F9;">
+                <div style="font-size:1.3rem;font-weight:700;">{nickname}</div>
+                <div style="color:#93C5FD;font-size:0.95rem;">@{username_display}</div>
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
+    
+    # ✅ تطوير #6 v2.1.1 - إشعار للحسابات الجديدة (أقل من 6 أشهر)
+    created = result.get('created', '')
+    if created:
+        try:
+            from datetime import datetime
+            for fmt in ['%m/%d/%Y %I:%M:%S %p', '%Y-%m-%d', '%m/%d/%Y']:
+                try:
+                    created_dt = datetime.strptime(created, fmt)
+                    age_days = (datetime.now() - created_dt).days
+                    if age_days < 180:
+                        st.markdown(f'''
+                        <div dir="rtl" style="
+                            background:#1E3A8A; color:#F1F5F9; padding:12px;
+                            border-radius:8px; border-right:4px solid #F59E0B;
+                            margin-bottom:12px;
+                            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+                        ">
+                        ℹ️ <strong>تنبيه:</strong> حساب جديد نسبياً ({age_days} يوم) - بيانات الجنسية قد تكون أقل موثوقية
+                        </div>
+                        ''', unsafe_allow_html=True)
+                    break
+                except ValueError:
+                    continue
+        except Exception:
+            pass
 
     col_a, col_b = st.columns([1, 2])
 
@@ -833,16 +950,34 @@ def display_single_result(result):
 
 
 def process_bulk(usernames, progress_bar, status_text):
-    """معالجة قائمة حسابات بدفعات"""
+    """معالجة قائمة حسابات بدفعات - ✅ v2.1.1 مع معالجة الأخطاء"""
     results = []
     total = len(usernames)
+    errors_log = []
     for i, u in enumerate(usernames, 1):
-        status_text.markdown(f'<div dir="rtl">🔍 جاري معالجة {i}/{total}: <code>@{u}</code></div>', unsafe_allow_html=True)
-        result = lookup_user(u)
-        results.append(result)
+        status_text.markdown(
+            f'<div dir="rtl" style="font-family:Noto Sans Arabic,Tajawal,sans-serif;">'
+            f'🔍 جاري معالجة {i}/{total}: <code>@{u}</code></div>',
+            unsafe_allow_html=True
+        )
+        # ✅ تطوير #3 v2.1.1 - try/except لمنع توقف الدفعة
+        try:
+            result = lookup_user(u)
+            results.append(result)
+        except Exception as e:
+            error_result = {
+                'success': False,
+                'username': u,
+                'error': f'خطأ معالجة: {str(e)[:100]}',
+                'reason': 'processing_exception',
+            }
+            results.append(error_result)
+            errors_log.append({'username': u, 'error': str(e)[:200]})
         progress_bar.progress(i / total)
         if i < total:
             time.sleep(random.uniform(5, 7))
+    if errors_log:
+        st.session_state['_bulk_errors'] = errors_log
     return results
 
 
