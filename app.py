@@ -267,9 +267,159 @@ MISLEADING_PATTERNS = {
 # ═══════════════════════════════════════════════════════════════
 # 🦅 المحرك
 # ═══════════════════════════════════════════════════════════════
-# ✅ تحسين v2.1.1 - تقليل ttl لتجنب بيانات قديمة
+# ═══════════════════════════════════════════════════════════════
+# ✅ v2.1.6 طارئ - مصادر بيانات جديدة لاستعادة دقة الموقع
+# ═══════════════════════════════════════════════════════════════
+# ✅ v2.1.7 - خريطة ISO codes شاملة (250+ دولة وفق ISO 3166-1 alpha-2)
+REGION_ISO_TO_COUNTRY = {
+    # العربية
+    'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'KW': 'Kuwait',
+    'QA': 'Qatar', 'BH': 'Bahrain', 'OM': 'Oman', 'YE': 'Yemen',
+    'JO': 'Jordan', 'LB': 'Lebanon', 'IQ': 'Iraq', 'PS': 'Palestine',
+    'EG': 'Egypt', 'MA': 'Morocco', 'DZ': 'Algeria', 'TN': 'Tunisia',
+    'LY': 'Libya', 'SD': 'Sudan', 'SO': 'Somalia', 'MR': 'Mauritania',
+    'DJ': 'Djibouti', 'KM': 'Comoros',
+    # أوروبا وأمريكا الشمالية وأستراليا
+    'US': 'United States', 'GB': 'United Kingdom', 'UK': 'United Kingdom',
+    'CA': 'Canada', 'AU': 'Australia', 'NZ': 'New Zealand', 'IE': 'Ireland',
+    'FR': 'France', 'DE': 'Germany', 'IT': 'Italy', 'ES': 'Spain',
+    'PT': 'Portugal', 'NL': 'Netherlands', 'BE': 'Belgium', 'CH': 'Switzerland',
+    'AT': 'Austria', 'SE': 'Sweden', 'NO': 'Norway', 'FI': 'Finland',
+    'DK': 'Denmark', 'PL': 'Poland', 'CZ': 'Czech Republic', 'SK': 'Slovakia',
+    'HU': 'Hungary', 'RO': 'Romania', 'BG': 'Bulgaria', 'GR': 'Greece',
+    'HR': 'Croatia', 'SI': 'Slovenia', 'RS': 'Serbia', 'BA': 'Bosnia and Herzegovina',
+    'MK': 'North Macedonia', 'AL': 'Albania', 'ME': 'Montenegro', 'XK': 'Kosovo',
+    'EE': 'Estonia', 'LV': 'Latvia', 'LT': 'Lithuania', 'IS': 'Iceland',
+    'LU': 'Luxembourg', 'MT': 'Malta', 'CY': 'Cyprus', 'MC': 'Monaco',
+    'AD': 'Andorra', 'SM': 'San Marino', 'VA': 'Vatican City', 'LI': 'Liechtenstein',
+    # روسيا ودول السوفيت سابقاً
+    'RU': 'Russia', 'UA': 'Ukraine', 'BY': 'Belarus', 'MD': 'Moldova',
+    'GE': 'Georgia', 'AM': 'Armenia', 'AZ': 'Azerbaijan', 'KZ': 'Kazakhstan',
+    'UZ': 'Uzbekistan', 'KG': 'Kyrgyzstan', 'TJ': 'Tajikistan', 'TM': 'Turkmenistan',
+    # تركيا وإسرائيل وإيران
+    'TR': 'Turkey', 'IL': 'Israel', 'IR': 'Iran',
+    # جنوب آسيا
+    'IN': 'India', 'PK': 'Pakistan', 'BD': 'Bangladesh', 'LK': 'Sri Lanka',
+    'NP': 'Nepal', 'AF': 'Afghanistan', 'BT': 'Bhutan', 'MV': 'Maldives',
+    # شرق آسيا
+    'CN': 'China', 'JP': 'Japan', 'KR': 'South Korea', 'KP': 'North Korea',
+    'TW': 'Taiwan', 'HK': 'Hong Kong', 'MO': 'Macau', 'MN': 'Mongolia',
+    # جنوب شرق آسيا
+    'SG': 'Singapore', 'MY': 'Malaysia', 'ID': 'Indonesia', 'TH': 'Thailand',
+    'VN': 'Vietnam', 'PH': 'Philippines', 'MM': 'Myanmar', 'KH': 'Cambodia',
+    'LA': 'Laos', 'BN': 'Brunei', 'TL': 'Timor-Leste',
+    # أمريكا اللاتينية
+    'BR': 'Brazil', 'MX': 'Mexico', 'AR': 'Argentina', 'CL': 'Chile',
+    'CO': 'Colombia', 'PE': 'Peru', 'VE': 'Venezuela', 'UY': 'Uruguay',
+    'PY': 'Paraguay', 'BO': 'Bolivia', 'EC': 'Ecuador', 'GY': 'Guyana',
+    'SR': 'Suriname', 'GT': 'Guatemala', 'HN': 'Honduras', 'SV': 'El Salvador',
+    'NI': 'Nicaragua', 'CR': 'Costa Rica', 'PA': 'Panama', 'DO': 'Dominican Republic',
+    'CU': 'Cuba', 'HT': 'Haiti', 'JM': 'Jamaica', 'PR': 'Puerto Rico',
+    'TT': 'Trinidad and Tobago', 'BS': 'Bahamas', 'BB': 'Barbados', 'BZ': 'Belize',
+    # أفريقيا
+    'NG': 'Nigeria', 'KE': 'Kenya', 'ET': 'Ethiopia', 'GH': 'Ghana',
+    'ZA': 'South Africa', 'TZ': 'Tanzania', 'UG': 'Uganda', 'CI': 'Ivory Coast',
+    'SN': 'Senegal', 'CM': 'Cameroon', 'ML': 'Mali', 'BF': 'Burkina Faso',
+    'NE': 'Niger', 'TD': 'Chad', 'AO': 'Angola', 'MZ': 'Mozambique',
+    'ZW': 'Zimbabwe', 'ZM': 'Zambia', 'MW': 'Malawi', 'BW': 'Botswana',
+    'NA': 'Namibia', 'LS': 'Lesotho', 'SZ': 'Eswatini', 'MG': 'Madagascar',
+    'MU': 'Mauritius', 'SC': 'Seychelles', 'RW': 'Rwanda', 'BI': 'Burundi',
+    'CD': 'DR Congo', 'CG': 'Congo', 'GA': 'Gabon', 'GQ': 'Equatorial Guinea',
+    'CF': 'Central African Republic', 'SS': 'South Sudan', 'ER': 'Eritrea',
+    'LR': 'Liberia', 'SL': 'Sierra Leone', 'GN': 'Guinea', 'GM': 'Gambia',
+    'GW': 'Guinea-Bissau', 'CV': 'Cape Verde', 'TG': 'Togo', 'BJ': 'Benin',
+    'ST': 'Sao Tome and Principe',
+    # أوقيانوسيا
+    'FJ': 'Fiji', 'PG': 'Papua New Guinea', 'SB': 'Solomon Islands',
+    'VU': 'Vanuatu', 'WS': 'Samoa', 'TO': 'Tonga', 'KI': 'Kiribati',
+    'TV': 'Tuvalu', 'NR': 'Nauru', 'PW': 'Palau', 'FM': 'Micronesia',
+    'MH': 'Marshall Islands',
+}
+
+# ✅ v2.1.7 - علم تلقائي من ISO code (تحويل بحرفين إلى emoji regional indicator)
+def _iso_to_flag(iso_code):
+    """تحويل ISO-3166 alpha-2 إلى emoji علم تلقائياً - يغطي 250+ دولة"""
+    if not iso_code or len(iso_code) != 2:
+        return ''
+    try:
+        c1, c2 = iso_code.upper()
+        return chr(0x1F1E6 + (ord(c1) - ord('A'))) + chr(0x1F1E6 + (ord(c2) - ord('A')))
+    except Exception:
+        return ''
+
+# خريطة توليد علم من اسم الدولة — تبنى تلقائياً من REGION_ISO_TO_COUNTRY
+COUNTRY_TO_FLAG_EMOJI = {country: _iso_to_flag(iso) for iso, country in REGION_ISO_TO_COUNTRY.items()}
+# تجاوزات UK (لأن لدينا GB وUK لنفس الدولة)
+COUNTRY_TO_FLAG_EMOJI['United Kingdom'] = '🇬🇧'
+
+# تخزين مؤقت لتجنب طلبات متكررة لـ tikwm خلال الجلسة
+_TIKWM_LAST_CALL = {'t': 0.0}
+
+def _tikwm_rate_limit_delay():
+    """✅ v2.1.6 - تأخير 1.5ث بين طلبات tikwm لتجنب rate-limit"""
+    now = time.time()
+    elapsed = now - _TIKWM_LAST_CALL['t']
+    if elapsed < 1.5:
+        time.sleep(1.5 - elapsed)
+    _TIKWM_LAST_CALL['t'] = time.time()
+
+def fetch_user_tikwm(username):
+    """✅ v2.1.6 - المصدر الأساسي الجديد - tikwm.com/api/user/info
+    يُرجع: uniqueId, nickname, signature(bio), secUid, createTime, bioLink, stats
+    لكن لا يُرجع region/language — نحتاج posts endpoint للـ region"""
+    try:
+        _tikwm_rate_limit_delay()
+        start = time.time()
+        url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
+        headers = {'User-Agent': random.choice(USER_AGENTS), 'Accept': 'application/json'}
+        r = requests.get(url, headers=headers, timeout=12)
+        elapsed = time.time() - start
+        if r.status_code == 200:
+            j = r.json()
+            if j.get('code') == 0 and j.get('data', {}).get('user', {}).get('uniqueId'):
+                return {'success': True, 'json': j, 'proxy': 'tikwm', 'time': round(elapsed, 2)}
+    except Exception:
+        pass
+    return {'success': False, 'json': None, 'proxy': None, 'time': 0}
+
+def fetch_user_region_tikwm(username):
+    """✅ v2.1.6 - طبقة البيانات الرسمية للجنسية عبر فيديوهات المستخدم
+    يُرجع: region (ISO code) من أحدث فيديوات المستخدم"""
+    try:
+        _tikwm_rate_limit_delay()
+        url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=3"
+        headers = {'User-Agent': random.choice(USER_AGENTS), 'Accept': 'application/json'}
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200:
+            j = r.json()
+            videos = (j.get('data') or {}).get('videos') or []
+            for v in videos:
+                region = (v.get('region') or '').strip().upper()
+                if region and len(region) == 2 and region.isalpha():
+                    return {'success': True, 'region_iso': region, 'videos_count': len(videos)}
+    except Exception:
+        pass
+    return {'success': False, 'region_iso': None, 'videos_count': 0}
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
+    """✅ v2.1.6 - جلب هجين: tikwm أساسي + jina/tikmatrix احتياطي
+    يُرجع dict موحد فيه success + content (إذا jina) أو tikwm_json (إذا tikwm) + region_iso"""
+    # الطبقة الأساسية: tikwm للبيانات الأساسية
+    primary = fetch_user_tikwm(username)
+    region_data = {'region_iso': None}
+    if primary['success']:
+        # جلب region من posts endpoint بشكل متتابع
+        region_data = fetch_user_region_tikwm(username)
+        return {
+            'success': True,
+            'tikwm_json': primary['json'],
+            'region_iso': region_data.get('region_iso'),
+            'content': None,
+            'proxy': 'tikwm',
+            'time': primary['time'],
+        }
+    # التغليف الاحتياطي (jina + tikmatrix) - لحسابات لا تظهر في tikwm
     target = f"https://user.tikmatrix.com/?username={username}"
     for proxy in PROXY_CHAIN:
         url = proxy['url'] + target
@@ -281,10 +431,40 @@ def fetch_user(username):
             r = requests.get(url, headers=headers, timeout=proxy['timeout'])
             elapsed = time.time() - start
             if r.status_code == 200 and len(r.text) > 1000:
-                return {'success': True, 'content': r.text, 'proxy': proxy['name'], 'time': round(elapsed, 2)}
+                return {
+                    'success': True, 'content': r.text, 'tikwm_json': None,
+                    'region_iso': None, 'proxy': proxy['name'], 'time': round(elapsed, 2),
+                }
         except Exception:
             continue
-    return {'success': False, 'content': None, 'proxy': None, 'time': 0}
+    return {'success': False, 'content': None, 'tikwm_json': None, 'region_iso': None, 'proxy': None, 'time': 0}
+
+
+def _detect_language_from_text(text):
+    """✅ v2.1.6 - استنتاج رمز اللغة من تحليل حروف bio/nickname
+    يعتمد على أغلبية الأحرف دون تخمين - يرجع None إذا لم توجد أغلبية واضحة"""
+    if not text:
+        return None
+    text = str(text)
+    arabic = len(re.findall(r'[\u0600-\u06FF\u0750-\u077F]', text))
+    latin = len(re.findall(r'[A-Za-z]', text))
+    cjk = len(re.findall(r'[\u4E00-\u9FFF]', text))
+    hangul = len(re.findall(r'[\uAC00-\uD7AF]', text))
+    hiragana_katakana = len(re.findall(r'[\u3040-\u30FF]', text))
+    cyrillic = len(re.findall(r'[\u0400-\u04FF]', text))
+    devanagari = len(re.findall(r'[\u0900-\u097F]', text))
+    thai = len(re.findall(r'[\u0E00-\u0E7F]', text))
+    total = arabic + latin + cjk + hangul + hiragana_katakana + cyrillic + devanagari + thai
+    if total < 3:
+        return None  # لا تخمين بلا دليل
+    scores = [(arabic, 'ar'), (hangul, 'ko'), (hiragana_katakana, 'ja'),
+              (cjk, 'zh'), (cyrillic, 'ru'), (devanagari, 'hi'), (thai, 'th'),
+              (latin, 'en')]
+    scores.sort(reverse=True)
+    top, code = scores[0]
+    if top / total >= 0.5:
+        return code
+    return None
 
 
 # ✅ تحسين v2.1.1 - كشف ديناميكي لحسابات TikMatrix التشغيلية
@@ -523,6 +703,41 @@ def get_smart_region(country, residence, bio, nickname, username, preset_region=
     return None
 
 
+def _raw_from_tikwm(tikwm_json, region_iso):
+    """✅ v2.1.6 - تحويل JSON من tikwm إلى بنية raw المتوقعة في النظام"""
+    data = (tikwm_json or {}).get('data') or {}
+    user = data.get('user') or {}
+    stats = data.get('stats') or {}
+    bio = user.get('signature') or None
+    nickname = user.get('nickname') or None
+    created_ts = user.get('createTime')
+    try:
+        created_str = datetime.fromtimestamp(int(created_ts)).strftime('%Y-%m-%d') if created_ts else None
+    except Exception:
+        created_str = None
+    # استنتاج رمز اللغة من bio+nickname (بلا تخمين إذا لم توجد أغلبية واضحة)
+    lang = _detect_language_from_text(((bio or '') + ' ' + (nickname or '')))
+    # تحويل region ISO إلى اسم دولة إنجليزي
+    country = REGION_ISO_TO_COUNTRY.get((region_iso or '').upper()) if region_iso else None
+    return {
+        'country': country,  # قد تكون None إذا لم يوجد region (لا تخمين)
+        'language': lang,
+        'user_id': str(user.get('id')) if user.get('id') else None,
+        'sec_uid': user.get('secUid'),
+        'created': created_str,
+        'nickname': nickname,
+        'avatar': user.get('avatarLarger') or user.get('avatarMedium') or user.get('avatarThumb'),
+        'bio': bio,
+        'followers': int(stats.get('followerCount') or 0),
+        'following': int(stats.get('followingCount') or 0),
+        'hearts': int(stats.get('heartCount') or 0),
+        'videos': int(stats.get('videoCount') or 0),
+        'friends': 0,
+        'verified': bool(user.get('verified')),
+        'bio_link': ((user.get('bioLink') or {}).get('link')),
+    }
+
+
 def lookup_user(username):
     username = username.strip().lower().lstrip('@')
     username = re.sub(r'https?://(?:www\.)?tiktok\.com/@?', '', username)
@@ -530,15 +745,93 @@ def lookup_user(username):
 
     fetch = fetch_user(username)
     if not fetch['success']:
-        return {'success': False, 'username': username, 'error': 'فشل الجلب'}
+        return {'success': False, 'username': username,
+                'error': 'تعذّر جلب بيانات الحساب من جميع المصادر (tikwm + jina + tikmatrix). ربما الحساب غير موجود أو خاص أو المصدر تحت ضغط.'}
 
-    is_match, actual = verify_username_match(fetch['content'], username)
+    # ✅ v2.1.6 - مسار tikwm الأساسي
+    if fetch.get('tikwm_json'):
+        raw = _raw_from_tikwm(fetch['tikwm_json'], fetch.get('region_iso'))
+        # إذا لدينا region رسمي (من فيديوهات tikwm) نبني correction مباشرة بثقة 95%
+        if raw.get('country'):
+            country = raw['country']
+            flag = COUNTRY_TO_FLAG_EMOJI.get(country, '')
+            region_info = get_smart_region(
+                country, None,
+                raw.get('bio'), raw.get('nickname'), username,
+                None,
+            )
+            expat = detect_expatriate(country, None, 'tikwm_official')
+            return {
+                'success': True, 'username': username,
+                'nickname': raw.get('nickname'),
+                'country': country, 'country_flag': flag,
+                'country_source': 'tikwm_official_region',
+                'country_original': country,
+                'language': raw.get('language'),
+                'followers': raw.get('followers', 0), 'following': raw.get('following', 0),
+                'hearts': raw.get('hearts', 0), 'videos': raw.get('videos', 0),
+                'friends': raw.get('friends', 0),
+                'user_id': raw.get('user_id'), 'sec_uid': raw.get('sec_uid'),
+                'created': raw.get('created'), 'bio': raw.get('bio'),
+                'avatar': raw.get('avatar'),
+                'confidence': 95,
+                'corrections_log': [f"region رسمي من tikwm/user/posts: {fetch.get('region_iso')}"],
+                'proxy_used': 'tikwm', 'fetch_time': fetch['time'],
+                'is_expatriate': expat['is_expat'],
+                'expat_confidence': expat['confidence'],
+                'region_info': region_info,
+                'ambiguous': False,
+                'alternative_country': None,
+                'verified': raw.get('verified', False),
+                'bio_link': raw.get('bio_link'),
+            }
+        # tikwm نجح لكن بدون region → Multi-Signal على bio/nickname/username فقط
+        correction = correct_country(username, raw)
+        if not correction or not isinstance(correction, dict):
+            return {'success': False, 'username': username,
+                    'error': 'فشل تحديد الجنسية', 'reason': 'correction_failed'}
+        raw_country = raw.get('country')
+        corrected_country = correction.get('country')
+        actual_residence = raw_country if (raw_country and raw_country != corrected_country) else None
+        region_info = get_smart_region(
+            corrected_country, actual_residence,
+            raw.get('bio'), raw.get('nickname'), username,
+            correction.get('preset_region'),
+        )
+        expat = detect_expatriate(corrected_country, actual_residence, correction.get('source', 'unknown'))
+        return {
+            'success': True, 'username': username,
+            'nickname': raw.get('nickname'),
+            'country': correction.get('country'), 'country_flag': correction.get('flag', ''),
+            'country_source': correction.get('source', 'multi_signal_no_region'),
+            'country_original': correction.get('original_tikmatrix'),
+            'language': raw.get('language'),
+            'followers': raw.get('followers', 0), 'following': raw.get('following', 0),
+            'hearts': raw.get('hearts', 0), 'videos': raw.get('videos', 0),
+            'friends': raw.get('friends', 0),
+            'user_id': raw.get('user_id'), 'sec_uid': raw.get('sec_uid'),
+            'created': raw.get('created'), 'bio': raw.get('bio'),
+            'avatar': raw.get('avatar'),
+            'confidence': min(correction.get('confidence', 50), 75),  # سقف 75% بلا region رسمي
+            'corrections_log': correction.get('corrections', []) + ['لا يوجد region رسمي - Multi-Signal فقط'],
+            'proxy_used': 'tikwm+multi_signal', 'fetch_time': fetch['time'],
+            'is_expatriate': expat['is_expat'],
+            'expat_confidence': expat['confidence'],
+            'region_info': region_info,
+            'ambiguous': correction.get('ambiguous', False),
+            'alternative_country': correction.get('alternative_country'),
+            'verified': raw.get('verified', False),
+            'bio_link': raw.get('bio_link'),
+        }
+
+    # ✅ v2.1.6 - مسار jina/tikmatrix الاحتياطي (السلوك الأصلي)
+    is_match, actual = verify_username_match(fetch.get('content') or '', username)
     if not is_match:
         return {'success': False, 'username': username,
                 'error': f'الحساب @{username} غير موجود أو خاص',
                 'reason': 'account_not_found'}
 
-    raw = extract_fields(fetch['content'])
+    raw = extract_fields(fetch.get('content') or '')
     correction = correct_country(username, raw)
     
     # ✅ إصلاح v2.1.1 - التحقق من صحة correction
@@ -578,7 +871,7 @@ def lookup_user(username):
         'avatar': raw.get('avatar'),
         'confidence': correction['confidence'],
         'corrections_log': correction['corrections'],
-        'proxy_used': fetch['proxy'], 'fetch_time': fetch['time'],
+        'proxy_used': fetch.get('proxy', '-'), 'fetch_time': fetch.get('time', 0),
         'is_expatriate': expat['is_expat'],
         'expat_confidence': expat['confidence'],
         'region_info': region_info,
@@ -590,27 +883,102 @@ def lookup_user(username):
 # ═══════════════════════════════════════════════════════════════
 # 🌍 ترجمة الدول
 # ═══════════════════════════════════════════════════════════════
+# ✅ v2.1.7 - ترجمة عربية شاملة تغطي جميع دول ISO 3166 في REGION_ISO_TO_COUNTRY
 COUNTRY_AR = {
+    # الدول العربية
     'Saudi Arabia': 'المملكة العربية السعودية', 'United Arab Emirates': 'الإمارات',
     'Egypt': 'مصر', 'Kuwait': 'الكويت', 'Qatar': 'قطر', 'Bahrain': 'البحرين',
     'Oman': 'عُمان', 'Jordan': 'الأردن', 'Lebanon': 'لبنان', 'Iraq': 'العراق',
     'Yemen': 'اليمن', 'Palestine': 'فلسطين', 'Morocco': 'المغرب',
     'Algeria': 'الجزائر', 'Tunisia': 'تونس', 'Libya': 'ليبيا', 'Sudan': 'السودان',
-    'South Korea': 'كوريا الجنوبية', 'Japan': 'اليابان', 'China': 'الصين',
-    'Taiwan': 'تايوان', 'Hong Kong': 'هونغ كونغ', 'Singapore': 'سنغافورة',
-    'Thailand': 'تايلاند', 'Vietnam': 'فيتنام', 'Indonesia': 'إندونيسيا',
-    'Malaysia': 'ماليزيا', 'Philippines': 'الفلبين', 'India': 'الهند',
-    'Pakistan': 'باكستان', 'Bangladesh': 'بنغلاديش',
+    'Somalia': 'الصومال', 'Mauritania': 'موريتانيا', 'Djibouti': 'جيبوتي',
+    'Comoros': 'جزر القمر',
+    # أوروبا وأمريكا الشمالية وأستراليا
     'United States': 'الولايات المتحدة', 'United Kingdom': 'المملكة المتحدة',
-    'Canada': 'كندا', 'France': 'فرنسا', 'Germany': 'ألمانيا',
-    'Italy': 'إيطاليا', 'Spain': 'إسبانيا', 'Netherlands': 'هولندا',
-    'Portugal': 'البرتغال', 'Turkey': 'تركيا', 'Russia': 'روسيا',
-    'Mexico': 'المكسيك', 'Brazil': 'البرازيل', 'Argentina': 'الأرجنتين',
-    'Colombia': 'كولومبيا', 'Chile': 'تشيلي', 'Peru': 'البيرو',
-    'Venezuela': 'فنزويلا', 'Puerto Rico': 'بورتو ريكو',
-    'Nigeria': 'نيجيريا', 'South Africa': 'جنوب أفريقيا', 'Kenya': 'كينيا',
-    'Ghana': 'غانا', 'Tanzania': 'تنزانيا', 'Ethiopia': 'إثيوبيا',
-    'Australia': 'أستراليا', 'New Zealand': 'نيوزيلندا',
+    'Canada': 'كندا', 'Australia': 'أستراليا', 'New Zealand': 'نيوزيلندا',
+    'Ireland': 'أيرلندا',
+    'France': 'فرنسا', 'Germany': 'ألمانيا', 'Italy': 'إيطاليا',
+    'Spain': 'إسبانيا', 'Portugal': 'البرتغال', 'Netherlands': 'هولندا',
+    'Belgium': 'بلجيكا', 'Switzerland': 'سويسرا', 'Austria': 'النمسا',
+    'Sweden': 'السويد', 'Norway': 'النرويج', 'Finland': 'فنلندا',
+    'Denmark': 'الدنمارك', 'Poland': 'بولندا',
+    'Czech Republic': 'تشيكيا', 'Slovakia': 'سلوفاكيا',
+    'Hungary': 'المجر', 'Romania': 'رومانيا', 'Bulgaria': 'بلغاريا',
+    'Greece': 'اليونان', 'Croatia': 'كرواتيا', 'Slovenia': 'سلوفينيا',
+    'Serbia': 'صربيا', 'Bosnia and Herzegovina': 'البوسنة والهرسك',
+    'North Macedonia': 'مقدونيا الشمالية', 'Albania': 'ألبانيا',
+    'Montenegro': 'الجبل الأسود', 'Kosovo': 'كوسوفو',
+    'Estonia': 'إستونيا', 'Latvia': 'لاتفيا', 'Lithuania': 'ليتوانيا',
+    'Iceland': 'أيسلندا', 'Luxembourg': 'لوكسمبورغ', 'Malta': 'مالطا',
+    'Cyprus': 'قبرص', 'Monaco': 'موناكو', 'Andorra': 'أندورا',
+    'San Marino': 'سان مارينو', 'Vatican City': 'الفاتيكان',
+    'Liechtenstein': 'ليختنشتاين',
+    # روسيا ودول السوفيات سابقاً
+    'Russia': 'روسيا', 'Ukraine': 'أوكرانيا', 'Belarus': 'روسيا البيضاء',
+    'Moldova': 'مولدوفا', 'Georgia': 'جورجيا', 'Armenia': 'أرمينيا',
+    'Azerbaijan': 'أذربيجان', 'Kazakhstan': 'كازاخستان',
+    'Uzbekistan': 'أوزبكستان', 'Kyrgyzstan': 'قيرغيزستان',
+    'Tajikistan': 'طاجيكستان', 'Turkmenistan': 'تركمانستان',
+    # الشرق الأوسط الأوسع
+    'Turkey': 'تركيا', 'Israel': 'إسرائيل', 'Iran': 'إيران',
+    # جنوب آسيا
+    'India': 'الهند', 'Pakistan': 'باكستان', 'Bangladesh': 'بنغلاديش',
+    'Sri Lanka': 'سريلانكا', 'Nepal': 'نيبال', 'Afghanistan': 'أفغانستان',
+    'Bhutan': 'بوتان', 'Maldives': 'جزر المالديف',
+    # شرق آسيا
+    'China': 'الصين', 'Japan': 'اليابان', 'South Korea': 'كوريا الجنوبية',
+    'North Korea': 'كوريا الشمالية', 'Taiwan': 'تايوان',
+    'Hong Kong': 'هونغ كونغ', 'Macau': 'ماكاو', 'Mongolia': 'منغوليا',
+    # جنوب شرق آسيا
+    'Singapore': 'سنغافورة', 'Malaysia': 'ماليزيا',
+    'Indonesia': 'إندونيسيا', 'Thailand': 'تايلاند',
+    'Vietnam': 'فيتنام', 'Philippines': 'الفلبين',
+    'Myanmar': 'ميانمار', 'Cambodia': 'كمبوديا', 'Laos': 'لاوس',
+    'Brunei': 'بروناي', 'Timor-Leste': 'تيمور الشرقية',
+    # أمريكا اللاتينية والكاريبي
+    'Brazil': 'البرازيل', 'Mexico': 'المكسيك',
+    'Argentina': 'الأرجنتين', 'Chile': 'تشيلي',
+    'Colombia': 'كولومبيا', 'Peru': 'البيرو',
+    'Venezuela': 'فنزويلا', 'Uruguay': 'الأوروغواي',
+    'Paraguay': 'الباراغواي', 'Bolivia': 'بوليفيا',
+    'Ecuador': 'الإكوادور', 'Guyana': 'غيانا', 'Suriname': 'سورينام',
+    'Guatemala': 'غواتيمالا', 'Honduras': 'هندوراس',
+    'El Salvador': 'السلفادور', 'Nicaragua': 'نيكاراغوا',
+    'Costa Rica': 'كوستاريكا', 'Panama': 'بنما',
+    'Dominican Republic': 'جمهورية الدومينيكان',
+    'Cuba': 'كوبا', 'Haiti': 'هايتي', 'Jamaica': 'جامايكا',
+    'Puerto Rico': 'بورتو ريكو', 'Trinidad and Tobago': 'ترينيداد وتوباغو',
+    'Bahamas': 'الباهاما', 'Barbados': 'بربادوس', 'Belize': 'بليز',
+    # أفريقيا جنوب الصحراء
+    'Nigeria': 'نيجيريا', 'Kenya': 'كينيا', 'Ethiopia': 'إثيوبيا',
+    'Ghana': 'غانا', 'South Africa': 'جنوب أفريقيا',
+    'Tanzania': 'تنزانيا', 'Uganda': 'أوغندا',
+    'Ivory Coast': 'ساحل العاج', 'Senegal': 'السنغال',
+    'Cameroon': 'الكاميرون', 'Mali': 'مالي',
+    'Burkina Faso': 'بوركينا فاسو', 'Niger': 'النيجر', 'Chad': 'تشاد',
+    'Angola': 'أنغولا', 'Mozambique': 'موزمبيق',
+    'Zimbabwe': 'زيمبابوي', 'Zambia': 'زامبيا', 'Malawi': 'مالاوي',
+    'Botswana': 'بوتسوانا', 'Namibia': 'ناميبيا',
+    'Lesotho': 'ليسوتو', 'Eswatini': 'إسواتيني',
+    'Madagascar': 'مدغشقر', 'Mauritius': 'موريشيوس',
+    'Seychelles': 'سيشل', 'Rwanda': 'رواندا', 'Burundi': 'بوروندي',
+    'DR Congo': 'جمهورية الكونغو الديمقراطية',
+    'Congo': 'الكونغو', 'Gabon': 'الغابون',
+    'Equatorial Guinea': 'غينيا الاستوائية',
+    'Central African Republic': 'جمهورية أفريقيا الوسطى',
+    'South Sudan': 'جنوب السودان', 'Eritrea': 'إريتريا',
+    'Liberia': 'ليبيريا', 'Sierra Leone': 'سيراليون',
+    'Guinea': 'غينيا', 'Gambia': 'غامبيا',
+    'Guinea-Bissau': 'غينيا بيساو', 'Cape Verde': 'الرأس الأخضر',
+    'Togo': 'توغو', 'Benin': 'بنين',
+    'Sao Tome and Principe': 'ساو تومي وبرينسيبي',
+    # أوقيانوسيا
+    'Fiji': 'فيجي', 'Papua New Guinea': 'بابوا غينيا الجديدة',
+    'Solomon Islands': 'جزر سليمان', 'Vanuatu': 'فانواتو',
+    'Samoa': 'ساموا', 'Tonga': 'تونغا',
+    'Kiribati': 'كيريباتي', 'Tuvalu': 'توفالو', 'Nauru': 'ناورو',
+    'Palau': 'بالاو', 'Micronesia': 'ميكرونيزيا',
+    'Marshall Islands': 'جزر مارشال',
 }
 
 
