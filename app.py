@@ -43,11 +43,45 @@ st.set_page_config(
 # ═══════════════════════════════════════════════════════════════
 # 🌐 بروكسيات
 # ═══════════════════════════════════════════════════════════════
+# ✅ v2.1.7-Hardened: Smart Anti-Detection — 22 متصفّح حديث متنوّع
 USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+    # Chrome على Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+    # Chrome على macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    # Safari على macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    # Firefox على Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0',
+    # Firefox على macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:131.0) Gecko/20100101 Firefox/131.0',
+    # Edge على Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+    # iPhone Safari
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+    # iPad Safari
+    'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    # Android Chrome
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 14; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+    # Linux Chrome
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0',
+    # Opera
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 OPR/116.0.0.0',
 ]
+
+# ✅ v2.1.7-Light: tikwm.com فقط (النسخة الرسمية)
+TIKWM_BASE = 'https://www.tikwm.com'
 
 # ✅ تحسين v2.1.1 - سلسلة بروكسي احتياطية لتجنب فشل jina المفرد
 PROXY_CHAIN = [
@@ -356,20 +390,57 @@ COUNTRY_TO_FLAG_EMOJI['United Kingdom'] = '🇬🇧'
 _TIKWM_LAST_CALL = {'t': 0.0}
 
 def _tikwm_rate_limit_delay():
-    """✅ v2.1.6 - تأخير 1.5ث بين طلبات tikwm لتجنب rate-limit"""
+    """✅ v2.1.7-Hardened - تأخير 1.2-2.0ث عشوائي (jitter) بين طلبات tikwm"""
     now = time.time()
     elapsed = now - _TIKWM_LAST_CALL['t']
-    if elapsed < 1.5:
-        time.sleep(1.5 - elapsed)
+    min_delay = random.uniform(1.2, 2.0)
+    if elapsed < min_delay:
+        time.sleep(min_delay - elapsed)
     _TIKWM_LAST_CALL['t'] = time.time()
 
+# ═════════════════════════════════════════════════════════════
+# ✅ v2.1.7-Light — Retry بسيط فقط (بدون headers ثقيلة)
+# ═════════════════════════════════════════════════════════════
+
 def fetch_user_tikwm(username):
-    """✅ v2.1.6 - المصدر الأساسي الجديد - tikwm.com/api/user/info
-    يُرجع: uniqueId, nickname, signature(bio), secUid, createTime, bioLink, stats
-    لكن لا يُرجع region/language — نحتاج posts endpoint للـ region"""
+    """✅ v2.1.7-Light - tikwm مع Retry بسيط (بدون Origin/Referer)"""
+    url = f"{TIKWM_BASE}/api/user/info?unique_id={username}"
+    start = time.time()
+    last_err = None
+    for attempt in range(3):
+        try:
+            _tikwm_rate_limit_delay()
+            # ✅ headers بسيطة — فقط User-Agent + Accept (لا Origin/Referer)
+            headers = {
+                'User-Agent': random.choice(USER_AGENTS),
+                'Accept': 'application/json',
+            }
+            r = requests.get(url, headers=headers, timeout=12 + attempt * 3)
+            if r.status_code == 200:
+                try:
+                    j = r.json()
+                    elapsed = time.time() - start
+                    data = (j.get('data') or {})
+                    return {'success': True, 'tikwm_json': data,
+                            'region_iso': None, 'time': elapsed,
+                            'source': f'tikwm_attempt_{attempt+1}'}
+                except Exception as e:
+                    last_err = f'json_parse_failed: {e}'
+                    continue
+            if r.status_code == 429:
+                # rate-limit → backoff أطول
+                time.sleep(2 ** (attempt + 1) + random.uniform(0.5, 1.5))
+                last_err = 'rate_limit_429'
+                continue
+            last_err = f'http_{r.status_code}'
+        except requests.exceptions.Timeout:
+            last_err = 'timeout'
+            continue
+        except Exception as e:
+            last_err = str(e)[:80]
+            continue
+    # التراجع الأخير للطريقة الكلاسيكية (للتوافق)
     try:
-        _tikwm_rate_limit_delay()
-        start = time.time()
         url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
         headers = {'User-Agent': random.choice(USER_AGENTS), 'Accept': 'application/json'}
         r = requests.get(url, headers=headers, timeout=12)
@@ -383,22 +454,35 @@ def fetch_user_tikwm(username):
     return {'success': False, 'json': None, 'proxy': None, 'time': 0}
 
 def fetch_user_region_tikwm(username):
-    """✅ v2.1.6 - طبقة البيانات الرسمية للجنسية عبر فيديوهات المستخدم
-    يُرجع: region (ISO code) من أحدث فيديوات المستخدم"""
-    try:
-        _tikwm_rate_limit_delay()
-        url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=3"
-        headers = {'User-Agent': random.choice(USER_AGENTS), 'Accept': 'application/json'}
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code == 200:
-            j = r.json()
-            videos = (j.get('data') or {}).get('videos') or []
-            for v in videos:
-                region = (v.get('region') or '').strip().upper()
-                if region and len(region) == 2 and region.isalpha():
-                    return {'success': True, 'region_iso': region, 'videos_count': len(videos)}
-    except Exception:
-        pass
+    """✅ v2.1.7-Light - جلب region من posts endpoint مع retry بسيط
+    يُرجع dict {success, region_iso, videos_count, source}"""
+    url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=3"
+    for attempt in range(3):
+        try:
+            _tikwm_rate_limit_delay()
+            headers = {
+                'User-Agent': random.choice(USER_AGENTS),
+                'Accept': 'application/json',
+            }
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                j = r.json()
+                videos = (j.get('data') or {}).get('videos') or []
+                for v in videos:
+                    region = (v.get('region') or '').strip().upper()
+                    if region and len(region) == 2 and region.isalpha():
+                        return {'success': True, 'region_iso': region,
+                                'videos_count': len(videos),
+                                'source': 'tikwm_light'}
+                # نجح الطلب لكن لا region
+                return {'success': False, 'region_iso': None,
+                        'videos_count': len(videos), 'source': 'tikwm_light_empty'}
+            elif r.status_code == 429:
+                time.sleep(2.0 + attempt * 1.5)
+                continue
+        except Exception:
+            time.sleep(1.0)
+            continue
     return {'success': False, 'region_iso': None, 'videos_count': 0}
 
 @st.cache_data(ttl=300, show_spinner=False)
