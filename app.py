@@ -420,10 +420,14 @@ def fetch_user_tikwm(username):
                 try:
                     j = r.json()
                     elapsed = time.time() - start
-                    data = (j.get('data') or {})
-                    return {'success': True, 'tikwm_json': data,
-                            'region_iso': None, 'time': elapsed,
-                            'source': f'tikwm_attempt_{attempt+1}'}
+                    # ✅ v2.1.7-Light-Fix1 — توحيد المفاتيح (json/proxy/time)
+                    if j.get('code') == 0 and j.get('data', {}).get('user', {}).get('uniqueId'):
+                        return {'success': True, 'json': j,
+                                'proxy': f'tikwm_attempt_{attempt+1}',
+                                'time': round(elapsed, 2)}
+                    # لا user.uniqueId → إعادة المحاولة
+                    last_err = 'invalid_payload'
+                    continue
                 except Exception as e:
                     last_err = f'json_parse_failed: {e}'
                     continue
@@ -451,7 +455,9 @@ def fetch_user_tikwm(username):
                 return {'success': True, 'json': j, 'proxy': 'tikwm', 'time': round(elapsed, 2)}
     except Exception:
         pass
-    return {'success': False, 'json': None, 'proxy': None, 'time': 0}
+    # ✅ v2.1.7-Light-Fix1 — إرجاع فشل موحد بكل المفاتيح
+    return {'success': False, 'json': None, 'proxy': None,
+            'time': 0, 'error': last_err or 'unknown'}
 
 def fetch_user_region_tikwm(username):
     """✅ v2.1.7-Light - جلب region من posts endpoint مع retry بسيط
@@ -492,16 +498,17 @@ def fetch_user(username):
     # الطبقة الأساسية: tikwm للبيانات الأساسية
     primary = fetch_user_tikwm(username)
     region_data = {'region_iso': None}
-    if primary['success']:
+    # ✅ v2.1.7-Light-Fix1 — دفاعي: .get() بدل [] لتجنب KeyError
+    if primary.get('success'):
         # جلب region من posts endpoint بشكل متتابع
         region_data = fetch_user_region_tikwm(username)
         return {
             'success': True,
-            'tikwm_json': primary['json'],
+            'tikwm_json': primary.get('json'),
             'region_iso': region_data.get('region_iso'),
             'content': None,
-            'proxy': 'tikwm',
-            'time': primary['time'],
+            'proxy': primary.get('proxy', 'tikwm'),
+            'time': primary.get('time', 0),
         }
     # التغليف الاحتياطي (jina + tikmatrix) - لحسابات لا تظهر في tikwm
     target = f"https://user.tikmatrix.com/?username={username}"
