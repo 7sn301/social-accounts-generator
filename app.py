@@ -386,14 +386,30 @@ COUNTRY_TO_FLAG_EMOJI = {country: _iso_to_flag(iso) for iso, country in REGION_I
 # تجاوزات UK (لأن لدينا GB وUK لنفس الدولة)
 COUNTRY_TO_FLAG_EMOJI['United Kingdom'] = '🇬🇧'
 
-# تخزين مؤقت لتجنب طلبات متكررة لـ tikwm خلال الجلسة
+# ═════════════════════════════════════════════════════════════
+# ✅ v2.1.7-Light-Fix2 — Optimized Throttling + Adaptive Burst
+# ═════════════════════════════════════════════════════════════
 _TIKWM_LAST_CALL = {'t': 0.0}
+_RATELIMIT_BURST = {'until': 0.0}  # ✨ متى ينتهي وضع الحماية بعد 429
+
+def _is_in_burst_mode():
+    """يفحص إذا كنا في فترة حماية بعد 429 سابق"""
+    return time.time() < _RATELIMIT_BURST['until']
+
+def _activate_burst_protection():
+    """يُفعَّل لمدة 60 ث بعد أي 429"""
+    _RATELIMIT_BURST['until'] = time.time() + 60.0
 
 def _tikwm_rate_limit_delay():
-    """✅ v2.1.7-Hardened - تأخير 1.2-2.0ث عشوائي (jitter) بين طلبات tikwm"""
+    """✅ v2.1.7-Light-Fix2 - Adaptive jitter:
+    - الوضع العادي: 0.8-1.3ث
+    - وضع الحماية (بعد 429): 1.6-2.6ث لمدة 60ث"""
     now = time.time()
     elapsed = now - _TIKWM_LAST_CALL['t']
-    min_delay = random.uniform(1.2, 2.0)
+    if _is_in_burst_mode():
+        min_delay = random.uniform(1.6, 2.6)
+    else:
+        min_delay = random.uniform(0.8, 1.3)
     if elapsed < min_delay:
         time.sleep(min_delay - elapsed)
     _TIKWM_LAST_CALL['t'] = time.time()
@@ -432,8 +448,9 @@ def fetch_user_tikwm(username):
                     last_err = f'json_parse_failed: {e}'
                     continue
             if r.status_code == 429:
-                # rate-limit → backoff أطول
-                time.sleep(2 ** (attempt + 1) + random.uniform(0.5, 1.5))
+                # ✅ v2.1.7-Light-Fix2 - تفعيل burst protection + backoff تدريجي
+                _activate_burst_protection()
+                time.sleep(1.5 * (attempt + 1) + random.uniform(0.3, 0.8))
                 last_err = 'rate_limit_429'
                 continue
             last_err = f'http_{r.status_code}'
@@ -484,7 +501,9 @@ def fetch_user_region_tikwm(username):
                 return {'success': False, 'region_iso': None,
                         'videos_count': len(videos), 'source': 'tikwm_light_empty'}
             elif r.status_code == 429:
-                time.sleep(2.0 + attempt * 1.5)
+                # ✅ v2.1.7-Light-Fix2 - backoff تدريجي + burst
+                _activate_burst_protection()
+                time.sleep(1.2 + attempt * 1.0)
                 continue
         except Exception:
             time.sleep(1.0)
@@ -1473,7 +1492,11 @@ def process_bulk(usernames, progress_bar, status_text):
             errors_log.append({'username': u, 'error': str(e)[:200]})
         progress_bar.progress(i / total)
         if i < total:
-            time.sleep(random.uniform(5, 7))
+            # ✅ v2.1.7-Light-Fix2 - inter-account: 2.5-4.0ث (أو 4.0-6.4ث في burst)
+            _inter = random.uniform(2.5, 4.0)
+            if _is_in_burst_mode():
+                _inter *= 1.6
+            time.sleep(_inter)
     if errors_log:
         st.session_state['_bulk_errors'] = errors_log
     return results
@@ -1600,8 +1623,7 @@ with tab1:
 
 # ─────── تاب 2: البحث الجماعي ───────
 with tab2:
-    st.markdown('<div dir="rtl" style="color: #94A3B8; margin-bottom: 1rem;">📋 الصق قائمة الحسابات (واحد في كل سطر). يدعم: @user أو رابط TikTok أو اسم فقط.</div>', unsafe_allow_html=True)
-    st.markdown('<div dir="rtl" style="background: rgba(245,158,11,0.1); padding: 0.8rem 1rem; border-radius: 8px; border-right: 3px solid #F59E0B; color: #FED7AA; margin-bottom: 1rem;">⏱️ <strong>الوقت المتوقع:</strong> 10 حسابات ≈ 70 ثانية | 25 حساب ≈ 3 دقائق | 50 حساب ≈ 6 دقائق</div>', unsafe_allow_html=True)
+    st.markdown('<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif; color: #94A3B8; margin-bottom: 1rem;">📋 الصق قائمة الحسابات (واحد في كل سطر). يدعم: @user أو رابط TikTok أو اسم فقط.</div>', unsafe_allow_html=True)
 
     bulk_input = st.text_area(
         "قائمة الحسابات",
@@ -1610,17 +1632,80 @@ with tab2:
         max_chars=5000,
     )
 
-    col_a, col_b = st.columns([3, 1])
-    with col_a:
-        max_accounts = st.slider("الحد الأقصى للحسابات", 1, 50, 10)
-    with col_b:
-        # ✅ v2.1.5 - تعطيل زر المعالجة الجماعية أثناء التشغيل
-        _is_busy_bulk = st.session_state.get('_bulk_processing', False)
-        bulk_btn = st.button(
-            "⏳ جاري المعالجة..." if _is_busy_bulk else "🚀 معالجة الجميع",
-            type="primary", use_container_width=True, key="btn_bulk",
-            disabled=_is_busy_bulk,
+    # ══════════════════════════════════════════════════════════
+    # ✅ v2.1.7-Light-Fix2 — Auto-Limit Smart (Safe Hard Limit: 50)
+    # ══════════════════════════════════════════════════════════
+    SAFE_LIMIT = 50  # الحد الأقصى الآمن (توصية معتمدة BSR-V217L-SAFE-LIMIT)
+    raw_lines = [ln.strip() for ln in (bulk_input or '').strip().split('\n') if ln.strip()]
+    detected_count = len(raw_lines)
+    max_accounts = min(detected_count, SAFE_LIMIT) if detected_count > 0 else 0
+
+    # تحديد الشارة والوقت التقريبي (مع throttling الجديد Fix2: ~4.2ث/حساب)
+    if detected_count == 0:
+        badge_html = (
+            '<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;'
+            ' background:#0F172A; padding:12px 16px; border-radius:10px;'
+            ' border-right:4px solid #94A3B8; color:#94A3B8;">'
+            '— أدخل قائمة الحسابات أعلاه لبدء التحليل</div>'
         )
+    elif detected_count <= 10:
+        eta_sec = round(detected_count * 4.2)
+        badge_html = (
+            f'<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;'
+            f' background:#0F172A; padding:12px 16px; border-radius:10px;'
+            f' border-right:4px solid #15803D; color:#F1F5F9;">'
+            f'<span style="background:#15803D; color:white; padding:3px 12px;'
+            f' border-radius:14px; font-weight:bold;">🟢 سريع</span>'
+            f' &nbsp; {detected_count} حساب · وقت متوقع ~{eta_sec} ثانية</div>'
+        )
+    elif detected_count <= 30:
+        eta_min = round(detected_count * 4.2 / 60, 1)
+        badge_html = (
+            f'<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;'
+            f' background:#0F172A; padding:12px 16px; border-radius:10px;'
+            f' border-right:4px solid #F59E0B; color:#F1F5F9;">'
+            f'<span style="background:#F59E0B; color:#0F172A; padding:3px 12px;'
+            f' border-radius:14px; font-weight:bold;">🟡 متوسط</span>'
+            f' &nbsp; {detected_count} حساب · وقت متوقع ~{eta_min} دقيقة</div>'
+        )
+    elif detected_count <= SAFE_LIMIT:
+        eta_min = round(detected_count * 4.2 / 60, 1)
+        badge_html = (
+            f'<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;'
+            f' background:#0F172A; padding:12px 16px; border-radius:10px;'
+            f' border-right:4px solid #EA580C; color:#F1F5F9;">'
+            f'<span style="background:#EA580C; color:white; padding:3px 12px;'
+            f' border-radius:14px; font-weight:bold;">🟠 مكثّف</span>'
+            f' &nbsp; {detected_count} حساب · وقت متوقع ~{eta_min} دقيقة</div>'
+        )
+    else:
+        eta_min = round(SAFE_LIMIT * 4.2 / 60, 1)
+        cut = detected_count - SAFE_LIMIT
+        badge_html = (
+            f'<div dir="rtl" style="font-family:\'Noto Sans Arabic\',\'Tajawal\',sans-serif;'
+            f' background:#0F172A; padding:12px 16px; border-radius:10px;'
+            f' border-right:4px solid #DC2626; color:#F1F5F9;">'
+            f'<span style="background:#DC2626; color:white; padding:3px 12px;'
+            f' border-radius:14px; font-weight:bold;">🔴 تجاوز الحد الآمن</span>'
+            f' &nbsp; {detected_count} حساب — سيُعالَج أول <strong>{SAFE_LIMIT}</strong> فقط (~{eta_min} دقيقة)'
+            f'<br><span style="color:#FCA5A5; font-size:0.85em;">'
+            f'⚠️ سيُترك {cut} حساب جانباً حمايةً من rate-limit — رشّح الدفعة التالية بالباقي</span></div>'
+        )
+
+    st.markdown(badge_html, unsafe_allow_html=True)
+
+    # زر المعالجة بعرض كامل
+    _is_busy_bulk = st.session_state.get('_bulk_processing', False)
+    btn_label = (
+        "⏳ جاري المعالجة..." if _is_busy_bulk
+        else (f"🚀 معالجة {max_accounts} حساب الآن" if max_accounts > 0
+              else "🚀 معالجة الجميع")
+    )
+    bulk_btn = st.button(
+        btn_label,
+        type="primary", use_container_width=True, key="btn_bulk",
+        disabled=_is_busy_bulk or max_accounts == 0,
+    )
 
     if bulk_btn and bulk_input.strip():
         st.session_state['_bulk_processing'] = True
