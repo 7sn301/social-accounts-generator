@@ -477,9 +477,12 @@ def fetch_user_tikwm(username):
             'time': 0, 'error': last_err or 'unknown'}
 
 def fetch_user_region_tikwm(username):
-    """✅ v2.1.7-Light - جلب region من posts endpoint مع retry بسيط
-    يُرجع dict {success, region_iso, videos_count, source}"""
-    url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=3"
+    """✅ v2.1.7-Light-Fix3 - جلب region + createTime لآخر 5 فيديوهات
+    يُرجع dict {success, region_iso, actual_residence, previous_residence,
+                  confidence, residence_type, timezone_match, videos_count, source}
+    منطق الإقامة الفعلية = region + تتابع زمني + timezone (فقط)
+    احتراماً للقيود — لا مدن، لا هاشتاجات، لا لهجة، لا تعليقات، لا موسيقى"""
+    url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=5"
     for attempt in range(3):
         try:
             _tikwm_rate_limit_delay()
@@ -491,24 +494,167 @@ def fetch_user_region_tikwm(username):
             if r.status_code == 200:
                 j = r.json()
                 videos = (j.get('data') or {}).get('videos') or []
-                for v in videos:
-                    region = (v.get('region') or '').strip().upper()
-                    if region and len(region) == 2 and region.isalpha():
-                        return {'success': True, 'region_iso': region,
-                                'videos_count': len(videos),
-                                'source': 'tikwm_light'}
-                # نجح الطلب لكن لا region
-                return {'success': False, 'region_iso': None,
-                        'videos_count': len(videos), 'source': 'tikwm_light_empty'}
+                if not videos:
+                    return {'success': False, 'region_iso': None,
+                            'videos_count': 0, 'source': 'tikwm_empty'}
+
+                # ترتيب حسب createTime DESC (الأحدث أولاً)
+                videos_sorted = sorted(
+                    videos,
+                    key=lambda v: v.get('create_time') or 0,
+                    reverse=True
+                )
+
+                # استخراج regions مع التواريخ
+                regions_seq = []
+                times_seq = []
+                for v in videos_sorted:
+                    reg = (v.get('region') or '').strip().upper()
+                    ts = v.get('create_time') or 0
+                    if reg and len(reg) == 2 and reg.isalpha():
+                        regions_seq.append(reg)
+                        times_seq.append(ts)
+
+                if not regions_seq:
+                    return {'success': False, 'region_iso': None,
+                            'videos_count': len(videos), 'source': 'tikwm_no_region'}
+
+                # تحليل الإقامة الفعلية
+                analysis = detect_actual_residence(regions_seq, times_seq)
+
+                return {
+                    'success': True,
+                    'region_iso': regions_seq[0],  # آخر فيديو (التوافق مع Fix2)
+                    'actual_residence': analysis['actual_residence'],
+                    'previous_residence': analysis['previous_residence'],
+                    'residence_confidence': analysis['confidence'],
+                    'residence_type': analysis['residence_type'],
+                    'timezone_match': analysis['timezone_match'],
+                    'regions_sequence': regions_seq,
+                    'videos_count': len(regions_seq),
+                    'source': 'tikwm_fix3',
+                }
             elif r.status_code == 429:
-                # ✅ v2.1.7-Light-Fix2 - backoff تدريجي + burst
                 _activate_burst_protection()
                 time.sleep(1.2 + attempt * 1.0)
                 continue
         except Exception:
             time.sleep(1.0)
             continue
-    return {'success': False, 'region_iso': None, 'videos_count': 0}
+    return {'success': False, 'region_iso': None, 'videos_count': 0,
+            'actual_residence': None, 'residence_confidence': 0}
+
+
+def _infer_timezone_from_hours(timestamps):
+    """✅ v2.1.7-Light-Fix3 - يستنتج timezone من ساعات النشر UTC
+    يُرجع ISO للمنطقة الأرجح، أو None
+    المنطق — البشر ينشرون في ساعات يقظتهم المحلية (غالباً 09:00-23:00 محلياً)"""
+    if not timestamps or len(timestamps) < 3:
+        return None
+
+    from datetime import datetime as _dt
+    hours_utc = []
+    for ts in timestamps:
+        try:
+            h = _dt.utcfromtimestamp(int(ts)).hour
+            hours_utc.append(h)
+        except (ValueError, TypeError, OSError):
+            continue
+
+    if len(hours_utc) < 3:
+        return None
+
+    # متوسط ساعة النشر UTC
+    avg_hour = sum(hours_utc) / len(hours_utc)
+
+    # خرائط تقريبية لـ timezone بناءً على ساعات النشاط (15:00-22:00 محلي)
+    # إذا أعلى نشاط للساعة X UTC فالتوقيت المحلي = X + offset
+    # ساعة الذروة المحلية ~ 19:00، لذا offset = 19 - avg_hour_utc
+    offset = round(19 - avg_hour)
+    # عادل وتغليف (offset بين -12 إلى +14)
+    if offset > 14:
+        offset -= 24
+    elif offset < -12:
+        offset += 24
+
+    # خريطة offset → dominant ISO
+    timezone_map = {
+        -8: 'US', -7: 'US', -6: 'US', -5: 'US', -4: 'US',
+        -3: 'BR', -2: 'BR', -1: 'BR',
+        0: 'GB', 1: 'DE', 2: 'EG',
+        3: 'SA', 4: 'AE', 5: 'PK', 5.5: 'IN',
+        6: 'BD', 7: 'TH', 8: 'CN', 9: 'JP', 10: 'AU',
+    }
+    return timezone_map.get(offset)
+
+
+def detect_actual_residence(regions_seq, times_seq):
+    """✅ v2.1.7-Light-Fix3 - تحديد الإقامة الفعلية وفق 3 إشارات:
+    1. region آخر 5 فيديوهات (70%)
+    2. التتابع الزمني — 3 متتالية (20%)
+    3. timezone من createTime (10%)
+
+    احتراماً لرفض القائد: لا مدن، لا هاشتاجات، لا لهجة، لا تعليقات، لا موسيقى"""
+    from collections import Counter
+
+    if not regions_seq:
+        return {'actual_residence': None, 'previous_residence': None,
+                'confidence': 0, 'residence_type': 'unknown',
+                'timezone_match': False}
+
+    # 1️⃣ فحص آخر 3 فيديوهات
+    last_3 = regions_seq[:3]
+    last_5 = regions_seq[:5]
+    counter_5 = Counter(last_5)
+    top_country, top_count = counter_5.most_common(1)[0]
+
+    # 2️⃣ تحديد الإقامة الفعلية + الثقة
+    if len(set(last_3)) == 1 and last_3[0]:
+        # 3 متتالية متطابقة
+        actual = last_3[0]
+        confidence = 85
+        rtype = 'ثابت' if top_count >= 4 else 'انتقال حديث'
+    elif top_count >= 4:
+        # 4 من 5 في نفس الدولة
+        actual = top_country
+        confidence = 80
+        rtype = 'ثابت'
+    elif top_count >= 3:
+        # 3 من 5
+        actual = top_country
+        confidence = 70
+        rtype = 'غالبًا ثابت'
+    else:
+        # توزيع متفرّق
+        actual = regions_seq[0]
+        confidence = 50
+        rtype = 'مسافر/متنقّل'
+
+    # 3️⃣ كشف الإقامة السابقة (إذا اختلفت)
+    previous = None
+    if len(regions_seq) >= 5:
+        older_regions = regions_seq[3:]  # الفيديوهات الأقدم
+        if older_regions:
+            older_top = Counter(older_regions).most_common(1)[0][0]
+            if older_top and older_top != actual:
+                previous = older_top
+
+    # 4️⃣ تأكيد بواسطة timezone
+    tz_iso = _infer_timezone_from_hours(times_seq)
+    timezone_match = bool(tz_iso and tz_iso == actual)
+    if timezone_match:
+        confidence = min(confidence + 10, 95)
+
+    return {
+        'actual_residence': actual,
+        'previous_residence': previous,
+        'confidence': confidence,
+        'residence_type': rtype,
+        'timezone_match': timezone_match,
+        'timezone_iso': tz_iso,
+        'last_3_distribution': dict(Counter(last_3)),
+        'last_5_distribution': dict(counter_5),
+    }
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
