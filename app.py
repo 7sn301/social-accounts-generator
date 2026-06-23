@@ -1484,13 +1484,34 @@ def render_country_globe_3d(region_distribution, actual_residence=None):
     iso_codes = []
     values = []
     hover_text = []
+    custom_data = []
     total = sum(region_distribution.values()) or 1
+    # ✅ Patch11: علم emoji لكل ISO-2
+    def _flag_emoji(iso2):
+        try:
+            return chr(0x1F1E6 + (ord(iso2[0])-65)) + chr(0x1F1E6 + (ord(iso2[1])-65))
+        except Exception:
+            return "🌍"
     for iso2, cnt in region_distribution.items():
-        iso_codes.append(iso2.upper())
+        iso2u = iso2.upper()
+        iso_codes.append(iso2u)
         values.append(cnt)
         pct = round(cnt * 100 / total, 1)
-        ctry_ar = COUNTRY_AR.get(iso2.upper(), iso2.upper()) if 'COUNTRY_AR' in globals() else iso2.upper()
-        hover_text.append(f"{ctry_ar} ({iso2.upper()})<br>الفيديوهات: {cnt}<br>النسبة: {pct}%")
+        ctry_ar = COUNTRY_AR.get(iso2u, iso2u) if 'COUNTRY_AR' in globals() else iso2u
+        flag = _flag_emoji(iso2u)
+        # شريط نسبة بصري
+        bar_full = int(pct / 5)
+        bar = "█" * bar_full + "░" * (20 - bar_full)
+        is_residence = (actual_residence and iso2u == actual_residence.upper())
+        residence_tag = "<br><b style='color:#10B981'>📍 الإقامة الفعلية المُستنتَجة</b>" if is_residence else ""
+        hover_text.append(
+            f"<b style='font-size:15px'>{flag} {ctry_ar}</b><br>"
+            f"<span style='color:#94A3B8'>ISO-2:</span> <b>{iso2u}</b><br>"
+            f"<span style='color:#94A3B8'>عدد الفيديوهات:</span> <b style='color:#F59E0B'>{cnt}</b><br>"
+            f"<span style='color:#94A3B8'>النسبة:</span> <b style='color:#F59E0B'>{pct}%</b><br>"
+            f"<span style='color:#F59E0B; font-family:monospace'>{bar}</span>"
+            f"{residence_tag}"
+        )
 
     rotation_lon = 45
     rotation_lat = 25
@@ -1568,6 +1589,13 @@ def render_country_globe_3d(region_distribution, actual_residence=None):
         plot_bgcolor="#0F172A",
         font=dict(family="Noto Sans Arabic, Tajawal", color="#F1F5F9", size=13),
         dragmode="orbit",
+        # ✅ Patch11: تنسيق tooltip غنيّ
+        hoverlabel=dict(
+            bgcolor="#1E293B",
+            bordercolor="#F59E0B",
+            font=dict(family="Noto Sans Arabic, Tajawal", color="#F1F5F9", size=13),
+            align="right",
+        ),
     )
     return fig
 
@@ -2028,21 +2056,21 @@ def display_single_result(result):
                     font-family:'Noto Sans Arabic','Tajawal',sans-serif;
                     box-shadow:0 4px 20px rgba(0,0,0,0.3);
                 ">
-                    <div style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center;">
-                        <div>
-                            <h3 style="color:#F59E0B; margin:0 0 4px 0; font-weight:900; font-size:1.25rem;">🌐 الكرة الأرضية التفاعلية — مناطق الفيديوهات</h3>
-                            <p style="margin:0; color:#CBD5E1; font-size:0.9rem;">
+                    <div dir="rtl" style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; direction:rtl;">
+                        <div style="direction:rtl; text-align:right;">
+                            <h3 style="color:#F59E0B; margin:0 0 4px 0; font-weight:900; font-size:1.25rem; direction:rtl; text-align:right;">🌐 الكرة الأرضية التفاعلية — مناطق الفيديوهات</h3>
+                            <p style="margin:0; color:#CBD5E1; font-size:0.9rem; direction:rtl; text-align:right;">
                                 تظليل الدول من آخر {_n_videos} مقاطع • مستوى الدولة فقط • اسحب الكرة للتدوير
                             </p>
                         </div>
-                        <div style="display:flex; gap:10px;">
+                        <div style="display:flex; gap:10px; direction:ltr;">
                             <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
                                 <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_countries}</div>
-                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px;">دول مكتشفة</div>
+                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">دول مكتشفة</div>
                             </div>
                             <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
                                 <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_videos}</div>
-                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px;">فيديو محلَّل</div>
+                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">فيديو محلَّل</div>
                             </div>
                         </div>
                     </div>
