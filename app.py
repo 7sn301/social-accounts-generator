@@ -2071,25 +2071,7 @@ def display_single_result(result):
 
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
-        # 🔬 تشخيص جغرافيّ — Fix3.2-Patch6 (مخفيّ افتراضياً)
-        st.markdown(f"""
-        <div dir="rtl" style="
-            background:#1E293B; padding:14px 16px; border-radius:10px;
-            border-right:4px solid #06B6D4; margin-bottom:14px; color:#F1F5F9;
-            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-            font-size:0.85rem;
-        ">
-            <h4 style="color:#06B6D4; margin:0 0 8px 0; font-weight:900;">🧭 تشخيص جغرافيّ Fix3.2</h4>
-            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
-                <div><strong style="color:#06B6D4;">region_iso:</strong> {_diag_region}</div>
-                <div><strong style="color:#06B6D4;">actual_residence:</strong> {_diag_actual}</div>
-                <div><strong style="color:#06B6D4;">confidence:</strong> {_diag_conf}%</div>
-                <div><strong style="color:#06B6D4;">videos_analyzed:</strong> {_diag_videos}</div>
-                <div><strong style="color:#06B6D4;">distribution:</strong> {_diag_dist if _diag_dist else 'فارغ'}</div>
-                <div><strong style="color:#06B6D4;">proxy:</strong> {_diag_proxy}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # ✅ Patch14: حُذِفت بطاقة التشخيص المكرّرة (المتطابقة مع Patch13 أعلى الصفحة)
         user_id = result.get('user_id', '—')
         sec_uid = result.get('sec_uid', '—')
         if sec_uid != '—' and len(sec_uid) > 20:
