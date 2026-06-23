@@ -1880,40 +1880,39 @@ def display_single_result(result):
     _diag_dist = result.get('region_distribution') or {}
     _diag_proxy = result.get('proxy_used') or result.get('proxy') or '—'
 
-    # 🔬 ✅ Patch10: بطاقة التشخيص داخل expander — نمط tech-grid مطابق لبطاقة المعرّفات
-    with st.expander("🔬 تشخيص تقنيّ (للمطوّر فقط)", expanded=False):
-        _diag_dist_str = ', '.join([f"{k}:{v}" for k,v in _diag_dist.items()]) if _diag_dist else '—'
-        st.markdown(f"""
-        <div class="tech-details-card" dir="rtl" style="border-right:5px solid #22D3EE;">
-            <h3 style="color:#22D3EE; margin:0 0 14px 0; font-weight:900; font-size:1.2rem; direction:rtl; text-align:right;">🔎 تشخيص تقنيّ — Fix3.2-Patch10</h3>
-            <div class="tech-grid">
-                <div class="tech-item" style="border-right-color:#22D3EE;">
-                    <div class="tech-label">🌍 region_iso</div>
-                    <div class="tech-value">{_diag_region}</div>
-                </div>
-                <div class="tech-item" style="border-right-color:#22D3EE;">
-                    <div class="tech-label">📍 actual_residence</div>
-                    <div class="tech-value">{_diag_actual}</div>
-                </div>
-                <div class="tech-item" style="border-right-color:#22D3EE;">
-                    <div class="tech-label">🎯 confidence</div>
-                    <div class="tech-value">{_diag_conf}%</div>
-                </div>
-                <div class="tech-item" style="border-right-color:#22D3EE;">
-                    <div class="tech-label">📊 videos_count</div>
-                    <div class="tech-value">{_diag_videos}</div>
-                </div>
-                <div class="tech-item" style="border-right-color:#22D3EE; grid-column: 1 / -1;">
-                    <div class="tech-label">🗺️ distribution</div>
-                    <div class="tech-value">{_diag_dist_str}</div>
-                </div>
-                <div class="tech-item" style="border-right-color:#22D3EE;">
-                    <div class="tech-label">🛰️ proxy</div>
-                    <div class="tech-value">{_diag_proxy}</div>
-                </div>
+    # 🔬 ✅ Patch13: بطاقة التشخيص خارج expander — نمط مطابق تماماً لبطاقة المعرّفات
+    _diag_dist_str = ', '.join([f"{k}:{v}" for k,v in _diag_dist.items()]) if _diag_dist else '—'
+    st.markdown(f"""
+    <div class="tech-details-card" dir="rtl" style="border-right:5px solid #22D3EE; margin-top:18px;">
+        <h3 style="color:#22D3EE; margin:0 0 14px 0; font-weight:900; font-size:1.3rem; direction:rtl; text-align:right;">🧭 تشخيص جغرافيّ Fix3.2</h3>
+        <div class="tech-grid">
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">🌍 رمز المنطقة</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_region}</div>
+            </div>
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">📍 الإقامة الفعلية</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_actual}</div>
+            </div>
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">🎯 درجة الثقة</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_conf}%</div>
+            </div>
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">📊 عدد الفيديوهات</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_videos}</div>
+            </div>
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">🛰️ مصدر البيانات</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_proxy}</div>
+            </div>
+            <div class="tech-item" style="border-right-color:#22D3EE;">
+                <div class="tech-label">🗺️ توزيع المناطق</div>
+                <div class="tech-value" style="direction:rtl; text-align:right;">{_diag_dist_str}</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
 
     # 🧭 ✅ v2.1.7-Light-Fix3.1 - بطاقة النشاط الجغرافي + التحفّظ الشفّاف
@@ -1954,8 +1953,8 @@ def display_single_result(result):
         }
         type_display = type_map.get(residence_type, f'⚪ {residence_type}')
 
-        # توزيع المناطق
-        dist_html = ''
+        # توزيع المناطق - ✅ Patch13: tech-item كامل أو فارغ
+        _dist_block = ''
         if region_distribution:
             items = []
             total = sum(region_distribution.values())
@@ -1963,11 +1962,14 @@ def display_single_result(result):
                 pct = int(round(cnt * 100 / total)) if total else 0
                 ctry_ar = COUNTRY_AR.get(ctry, ctry)
                 items.append(f'<span style="background:#1E3A8A;color:#F1F5F9;padding:4px 10px;border-radius:8px;margin-left:6px;display:inline-block;margin-bottom:4px;">{ctry_ar} ({ctry}): {cnt} ({pct}%)</span>')
-            dist_html = ''.join(items)
-
-        # ✅ Fix-fstring: تحضير fallback آمن خارج f-string
-        _empty_dist_span = '<span style="color:#94A3B8;">—</span>'
-        dist_html_safe = dist_html if dist_html else _empty_dist_span
+            _dist_inner = ''.join(items)
+            _dist_block = f"""<div class="tech-item" style="border-right-color:{conf_color}; grid-column: 1 / -1;">
+                    <div class="tech-label">🗺️ توزيع المناطق</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; direction:rtl; text-align:right;">{_dist_inner}</div>
+                </div>"""
+        # متغيّر متوافق مع القديم (يبقى فارغاً لمنع <div/>)
+        dist_html_safe = ''
+        _empty_dist_span = '' 
 
         # سابقة الإقامة
         prev_html = ''
@@ -2010,10 +2012,7 @@ def display_single_result(result):
                     <div class="tech-label">📊 الفيديوهات المُحلَّلة</div>
                     <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; font-weight:800; font-size:1.1rem; direction:rtl; text-align:right;">{videos_analyzed}</div>
                 </div>
-                <div class="tech-item" style="border-right-color:{conf_color}; grid-column: 1 / -1;">
-                    <div class="tech-label">🗺️ توزيع المناطق</div>
-                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; direction:rtl; text-align:right;">{dist_html_safe}</div>
-                </div>
+                {_dist_block}
                 {_prev_block}
             </div>
         </div>
