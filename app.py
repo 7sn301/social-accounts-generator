@@ -1275,6 +1275,18 @@ COUNTRY_AR = {
 # ═══════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
+/* ✅ Patch9: إخفاء input فارغة وعناصر تشخيصية مكشوفة + RTL على expander */
+div[data-baseweb="input"]:empty { display: none !important; }
+[data-testid="stMarkdownContainer"] > p:empty { display: none !important; }
+.streamlit-expanderHeader, [data-testid="stExpander"] > details > summary {
+    direction: rtl !important;
+    text-align: right !important;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important;
+}
+[data-testid="stExpander"] { direction: rtl; }
+/* إخفاء أي عنصر فارغ بـ class عشوائي */
+.element-container:empty { display: none !important; }
+
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700;900&family=Tajawal:wght@400;700;900&display=swap');
 
 * { font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif !important; }
@@ -1458,6 +1470,108 @@ st.markdown('<div class="subtitle" dir="rtl">مولّد ذكي لمعلومات 
 # ═══════════════════════════════════════════════════════════════
 # 🗺️ ✅ v2.1.7-Light-Fix3.2-Map - خريطة Choropleth دول فقط
 # ═══════════════════════════════════════════════════════════════
+def render_country_globe_3d(region_distribution, actual_residence=None):
+    """Fix3.2-Patch9: خريطة 3D Globe (Orthographic) بـ Plotly
+    القيود: لا POI, لا مدن, لا Geocoding خارجي, لا بيانات خارجية
+    """
+    if not region_distribution:
+        return None
+    try:
+        import plotly.graph_objects as go
+    except ImportError as _e:
+        raise RuntimeError(f"plotly غير مثبّت: {_e}")
+
+    iso_codes = []
+    values = []
+    hover_text = []
+    total = sum(region_distribution.values()) or 1
+    for iso2, cnt in region_distribution.items():
+        iso_codes.append(iso2.upper())
+        values.append(cnt)
+        pct = round(cnt * 100 / total, 1)
+        ctry_ar = COUNTRY_AR.get(iso2.upper(), iso2.upper()) if 'COUNTRY_AR' in globals() else iso2.upper()
+        hover_text.append(f"{ctry_ar} ({iso2.upper()})<br>الفيديوهات: {cnt}<br>النسبة: {pct}%")
+
+    rotation_lon = 45
+    rotation_lat = 25
+    arab_set = {"SA","AE","KW","QA","BH","OM","YE","IQ","JO","SY","LB","PS","EG","SD","LY","TN","DZ","MA","MR","SO","DJ","KM"}
+    if actual_residence:
+        ar = actual_residence.upper()
+        if ar in arab_set:
+            rotation_lon, rotation_lat = 45, 25
+        elif ar in {"US","CA","MX"}:
+            rotation_lon, rotation_lat = -95, 38
+        elif ar in {"GB","FR","DE","ES","IT","NL","BE","SE","NO","PL"}:
+            rotation_lon, rotation_lat = 10, 50
+        elif ar in {"CN","JP","KR","ID","TH","VN","PH","MY","SG"}:
+            rotation_lon, rotation_lat = 110, 30
+        elif ar in {"BR","AR","PE","CL","CO","VE","SV"}:
+            rotation_lon, rotation_lat = -60, -15
+        elif ar in {"AU","NZ"}:
+            rotation_lon, rotation_lat = 140, -25
+        elif ar in {"RU","UA","TR","AZ"}:
+            rotation_lon, rotation_lat = 50, 50
+
+    iso2_to_iso3 = {
+        "SA":"SAU","AE":"ARE","KW":"KWT","QA":"QAT","BH":"BHR","OM":"OMN","YE":"YEM","IQ":"IRQ","JO":"JOR",
+        "SY":"SYR","LB":"LBN","PS":"PSE","EG":"EGY","SD":"SDN","LY":"LBY","TN":"TUN","DZ":"DZA","MA":"MAR",
+        "US":"USA","CA":"CAN","MX":"MEX","BR":"BRA","AR":"ARG","CL":"CHL","CO":"COL","PE":"PER","VE":"VEN",
+        "GB":"GBR","FR":"FRA","DE":"DEU","ES":"ESP","IT":"ITA","NL":"NLD","BE":"BEL","SE":"SWE","NO":"NOR",
+        "PL":"POL","RU":"RUS","TR":"TUR","AZ":"AZE","UA":"UKR","GR":"GRC","CH":"CHE","AT":"AUT","CZ":"CZE",
+        "CN":"CHN","JP":"JPN","KR":"KOR","ID":"IDN","TH":"THA","VN":"VNM","PH":"PHL","MY":"MYS","SG":"SGP",
+        "IN":"IND","PK":"PAK","BD":"BGD","IR":"IRN","AF":"AFG","AU":"AUS","NZ":"NZL","ZA":"ZAF","NG":"NGA",
+        "KE":"KEN","ET":"ETH","GH":"GHA","SV":"SLV","GT":"GTM","HN":"HND","CR":"CRI","PA":"PAN","CU":"CUB",
+        "DO":"DOM","HT":"HTI","JM":"JAM","BO":"BOL","UY":"URY","PY":"PRY","EC":"ECU","MR":"MRT","SO":"SOM",
+    }
+    iso3_codes = [iso2_to_iso3.get(c, c) for c in iso_codes]
+
+    fig = go.Figure(data=go.Choropleth(
+        locations=iso3_codes,
+        z=values,
+        locationmode="ISO-3",
+        colorscale=[[0,"#FEF3C7"],[0.4,"#F59E0B"],[0.7,"#D97706"],[1,"#92400E"]],
+        showscale=True,
+        hovertext=hover_text,
+        hoverinfo="text",
+        marker_line_color="#F1F5F9",
+        marker_line_width=0.7,
+        colorbar=dict(
+            title=dict(text="عدد الفيديوهات", font=dict(color="#F1F5F9", family="Noto Sans Arabic, Tajawal")),
+            tickfont=dict(color="#F1F5F9", family="Noto Sans Arabic, Tajawal"),
+            bgcolor="rgba(15,23,42,0.7)",
+            outlinecolor="#F59E0B",
+            outlinewidth=1,
+            len=0.7,
+        ),
+    ))
+
+    fig.update_geos(
+        projection_type="orthographic",
+        projection_rotation=dict(lon=rotation_lon, lat=rotation_lat, roll=0),
+        showland=True,
+        landcolor="#1E293B",
+        showocean=True,
+        oceancolor="#0B1220",
+        showcountries=True,
+        countrycolor="#334155",
+        showcoastlines=True,
+        coastlinecolor="#475569",
+        coastlinewidth=0.5,
+        bgcolor="rgba(0,0,0,0)",
+        showframe=False,
+    )
+
+    fig.update_layout(
+        height=520,
+        margin=dict(l=0, r=0, t=10, b=10),
+        paper_bgcolor="#0F172A",
+        plot_bgcolor="#0F172A",
+        font=dict(family="Noto Sans Arabic, Tajawal", color="#F1F5F9", size=13),
+        dragmode="orbit",
+    )
+    return fig
+
+
 def render_country_choropleth(region_distribution, actual_residence=None):
     """Fix3.2-Map: خريطة عالمية تظلّل دول الفيديوهات فقط
     القيود: لا POI, لا مدن, لا Geocoding خارجي, GeoJSON محلّي فقط
