@@ -1718,6 +1718,33 @@ def display_single_result(result):
                 formatted = f"{value:,}"
             st.markdown(f'<div class="stat-card" dir="rtl"><div style="font-size: 2rem;">{icon}</div><div class="stat-number">{formatted}</div><div class="stat-label">{label}</div></div>', unsafe_allow_html=True)
 
+    # 🔬 ✅ v2.1.7-Light-Fix3.2-Patch3 - بطاقة تشخيص (تظهر دائماً للتحقّق)
+    _diag_region = result.get('region_iso') or '—'
+    _diag_actual = result.get('actual_residence') or '—'
+    _diag_conf = result.get('residence_confidence', 0)
+    _diag_videos = result.get('videos_count', 0)
+    _diag_dist = result.get('region_distribution') or {}
+    _diag_proxy = result.get('proxy_used') or result.get('proxy') or '—'
+
+    st.markdown(f"""
+    <div dir="rtl" style="
+        background:#1E293B; padding:14px 16px; border-radius:10px;
+        border-right:4px solid #06B6D4; margin-top:16px; color:#F1F5F9;
+        font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+        font-size:0.85rem;
+    ">
+        <h4 style="color:#06B6D4; margin:0 0 8px 0; font-weight:900;">🔬 تشخيص تقنيّ — Fix3.2-Patch3</h4>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+            <div><strong style="color:#06B6D4;">region_iso:</strong> {_diag_region}</div>
+            <div><strong style="color:#06B6D4;">actual_residence:</strong> {_diag_actual}</div>
+            <div><strong style="color:#06B6D4;">confidence:</strong> {_diag_conf}%</div>
+            <div><strong style="color:#06B6D4;">videos_count:</strong> {_diag_videos}</div>
+            <div><strong style="color:#06B6D4;">distribution:</strong> {_diag_dist or '{}'}</div>
+            <div><strong style="color:#06B6D4;">proxy:</strong> {_diag_proxy}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     # 🧭 ✅ v2.1.7-Light-Fix3.1 - بطاقة النشاط الجغرافي + التحفّظ الشفّاف
     actual_residence = result.get('actual_residence')
     residence_confidence = result.get('residence_confidence', 0)
