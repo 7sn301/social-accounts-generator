@@ -1852,49 +1852,38 @@ def display_single_result(result):
     _diag_dist = result.get('region_distribution') or {}
     _diag_proxy = result.get('proxy_used') or result.get('proxy') or '—'
 
-    # 🔬 ✅ Patch8: بطاقة التشخيص داخل expander — RTL صارم بـ <table>
+    # 🔬 ✅ Patch10: بطاقة التشخيص داخل expander — نمط tech-grid مطابق لبطاقة المعرّفات
     with st.expander("🔬 تشخيص تقنيّ (للمطوّر فقط)", expanded=False):
         _diag_dist_str = ', '.join([f"{k}:{v}" for k,v in _diag_dist.items()]) if _diag_dist else '—'
         st.markdown(f"""
-        <div dir="rtl" style="
-            background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
-            padding:16px; border-radius:12px;
-            border-right:4px solid #22D3EE;
-            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-            color:#F1F5F9; font-size:0.9rem;
-            direction:rtl; text-align:right;
-        ">
-            <h4 style="color:#22D3EE; margin:0 0 14px 0; direction:rtl; text-align:right; font-weight:900;">🔎 تشخيص تقنيّ — Fix3.2-Patch8</h4>
-            <table dir="rtl" style="width:100%; border-collapse:separate; border-spacing:8px; direction:rtl;">
-                <tr>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">region_iso</div>
-                        <div style="color:#F1F5F9; font-weight:800;">{_diag_region}</div>
-                    </td>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">actual_residence</div>
-                        <div style="color:#F1F5F9; font-weight:800;">{_diag_actual}</div>
-                    </td>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">confidence</div>
-                        <div style="color:#F1F5F9; font-weight:800;">{_diag_conf}%</div>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">videos_count</div>
-                        <div style="color:#F1F5F9; font-weight:800;">{_diag_videos}</div>
-                    </td>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">distribution</div>
-                        <div style="color:#F1F5F9; font-weight:800; word-break:break-all;">{_diag_dist_str}</div>
-                    </td>
-                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
-                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">proxy</div>
-                        <div style="color:#F1F5F9; font-weight:800;">{_diag_proxy}</div>
-                    </td>
-                </tr>
-            </table>
+        <div class="tech-details-card" dir="rtl" style="border-right:5px solid #22D3EE;">
+            <h3 style="color:#22D3EE; margin:0 0 14px 0; font-weight:900; font-size:1.2rem; direction:rtl; text-align:right;">🔎 تشخيص تقنيّ — Fix3.2-Patch10</h3>
+            <div class="tech-grid">
+                <div class="tech-item" style="border-right-color:#22D3EE;">
+                    <div class="tech-label">🌍 region_iso</div>
+                    <div class="tech-value">{_diag_region}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:#22D3EE;">
+                    <div class="tech-label">📍 actual_residence</div>
+                    <div class="tech-value">{_diag_actual}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:#22D3EE;">
+                    <div class="tech-label">🎯 confidence</div>
+                    <div class="tech-value">{_diag_conf}%</div>
+                </div>
+                <div class="tech-item" style="border-right-color:#22D3EE;">
+                    <div class="tech-label">📊 videos_count</div>
+                    <div class="tech-value">{_diag_videos}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:#22D3EE; grid-column: 1 / -1;">
+                    <div class="tech-label">🗺️ distribution</div>
+                    <div class="tech-value">{_diag_dist_str}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:#22D3EE;">
+                    <div class="tech-label">🛰️ proxy</div>
+                    <div class="tech-value">{_diag_proxy}</div>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1958,49 +1947,46 @@ def display_single_result(result):
             prev_ar = COUNTRY_AR.get(previous_residence, previous_residence)
             prev_html = f'<div style="margin-top:8px;color:#CBD5E1;"><strong style="color:#F59E0B;">🕒 إقامة سابقة:</strong> {prev_ar} ({previous_residence})</div>'
 
+        # ✅ Patch10: بطاقة "إقامة سابقة" كـ tech-item منفصل عند الحاجة
+        _prev_block = ''
+        if previous_residence and previous_residence != actual_residence:
+            _prev_ar = COUNTRY_AR.get(previous_residence, previous_residence)
+            _prev_block = f"""<div class="tech-item" style="border-right-color:#94A3B8;">
+                    <div class="tech-label">🕒 إقامة سابقة</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; font-weight:700;">{_prev_ar} <span style="color:#94A3B8; font-size:0.85rem;">({previous_residence})</span></div>
+                </div>"""
+
         st.markdown(f"""
-        <div dir="rtl" style="
-            background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
-            padding:20px; border-radius:14px;
-            border-right:5px solid {conf_color}; margin-top:18px;
-            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-            color:#F1F5F9;
-            box-shadow:0 4px 20px rgba(0,0,0,0.3);
-            direction:rtl;
-            text-align:right;
-        ">
-            <h3 style="color:#F59E0B; margin:0 0 16px 0; font-weight:900; font-size:1.3rem; text-align:right; direction:rtl;">🧭 النشاط الجغرافي (Fix3)</h3>
-            <table dir="rtl" style="width:100%; border-collapse:separate; border-spacing:12px 0; direction:rtl;">
-                <tr>
-                    <td style="vertical-align:middle; width:90px; text-align:center;">
-                        <div style="font-size:3.5rem; line-height:1;">{actual_flag}</div>
-                    </td>
-                    <td style="vertical-align:middle; text-align:right; direction:rtl;">
-                        <div style="color:#94A3B8; font-size:0.85rem; margin-bottom:4px; direction:rtl; text-align:right;">📍 الإقامة الفعلية</div>
-                        <div style="font-size:1.7rem; font-weight:800; color:#F1F5F9; line-height:1.2; direction:rtl; text-align:right;">{actual_ar}</div>
-                        <div style="color:#93C5FD; font-size:0.9rem; margin-top:4px; direction:rtl; text-align:right;">{actual_residence or '—'}</div>
-                    </td>
-                    <td style="vertical-align:middle; width:130px; text-align:center; background:rgba(15,23,42,0.6); padding:10px 12px; border-radius:10px;">
-                        <div style="color:#94A3B8; font-size:0.8rem;">درجة الثقة</div>
-                        <div style="font-size:2.2rem; font-weight:900; color:{conf_color}; line-height:1;">{residence_confidence}%</div>
-                        <div style="font-size:0.8rem; color:{conf_color}; margin-top:2px;">{conf_label}</div>
-                    </td>
-                    <td style="vertical-align:middle; width:130px; text-align:center; background:rgba(15,23,42,0.6); padding:10px 12px; border-radius:10px;">
-                        <div style="color:#94A3B8; font-size:0.8rem;">النوع</div>
-                        <div style="font-size:1.1rem; font-weight:700; margin-top:6px; direction:rtl;">{type_display}</div>
-                    </td>
-                </tr>
-            </table>
-            <div style="margin-top:14px; direction:rtl; text-align:right;">
-                <div style="display:inline-block; background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:8px; margin-bottom:8px; direction:rtl;">
-                    <span style="color:#F59E0B; font-weight:700;">📊 الفيديوهات المُحلَّلة:</span>
-                    <span style="color:#F1F5F9; font-weight:800; margin-right:6px;">{videos_analyzed}</span>
+        <div class="tech-details-card" dir="rtl" style="border-right:5px solid {conf_color}; margin-top:18px;">
+            <h3 style="color:#F59E0B; margin:0 0 14px 0; font-weight:900; font-size:1.3rem; direction:rtl; text-align:right;">🧭 النشاط الجغرافي (Fix3)</h3>
+            <div class="tech-grid">
+                <div class="tech-item" style="border-right-color:{conf_color};">
+                    <div class="tech-label">📍 الإقامة الفعلية</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; font-size:1.1rem; font-weight:800; direction:rtl; text-align:right;">
+                        <span style="font-size:1.6rem; margin-left:6px; vertical-align:middle;">{actual_flag}</span>
+                        {actual_ar} <span style="color:#93C5FD; font-size:0.85rem;">({actual_residence or '—'})</span>
+                    </div>
                 </div>
-                <div style="margin-top:8px; direction:rtl; text-align:right;">
-                    <span style="color:#F59E0B; font-weight:700; display:block; margin-bottom:6px;">🗺️ توزيع المناطق:</span>
-                    <div style="direction:rtl; text-align:right;">{dist_html_safe}</div>
+                <div class="tech-item" style="border-right-color:{conf_color};">
+                    <div class="tech-label">🎯 درجة الثقة</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; direction:rtl; text-align:right;">
+                        <span style="font-size:1.6rem; font-weight:900; color:{conf_color};">{residence_confidence}%</span>
+                        <span style="color:{conf_color}; font-size:0.85rem; margin-right:8px;">{conf_label}</span>
+                    </div>
                 </div>
-                {prev_html}
+                <div class="tech-item" style="border-right-color:{conf_color};">
+                    <div class="tech-label">🏷️ النوع</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; font-weight:700; direction:rtl; text-align:right;">{type_display}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:{conf_color};">
+                    <div class="tech-label">📊 الفيديوهات المُحلَّلة</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; font-weight:800; font-size:1.1rem; direction:rtl; text-align:right;">{videos_analyzed}</div>
+                </div>
+                <div class="tech-item" style="border-right-color:{conf_color}; grid-column: 1 / -1;">
+                    <div class="tech-label">🗺️ توزيع المناطق</div>
+                    <div class="tech-value" style="font-family:'Noto Sans Arabic','Tajawal',sans-serif; direction:rtl; text-align:right;">{dist_html_safe}</div>
+                </div>
+                {_prev_block}
             </div>
         </div>
         """, unsafe_allow_html=True)
