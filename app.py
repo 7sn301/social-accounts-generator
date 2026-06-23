@@ -2019,21 +2019,7 @@ def display_single_result(result):
         </div>
         """, unsafe_allow_html=True)
 
-        # 🛡️ بطاقة التحفّظ الشفّاف - ✅ Fix3.1
-        st.markdown(f"""
-        <div dir="rtl" style="
-            background:#F1F5F9; padding:16px; border-radius:10px;
-            border-right:4px solid #F59E0B; margin-top:12px; color:#0F172A;
-            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-        ">
-            <h4 style="margin:0 0 8px 0; color:#0F172A;">🛡️ تحفّظ شفّاف على دقّة الإقامة</h4>
-            <p style="margin:0; line-height:1.8; font-size:0.95rem;">
-                موقع الإقامة المُستنتَج يعتمد على آخر <strong>{videos_analyzed} مقاطع منشورة</strong> + التسلسل الزمني عبر TikWM.
-                إذا توقّف صاحب الحساب عن النشر، أو نشر من بلد سفر مؤقّت، أو حذف مقاطع، قد لا يعكس الموقع الحقيقي للإقامة الراهنة.
-                نلتزم بعدم استخدام IP أو منصّات خارجية حفاظاً على الخصوصية وميثاق المشروع.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        # 🛡️ بطاقة التحفّظ الشفّاف - ✅ Patch12: محذوفة بناءً على طلب المستخدم
 
     # 🗺️ ✅ v2.1.7-Light-Fix3.2-Map - خريطة الدول التفاعلية
     # ✅ Fix3.2-Map-Patch2: بناء region_distribution من region_iso كـ fallback
@@ -2079,27 +2065,10 @@ def display_single_result(result):
 
                 st.plotly_chart(_globe, use_container_width=True, config={"displayModeBar": False})
 
-                # 🛡️ تحفّظ خاص بالخريطة - Fix3.2
-                st.markdown("""
-                <div dir="rtl" style="
-                    background:#F1F5F9; padding:14px 16px; border-radius:0 0 10px 10px;
-                    border-right:4px solid #F59E0B; margin-top:-4px; color:#0F172A;
-                    font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-                ">
-                    <strong>🛡️ تنبيه:</strong> الخريطة تعرض <strong>دول الفيديوهات</strong>، وليست بالضرورة <strong>دولة الإقامة الحالية</strong>.
-                    لا تستخدم IP ولا Geocoding خارجي — مصدر البيانات: TikWM حصراً ضمن الميثاق.
-                </div>
-                """, unsafe_allow_html=True)
+                # 🛡️ تحفّظ خاص بالخريطة - ✅ Patch12: محذوف بناءً على طلب المستخدم
         except Exception as _map_err:
-            st.markdown(f"""
-            <div dir="rtl" style="
-                background:#FEF3C7; padding:12px; border-radius:8px; color:#0F172A;
-                border-right:4px solid #F59E0B;
-                font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-            ">
-                ℹ️ الخريطة غير متاحة حالياً للحساب الحاليّ.
-            </div>
-            """, unsafe_allow_html=True)
+            # ✅ Patch12: إخفاء رسالة الفشل تماماً (لا نعرض شيء للمستخدم)
+            pass
 
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
