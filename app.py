@@ -1879,23 +1879,40 @@ def display_single_result(result):
 
     if region_distribution:
         try:
-            from streamlit_folium import st_folium
-            _map = render_country_choropleth(region_distribution, actual_residence)
-            if _map is not None:
-                st.markdown("""
+            _globe = render_country_globe_3d(region_distribution, actual_residence)
+            if _globe is not None:
+                _n_videos = videos_analyzed or len(region_distribution)
+                _n_countries = len(region_distribution)
+                st.markdown(f"""
                 <div dir="rtl" style="
-                    background:#0F172A; padding:14px 18px; border-radius:12px 12px 0 0;
-                    border-right:4px solid #F59E0B; margin-top:18px; color:#F1F5F9;
+                    background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
+                    padding:16px 20px; border-radius:14px 14px 0 0;
+                    border-right:5px solid #F59E0B; margin-top:18px; color:#F1F5F9;
                     font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+                    box-shadow:0 4px 20px rgba(0,0,0,0.3);
                 ">
-                    <h3 style="color:#F59E0B; margin:0 0 6px 0; font-weight:900;">🗺️ خريطة مناطق الفيديوهات</h3>
-                    <p style="margin:0; color:#CBD5E1; font-size:0.9rem;">
-                        تظليل الدول المُستخرجة من آخر {n} مقاطع — مستوى الدولة فقط، لا مدن ولا إحداثيات دقيقة.
-                    </p>
+                    <div style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center;">
+                        <div>
+                            <h3 style="color:#F59E0B; margin:0 0 4px 0; font-weight:900; font-size:1.25rem;">🌐 الكرة الأرضية التفاعلية — مناطق الفيديوهات</h3>
+                            <p style="margin:0; color:#CBD5E1; font-size:0.9rem;">
+                                تظليل الدول من آخر {_n_videos} مقاطع • مستوى الدولة فقط • اسحب الكرة للتدوير
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
+                                <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_countries}</div>
+                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px;">دول مكتشفة</div>
+                            </div>
+                            <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
+                                <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_videos}</div>
+                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px;">فيديو محلَّل</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                """.format(n=videos_analyzed or len(region_distribution)), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-                st_folium(_map, height=400, width=None, returned_objects=[])
+                st.plotly_chart(_globe, use_container_width=True, config={"displayModeBar": False})
 
                 # 🛡️ تحفّظ خاص بالخريطة - Fix3.2
                 st.markdown("""
