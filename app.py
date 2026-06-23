@@ -1055,6 +1055,15 @@ def lookup_user(username):
                 'alternative_country': None,
                 'verified': raw.get('verified', False),
                 'bio_link': raw.get('bio_link'),
+                # ✅ Fix3.2-Patch5: تمرير حقول Fix3.1 للمسار السريع
+                'actual_residence': fetch.get('actual_residence'),
+                'previous_residence': fetch.get('previous_residence'),
+                'residence_confidence': fetch.get('residence_confidence', 0),
+                'residence_type': fetch.get('residence_type', '—'),
+                'timezone_match': fetch.get('timezone_match'),
+                'videos_analyzed': fetch.get('videos_count', 0),
+                'region_distribution': fetch.get('region_distribution') or {},
+                'region_iso': fetch.get('region_iso'),
             }
         # tikwm نجح لكن بدون region → Multi-Signal على bio/nickname/username فقط
         correction = correct_country(username, raw)
