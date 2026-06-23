@@ -1738,25 +1738,49 @@ def display_single_result(result):
     _diag_dist = result.get('region_distribution') or {}
     _diag_proxy = result.get('proxy_used') or result.get('proxy') or '—'
 
-    # 🔬 ✅ Patch6: بطاقة التشخيص داخل expander مخفي (للمطوّر فقط)
+    # 🔬 ✅ Patch8: بطاقة التشخيص داخل expander — RTL صارم بـ <table>
     with st.expander("🔬 تشخيص تقنيّ (للمطوّر فقط)", expanded=False):
         _diag_dist_str = ', '.join([f"{k}:{v}" for k,v in _diag_dist.items()]) if _diag_dist else '—'
         st.markdown(f"""
         <div dir="rtl" style="
-            background:#0F172A; padding:14px; border-radius:10px;
-            border-right:3px solid #22D3EE;
+            background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
+            padding:16px; border-radius:12px;
+            border-right:4px solid #22D3EE;
             font-family:'Noto Sans Arabic','Tajawal',sans-serif;
             color:#F1F5F9; font-size:0.9rem;
+            direction:rtl; text-align:right;
         ">
-            <h4 style="color:#22D3EE; margin:0 0 10px 0;">🔎 تشخيص تقنيّ — Fix3.2-Patch6</h4>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
-                <div><strong style="color:#22D3EE;">region_iso:</strong> {_diag_region}</div>
-                <div><strong style="color:#22D3EE;">actual_residence:</strong> {_diag_actual}</div>
-                <div><strong style="color:#22D3EE;">confidence:</strong> {_diag_conf}%</div>
-                <div><strong style="color:#22D3EE;">videos_count:</strong> {_diag_videos}</div>
-                <div><strong style="color:#22D3EE;">distribution:</strong> {_diag_dist_str}</div>
-                <div><strong style="color:#22D3EE;">proxy:</strong> {_diag_proxy}</div>
-            </div>
+            <h4 style="color:#22D3EE; margin:0 0 14px 0; direction:rtl; text-align:right; font-weight:900;">🔎 تشخيص تقنيّ — Fix3.2-Patch8</h4>
+            <table dir="rtl" style="width:100%; border-collapse:separate; border-spacing:8px; direction:rtl;">
+                <tr>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">region_iso</div>
+                        <div style="color:#F1F5F9; font-weight:800;">{_diag_region}</div>
+                    </td>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">actual_residence</div>
+                        <div style="color:#F1F5F9; font-weight:800;">{_diag_actual}</div>
+                    </td>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl; width:33%;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">confidence</div>
+                        <div style="color:#F1F5F9; font-weight:800;">{_diag_conf}%</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">videos_count</div>
+                        <div style="color:#F1F5F9; font-weight:800;">{_diag_videos}</div>
+                    </td>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">distribution</div>
+                        <div style="color:#F1F5F9; font-weight:800; word-break:break-all;">{_diag_dist_str}</div>
+                    </td>
+                    <td style="background:rgba(15,23,42,0.6); padding:10px; border-radius:8px; text-align:right; direction:rtl;">
+                        <div style="color:#22D3EE; font-size:0.8rem; font-weight:700; margin-bottom:4px;">proxy</div>
+                        <div style="color:#F1F5F9; font-weight:800;">{_diag_proxy}</div>
+                    </td>
+                </tr>
+            </table>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1822,33 +1846,46 @@ def display_single_result(result):
 
         st.markdown(f"""
         <div dir="rtl" style="
-            background:#0F172A; padding:18px; border-radius:12px;
-            border-right:4px solid {conf_color}; margin-top:18px;
+            background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);
+            padding:20px; border-radius:14px;
+            border-right:5px solid {conf_color}; margin-top:18px;
             font-family:'Noto Sans Arabic','Tajawal',sans-serif;
             color:#F1F5F9;
+            box-shadow:0 4px 20px rgba(0,0,0,0.3);
+            direction:rtl;
+            text-align:right;
         ">
-            <h3 style="color:#F59E0B; margin:0 0 12px 0; font-weight:900;">🧭 النشاط الجغرافي (Fix3)</h3>
-            <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:center;">
-                <div style="font-size:3.5rem; line-height:1;">{actual_flag}</div>
-                <div style="flex:1; min-width:200px;">
-                    <div style="color:#94A3B8; font-size:0.85rem; margin-bottom:4px;">📍 الإقامة الفعلية</div>
-                    <div style="font-size:1.6rem; font-weight:800; color:#F1F5F9;">{actual_ar}</div>
-                    <div style="color:#93C5FD; font-size:0.95rem; margin-top:4px;">{actual_residence or '—'}</div>
+            <h3 style="color:#F59E0B; margin:0 0 16px 0; font-weight:900; font-size:1.3rem; text-align:right; direction:rtl;">🧭 النشاط الجغرافي (Fix3)</h3>
+            <table dir="rtl" style="width:100%; border-collapse:separate; border-spacing:12px 0; direction:rtl;">
+                <tr>
+                    <td style="vertical-align:middle; width:90px; text-align:center;">
+                        <div style="font-size:3.5rem; line-height:1;">{actual_flag}</div>
+                    </td>
+                    <td style="vertical-align:middle; text-align:right; direction:rtl;">
+                        <div style="color:#94A3B8; font-size:0.85rem; margin-bottom:4px; direction:rtl; text-align:right;">📍 الإقامة الفعلية</div>
+                        <div style="font-size:1.7rem; font-weight:800; color:#F1F5F9; line-height:1.2; direction:rtl; text-align:right;">{actual_ar}</div>
+                        <div style="color:#93C5FD; font-size:0.9rem; margin-top:4px; direction:rtl; text-align:right;">{actual_residence or '—'}</div>
+                    </td>
+                    <td style="vertical-align:middle; width:130px; text-align:center; background:rgba(15,23,42,0.6); padding:10px 12px; border-radius:10px;">
+                        <div style="color:#94A3B8; font-size:0.8rem;">درجة الثقة</div>
+                        <div style="font-size:2.2rem; font-weight:900; color:{conf_color}; line-height:1;">{residence_confidence}%</div>
+                        <div style="font-size:0.8rem; color:{conf_color}; margin-top:2px;">{conf_label}</div>
+                    </td>
+                    <td style="vertical-align:middle; width:130px; text-align:center; background:rgba(15,23,42,0.6); padding:10px 12px; border-radius:10px;">
+                        <div style="color:#94A3B8; font-size:0.8rem;">النوع</div>
+                        <div style="font-size:1.1rem; font-weight:700; margin-top:6px; direction:rtl;">{type_display}</div>
+                    </td>
+                </tr>
+            </table>
+            <div style="margin-top:14px; direction:rtl; text-align:right;">
+                <div style="display:inline-block; background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:8px; margin-bottom:8px; direction:rtl;">
+                    <span style="color:#F59E0B; font-weight:700;">📊 الفيديوهات المُحلَّلة:</span>
+                    <span style="color:#F1F5F9; font-weight:800; margin-right:6px;">{videos_analyzed}</span>
                 </div>
-                <div style="text-align:center;">
-                    <div style="color:#94A3B8; font-size:0.85rem;">درجة الثقة</div>
-                    <div style="font-size:2rem; font-weight:900; color:{conf_color};">{residence_confidence}%</div>
-                    <div style="font-size:0.85rem; color:{conf_color};">{conf_label}</div>
+                <div style="margin-top:8px; direction:rtl; text-align:right;">
+                    <span style="color:#F59E0B; font-weight:700; display:block; margin-bottom:6px;">🗺️ توزيع المناطق:</span>
+                    <div style="direction:rtl; text-align:right;">{dist_html_safe}</div>
                 </div>
-                <div style="text-align:center;">
-                    <div style="color:#94A3B8; font-size:0.85rem;">النوع</div>
-                    <div style="font-size:1.1rem; font-weight:700; margin-top:4px;">{type_display}</div>
-                </div>
-            </div>
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(245,158,11,0.2);">
-                <div style="color:#CBD5E1;"><strong style="color:#F59E0B;">📊 الفيديوهات المُحلَّلة:</strong> {videos_analyzed}</div>
-                <div style="margin-top:8px; color:#CBD5E1;"><strong style="color:#F59E0B;">🗺️ توزيع المناطق:</strong></div>
-                <div style="margin-top:6px;">{dist_html_safe}</div>
                 {prev_html}
             </div>
         </div>
@@ -1932,7 +1969,7 @@ def display_single_result(result):
                 border-right:4px solid #F59E0B;
                 font-family:'Noto Sans Arabic','Tajawal',sans-serif;
             ">
-                ℹ️ الخريطة غير متاحة حالياً (تحقّق من حزمة folium في requirements.txt).
+                ℹ️ الخريطة غير متاحة حالياً للحساب الحاليّ.
             </div>
             """, unsafe_allow_html=True)
 
