@@ -1726,7 +1726,7 @@ def display_single_result(result):
     videos_analyzed = result.get('videos_analyzed', 0)
     region_distribution = result.get('region_distribution') or {}
 
-    if actual_residence or residence_confidence > 0:
+    if actual_residence or residence_confidence > 0 or region_distribution or result.get('region_iso'):
         # ترجمة الدولة
         actual_ar = COUNTRY_AR.get(actual_residence, actual_residence) if actual_residence else '—'
         # علم
@@ -1824,6 +1824,12 @@ def display_single_result(result):
         """, unsafe_allow_html=True)
 
     # 🗺️ ✅ v2.1.7-Light-Fix3.2-Map - خريطة الدول التفاعلية
+    # ✅ Fix3.2-Map-Patch2: بناء region_distribution من region_iso كـ fallback
+    if not region_distribution and result.get('region_iso'):
+        region_distribution = {result['region_iso']: 1}
+        if not actual_residence:
+            actual_residence = result.get('region_iso')
+
     if region_distribution:
         try:
             from streamlit_folium import st_folium
