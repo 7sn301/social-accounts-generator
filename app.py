@@ -1464,8 +1464,20 @@ def render_country_choropleth(region_distribution, actual_residence=None):
     except Exception:
         return None
 
-    geojson_path = _os.path.join(_os.path.dirname(__file__), 'data', 'world_countries.geo.json')
-    if not _os.path.exists(geojson_path):
+    # ✅ Fix3.2-Map-Patch: ابحث في data/ أوّلاً ثمّ في الجذر (توافق GitHub)
+    _base = _os.path.dirname(__file__)
+    _candidates = [
+        _os.path.join(_base, 'data', 'world_countries.geo.json'),
+        _os.path.join(_base, 'world_countries.geo.json'),
+        'data/world_countries.geo.json',
+        'world_countries.geo.json',
+    ]
+    geojson_path = None
+    for _c in _candidates:
+        if _os.path.exists(_c):
+            geojson_path = _c
+            break
+    if geojson_path is None:
         return None
 
     try:
