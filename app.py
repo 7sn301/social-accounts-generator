@@ -1727,32 +1727,39 @@ def display_single_result(result):
                 formatted = f"{value:,}"
             st.markdown(f'<div class="stat-card" dir="rtl"><div style="font-size: 2rem;">{icon}</div><div class="stat-number">{formatted}</div><div class="stat-label">{label}</div></div>', unsafe_allow_html=True)
 
-    # 🔬 ✅ v2.1.7-Light-Fix3.2-Patch3 - بطاقة تشخيص (تظهر دائماً للتحقّق)
+    # 🔬 ✅ v2.1.7-Light-Fix3.2-Patch6 - تشخيص تقنيّ مخفيّ (داخل expander)
     _diag_region = result.get('region_iso') or '—'
     _diag_actual = result.get('actual_residence') or '—'
     _diag_conf = result.get('residence_confidence', 0)
-    _diag_videos = result.get('videos_count', 0)
+    _diag_videos = result.get('videos_analyzed') or result.get('videos_count', 0)
+    # ✅ Patch6: fallback من region_distribution إذا كان فارغاً
+    if not _diag_videos and result.get('region_distribution'):
+        _diag_videos = sum(result['region_distribution'].values())
     _diag_dist = result.get('region_distribution') or {}
     _diag_proxy = result.get('proxy_used') or result.get('proxy') or '—'
 
-    st.markdown(f"""
-    <div dir="rtl" style="
-        background:#1E293B; padding:14px 16px; border-radius:10px;
-        border-right:4px solid #06B6D4; margin-top:16px; color:#F1F5F9;
-        font-family:'Noto Sans Arabic','Tajawal',sans-serif;
-        font-size:0.85rem;
-    ">
-        <h4 style="color:#06B6D4; margin:0 0 8px 0; font-weight:900;">🔬 تشخيص تقنيّ — Fix3.2-Patch3</h4>
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
-            <div><strong style="color:#06B6D4;">region_iso:</strong> {_diag_region}</div>
-            <div><strong style="color:#06B6D4;">actual_residence:</strong> {_diag_actual}</div>
-            <div><strong style="color:#06B6D4;">confidence:</strong> {_diag_conf}%</div>
-            <div><strong style="color:#06B6D4;">videos_count:</strong> {_diag_videos}</div>
-            <div><strong style="color:#06B6D4;">distribution:</strong> {_diag_dist or '{}'}</div>
-            <div><strong style="color:#06B6D4;">proxy:</strong> {_diag_proxy}</div>
+    # 🔬 ✅ Patch6: بطاقة التشخيص داخل expander مخفي (للمطوّر فقط)
+    with st.expander("🔬 تشخيص تقنيّ (للمطوّر فقط)", expanded=False):
+        _diag_dist_str = ', '.join([f"{k}:{v}" for k,v in _diag_dist.items()]) if _diag_dist else '—'
+        st.markdown(f"""
+        <div dir="rtl" style="
+            background:#0F172A; padding:14px; border-radius:10px;
+            border-right:3px solid #22D3EE;
+            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+            color:#F1F5F9; font-size:0.9rem;
+        ">
+            <h4 style="color:#22D3EE; margin:0 0 10px 0;">🔎 تشخيص تقنيّ — Fix3.2-Patch6</h4>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
+                <div><strong style="color:#22D3EE;">region_iso:</strong> {_diag_region}</div>
+                <div><strong style="color:#22D3EE;">actual_residence:</strong> {_diag_actual}</div>
+                <div><strong style="color:#22D3EE;">confidence:</strong> {_diag_conf}%</div>
+                <div><strong style="color:#22D3EE;">videos_count:</strong> {_diag_videos}</div>
+                <div><strong style="color:#22D3EE;">distribution:</strong> {_diag_dist_str}</div>
+                <div><strong style="color:#22D3EE;">proxy:</strong> {_diag_proxy}</div>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
 
     # 🧭 ✅ v2.1.7-Light-Fix3.1 - بطاقة النشاط الجغرافي + التحفّظ الشفّاف
     actual_residence = result.get('actual_residence')
@@ -1809,7 +1816,7 @@ def display_single_result(result):
 
         # سابقة الإقامة
         prev_html = ''
-        if previous_residence:
+        if previous_residence and previous_residence != actual_residence:
             prev_ar = COUNTRY_AR.get(previous_residence, previous_residence)
             prev_html = f'<div style="margin-top:8px;color:#CBD5E1;"><strong style="color:#F59E0B;">🕒 إقامة سابقة:</strong> {prev_ar} ({previous_residence})</div>'
 
@@ -1914,6 +1921,25 @@ def display_single_result(result):
 
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
+        # 🔬 تشخيص جغرافيّ — Fix3.2-Patch6 (مخفيّ افتراضياً)
+        st.markdown(f"""
+        <div dir="rtl" style="
+            background:#1E293B; padding:14px 16px; border-radius:10px;
+            border-right:4px solid #06B6D4; margin-bottom:14px; color:#F1F5F9;
+            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+            font-size:0.85rem;
+        ">
+            <h4 style="color:#06B6D4; margin:0 0 8px 0; font-weight:900;">🧭 تشخيص جغرافيّ Fix3.2</h4>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+                <div><strong style="color:#06B6D4;">region_iso:</strong> {_diag_region}</div>
+                <div><strong style="color:#06B6D4;">actual_residence:</strong> {_diag_actual}</div>
+                <div><strong style="color:#06B6D4;">confidence:</strong> {_diag_conf}%</div>
+                <div><strong style="color:#06B6D4;">videos_analyzed:</strong> {_diag_videos}</div>
+                <div><strong style="color:#06B6D4;">distribution:</strong> {_diag_dist if _diag_dist else 'فارغ'}</div>
+                <div><strong style="color:#06B6D4;">proxy:</strong> {_diag_proxy}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         user_id = result.get('user_id', '—')
         sec_uid = result.get('sec_uid', '—')
         if sec_uid != '—' and len(sec_uid) > 20:
