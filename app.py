@@ -1274,6 +1274,8 @@ COUNTRY_AR = {
 # 🎨 CSS احترافي + Responsive
 # ═══════════════════════════════════════════════════════════════
 st.markdown("""
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="theme-color" content="#0F172A">
 <style>
 /* ✅ Patch9: إخفاء input فارغة وعناصر تشخيصية مكشوفة + RTL على expander */
 div[data-baseweb="input"]:empty { display: none !important; }
@@ -1426,22 +1428,88 @@ header {visibility: hidden;}
     overflow: hidden; margin: 1rem 0;
 }
 
-/* تصميم Responsive للجوال */
+/* تصميم Responsive شامل للجوال — Patch-Mobile */
+/* Tablet — 768px وأقل */
 @media (max-width: 768px) {
-    .main-title { font-size: 2.2rem; }
-    .subtitle { font-size: 0.85rem; }
-    .country-flag { font-size: 2.5rem; }
-    .country-name { font-size: 1.1rem; }
-    .stat-number { font-size: 1.3rem; }
-    .stat-label { font-size: 0.7rem; }
-    .result-card { padding: 1rem; }
-    .tech-grid { grid-template-columns: 1fr; }
-    .country-card, .residence-card, .region-card { padding: 1rem; }
+    .main-title { font-size: 2rem !important; line-height: 1.3 !important; }
+    .subtitle { font-size: 0.85rem !important; }
+    .country-flag { font-size: 2.5rem !important; }
+    .country-name { font-size: 1.1rem !important; }
+    .stat-number { font-size: 1.3rem !important; }
+    .stat-label { font-size: 0.7rem !important; }
+    .result-card { padding: 1rem !important; }
+    .tech-grid { grid-template-columns: 1fr !important; gap: 0.7rem !important; }
+    .tech-details-card { padding: 1.1rem 1.2rem !important; border-radius: 12px !important; }
+    .tech-item { padding: 0.8rem !important; }
+    .tech-label { font-size: 0.75rem !important; letter-spacing: 0.5px !important; }
+    .tech-value { font-size: 0.9rem !important; word-break: break-word !important; }
+    .country-card, .residence-card, .region-card { padding: 1rem !important; }
+
+    /* ترويسة الخريطة - تنزل عمودياً */
+    .map-header-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+    .map-counters { justify-content: flex-end !important; flex-wrap: wrap !important; }
+
+    /* الكرة الأرضية - ارتفاع أصغر */
+    .js-plotly-plot, .plotly-graph-div { height: 380px !important; }
+
+    /* جدول Streamlit */
+    .stDataFrame { font-size: 0.85rem !important; }
+    [data-testid="stDataFrame"] { overflow-x: auto !important; }
+
+    /* الـ tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 0.3rem !important; overflow-x: auto !important; }
+    .stTabs [data-baseweb="tab"] { padding: 0.6rem 0.9rem !important; font-size: 0.85rem !important; white-space: nowrap !important; }
+
+    /* expander */
+    [data-testid="stExpander"] summary { font-size: 0.9rem !important; padding: 0.7rem !important; }
+
+    /* الأزرار والإدخال */
+    .stButton button, .stTextInput input { font-size: 1rem !important; padding: 0.7rem !important; }
 }
+
+/* Mobile — 480px وأقل */
 @media (max-width: 480px) {
-    .main-title { font-size: 1.8rem; }
-    .country-flag { font-size: 2rem; }
-    .stat-card { padding: 0.7rem; }
+    .main-title { font-size: 1.6rem !important; }
+    .subtitle { font-size: 0.78rem !important; }
+    .country-flag { font-size: 2rem !important; }
+    .country-name { font-size: 1rem !important; }
+    .stat-card { padding: 0.6rem !important; }
+    .stat-number { font-size: 1.1rem !important; }
+    .stat-label { font-size: 0.65rem !important; }
+
+    .tech-details-card { padding: 0.9rem 1rem !important; border-radius: 10px !important; }
+    .tech-item { padding: 0.7rem !important; }
+    .tech-label { font-size: 0.7rem !important; }
+    .tech-value { font-size: 0.85rem !important; }
+
+    /* العنوان والوصف في ترويسة الخريطة */
+    .map-header-title { font-size: 1rem !important; line-height: 1.4 !important; }
+    .map-header-subtitle { font-size: 0.75rem !important; line-height: 1.5 !important; }
+    .map-counter-card { padding: 6px 10px !important; }
+    .map-counter-number { font-size: 1.1rem !important; }
+    .map-counter-label { font-size: 0.65rem !important; }
+
+    /* الكرة الأرضية على الجوال الصغير */
+    .js-plotly-plot, .plotly-graph-div { height: 320px !important; }
+
+    /* hoverlabel على الجوال */
+    .hoverlayer { font-size: 0.8rem !important; }
+}
+
+/* Mobile الصغير جداً — 360px */
+@media (max-width: 360px) {
+    .main-title { font-size: 1.4rem !important; }
+    .tech-grid { gap: 0.5rem !important; }
+    .tech-details-card { padding: 0.7rem !important; }
+    .js-plotly-plot, .plotly-graph-div { height: 280px !important; }
+}
+
+/* Touch-friendly: زيادة منطقة النقر */
+@media (hover: none) and (pointer: coarse) {
+    button, .stButton button, [data-testid="stExpander"] summary {
+        min-height: 44px !important;
+    }
+    .stTextInput input { min-height: 44px !important; }
 }
 
 /* Tabs */
@@ -2041,21 +2109,21 @@ def display_single_result(result):
                     font-family:'Noto Sans Arabic','Tajawal',sans-serif;
                     box-shadow:0 4px 20px rgba(0,0,0,0.3);
                 ">
-                    <div dir="rtl" style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; direction:rtl;">
+                    <div dir="rtl" class="map-header-grid" style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; direction:rtl;">
                         <div style="direction:rtl; text-align:right;">
-                            <h3 style="color:#F59E0B; margin:0 0 4px 0; font-weight:900; font-size:1.25rem; direction:rtl; text-align:right;">🌐 الكرة الأرضية التفاعلية — مناطق الفيديوهات</h3>
-                            <p style="margin:0; color:#CBD5E1; font-size:0.9rem; direction:rtl; text-align:right;">
+                            <h3 class="map-header-title" style="color:#F59E0B; margin:0 0 4px 0; font-weight:900; font-size:1.25rem; direction:rtl; text-align:right;">🌐 الكرة الأرضية التفاعلية — مناطق الفيديوهات</h3>
+                            <p class="map-header-subtitle" style="margin:0; color:#CBD5E1; font-size:0.9rem; direction:rtl; text-align:right;">
                                 تظليل الدول من آخر {_n_videos} مقاطع • مستوى الدولة فقط • اسحب الكرة للتدوير
                             </p>
                         </div>
-                        <div style="display:flex; gap:10px; direction:ltr;">
-                            <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
-                                <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_countries}</div>
-                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">دول مكتشفة</div>
+                        <div class="map-counters" style="display:flex; gap:10px; direction:ltr;">
+                            <div class="map-counter-card" style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
+                                <div class="map-counter-number" style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_countries}</div>
+                                <div class="map-counter-label" style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">دول مكتشفة</div>
                             </div>
-                            <div style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
-                                <div style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_videos}</div>
-                                <div style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">فيديو محلَّل</div>
+                            <div class="map-counter-card" style="background:rgba(245,158,11,0.15); padding:8px 14px; border-radius:10px; text-align:center;">
+                                <div class="map-counter-number" style="font-size:1.4rem; font-weight:900; color:#F59E0B; line-height:1;">{_n_videos}</div>
+                                <div class="map-counter-label" style="font-size:0.75rem; color:#CBD5E1; margin-top:2px; direction:rtl;">فيديو محلَّل</div>
                             </div>
                         </div>
                     </div>
