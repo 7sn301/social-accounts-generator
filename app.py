@@ -522,6 +522,10 @@ def fetch_user_region_tikwm(username):
                 # تحليل الإقامة الفعلية
                 analysis = detect_actual_residence(regions_seq, times_seq)
 
+                # ✅ Fix3.1 - حساب توزيع المناطق
+                from collections import Counter as _Counter
+                region_distribution = dict(_Counter(regions_seq))
+
                 return {
                     'success': True,
                     'region_iso': regions_seq[0],  # آخر فيديو (التوافق مع Fix2)
@@ -531,6 +535,7 @@ def fetch_user_region_tikwm(username):
                     'residence_type': analysis['residence_type'],
                     'timezone_match': analysis['timezone_match'],
                     'regions_sequence': regions_seq,
+                    'region_distribution': region_distribution,
                     'videos_count': len(regions_seq),
                     'source': 'tikwm_fix3',
                 }
@@ -671,6 +676,16 @@ def fetch_user(username):
             'success': True,
             'tikwm_json': primary.get('json'),
             'region_iso': region_data.get('region_iso'),
+            # ✅ Fix3.1 - تمرير جميع حقول الإقامة الفعلية للأعلى
+            'actual_residence': region_data.get('actual_residence'),
+            'previous_residence': region_data.get('previous_residence'),
+            'residence_confidence': region_data.get('residence_confidence', 0),
+            'residence_type': region_data.get('residence_type', '—'),
+            'timezone_match': region_data.get('timezone_match'),
+            'regions_sequence': region_data.get('regions_sequence') or [],
+            'region_distribution': region_data.get('region_distribution') or {},
+            'videos_count': region_data.get('videos_count', 0),
+            'region_source': region_data.get('source'),
             'content': None,
             'proxy': primary.get('proxy', 'tikwm'),
             'time': primary.get('time', 0),
@@ -1133,6 +1148,14 @@ def lookup_user(username):
         'region_info': region_info,
         'ambiguous': correction.get('ambiguous', False),
         'alternative_country': correction.get('alternative_country'),
+        # ✅ v2.1.7-Light-Fix3.1 - تمرير حقول الإقامة الفعلية للواجهة
+        'actual_residence': fetch.get('actual_residence'),
+        'previous_residence': fetch.get('previous_residence'),
+        'residence_confidence': fetch.get('residence_confidence', 0),
+        'residence_type': fetch.get('residence_type', '—'),
+        'videos_analyzed': fetch.get('videos_count', 0),
+        'region_distribution': fetch.get('region_distribution') or {},
+        'timezone_match': fetch.get('timezone_match'),
     }
 
 
@@ -1423,6 +1446,110 @@ st.markdown('<div class="subtitle" dir="rtl">مولّد ذكي لمعلومات 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 دوال العرض
 # ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════
+# 🗺️ ✅ v2.1.7-Light-Fix3.2-Map - خريطة Choropleth دول فقط
+# ═══════════════════════════════════════════════════════════════
+def render_country_choropleth(region_distribution, actual_residence=None):
+    """Fix3.2-Map: خريطة عالمية تظلّل دول الفيديوهات فقط
+    القيود: لا POI, لا مدن, لا Geocoding خارجي, GeoJSON محلّي فقط
+    """
+    if not region_distribution:
+        return None
+
+    try:
+        import folium
+        from streamlit_folium import st_folium
+        import json as _json
+        import os as _os
+    except Exception:
+        return None
+
+    geojson_path = _os.path.join(_os.path.dirname(__file__), 'data', 'world_countries.geo.json')
+    if not _os.path.exists(geojson_path):
+        return None
+
+    try:
+        with open(geojson_path, 'r', encoding='utf-8') as _f:
+            world_geo = _json.load(_f)
+    except Exception:
+        return None
+
+    # تحويل ISO-2 من region_distribution إلى صفّ موحّد للخريطة
+    total = sum(region_distribution.values())
+    rows = []
+    for iso2, cnt in region_distribution.items():
+        pct = round(cnt * 100 / total, 1) if total else 0
+        rows.append({'iso2': iso2.upper(), 'count': cnt, 'pct': pct})
+
+    # إنشاء dict سريع للوصول من ISO-2
+    dist_by_iso = {r['iso2']: r for r in rows}
+
+    # مركز الخريطة = أول دولة بأكبر عدد، fallback (20, 0)
+    center_lat, center_lon = 20.0, 0.0
+
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=2,
+        tiles='CartoDB positron',
+        prefer_canvas=True,
+    )
+
+    # دالة لون التظليل بناءً على العدد
+    def _style_function(feature):
+        iso2 = (feature.get('properties', {}).get('ISO3166-1-Alpha-2') or '').upper()
+        if iso2 in dist_by_iso:
+            cnt = dist_by_iso[iso2]['count']
+            # تدرّج لوني #F59E0B
+            if cnt >= 4:
+                fill = '#D97706'  # غامق
+                opacity = 0.85
+            elif cnt >= 2:
+                fill = '#F59E0B'  # متوسط
+                opacity = 0.70
+            else:
+                fill = '#FCD34D'  # فاتح
+                opacity = 0.55
+            return {
+                'fillColor': fill,
+                'color': '#0F172A',
+                'weight': 1.5,
+                'fillOpacity': opacity,
+            }
+        # دول غير مذكورة في التوزيع
+        return {
+            'fillColor': '#F1F5F9',
+            'color': '#CBD5E1',
+            'weight': 0.3,
+            'fillOpacity': 0.1,
+        }
+
+    # إضافة طبقة الخريطة
+    folium.GeoJson(
+        world_geo,
+        name='dist',
+        style_function=_style_function,
+        highlight_function=lambda x: {'weight': 3, 'color': '#F59E0B'},
+        tooltip=folium.GeoJsonTooltip(
+            fields=['name', 'ISO3166-1-Alpha-2'],
+            aliases=['الدولة:', 'الرمز:'],
+            localize=True,
+            sticky=False,
+            labels=True,
+            style="""
+                background-color: #0F172A;
+                color: #F1F5F9;
+                font-family: 'Noto Sans Arabic', Tajawal, sans-serif;
+                font-size: 13px;
+                padding: 6px;
+                border-radius: 6px;
+                direction: rtl;
+            """,
+        ),
+    ).add_to(m)
+
+    return m
+
+
 def display_single_result(result):
     """عرض نتيجة حساب واحد بتصميم احترافي - ✅ v2.1.1"""
     if not result.get('success'):
@@ -1578,6 +1705,154 @@ def display_single_result(result):
             else:
                 formatted = f"{value:,}"
             st.markdown(f'<div class="stat-card" dir="rtl"><div style="font-size: 2rem;">{icon}</div><div class="stat-number">{formatted}</div><div class="stat-label">{label}</div></div>', unsafe_allow_html=True)
+
+    # 🧭 ✅ v2.1.7-Light-Fix3.1 - بطاقة النشاط الجغرافي + التحفّظ الشفّاف
+    actual_residence = result.get('actual_residence')
+    residence_confidence = result.get('residence_confidence', 0)
+    residence_type = result.get('residence_type', '—')
+    previous_residence = result.get('previous_residence')
+    videos_analyzed = result.get('videos_analyzed', 0)
+    region_distribution = result.get('region_distribution') or {}
+
+    if actual_residence or residence_confidence > 0:
+        # ترجمة الدولة
+        actual_ar = COUNTRY_AR.get(actual_residence, actual_residence) if actual_residence else '—'
+        # علم
+        actual_flag = ''
+        for emoji, c in FLAG_EMOJI_TO_COUNTRY.items():
+            if c == actual_residence:
+                actual_flag = emoji
+                break
+
+        # لون الثقة
+        if residence_confidence >= 85:
+            conf_color = '#10B981'  # أخضر
+            conf_label = 'موثوقة جداً'
+        elif residence_confidence >= 70:
+            conf_color = '#F59E0B'  # برتقالي
+            conf_label = 'موثوقة'
+        else:
+            conf_color = '#94A3B8'  # رمادي
+            conf_label = 'منخفضة'
+
+        # نوع الإقامة
+        type_map = {
+            'ثابت': '🟢 ثابت',
+            'مستقر حديثاً': '🟡 مستقر حديثاً',
+            'مستقر': '🟢 مستقر',
+            'مسافر/متنقّل': '🟠 مسافر/متنقّل',
+        }
+        type_display = type_map.get(residence_type, f'⚪ {residence_type}')
+
+        # توزيع المناطق
+        dist_html = ''
+        if region_distribution:
+            items = []
+            total = sum(region_distribution.values())
+            for ctry, cnt in sorted(region_distribution.items(), key=lambda x: -x[1]):
+                pct = int(round(cnt * 100 / total)) if total else 0
+                ctry_ar = COUNTRY_AR.get(ctry, ctry)
+                items.append(f'<span style="background:#1E3A8A;color:#F1F5F9;padding:4px 10px;border-radius:8px;margin-left:6px;display:inline-block;margin-bottom:4px;">{ctry_ar} ({ctry}): {cnt} ({pct}%)</span>')
+            dist_html = ''.join(items)
+
+        # سابقة الإقامة
+        prev_html = ''
+        if previous_residence:
+            prev_ar = COUNTRY_AR.get(previous_residence, previous_residence)
+            prev_html = f'<div style="margin-top:8px;color:#CBD5E1;"><strong style="color:#F59E0B;">🕒 إقامة سابقة:</strong> {prev_ar} ({previous_residence})</div>'
+
+        st.markdown(f"""
+        <div dir="rtl" style="
+            background:#0F172A; padding:18px; border-radius:12px;
+            border-right:4px solid {conf_color}; margin-top:18px;
+            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+            color:#F1F5F9;
+        ">
+            <h3 style="color:#F59E0B; margin:0 0 12px 0; font-weight:900;">🧭 النشاط الجغرافي (Fix3)</h3>
+            <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:center;">
+                <div style="font-size:3.5rem; line-height:1;">{actual_flag}</div>
+                <div style="flex:1; min-width:200px;">
+                    <div style="color:#94A3B8; font-size:0.85rem; margin-bottom:4px;">📍 الإقامة الفعلية</div>
+                    <div style="font-size:1.6rem; font-weight:800; color:#F1F5F9;">{actual_ar}</div>
+                    <div style="color:#93C5FD; font-size:0.95rem; margin-top:4px;">{actual_residence or '—'}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="color:#94A3B8; font-size:0.85rem;">درجة الثقة</div>
+                    <div style="font-size:2rem; font-weight:900; color:{conf_color};">{residence_confidence}%</div>
+                    <div style="font-size:0.85rem; color:{conf_color};">{conf_label}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="color:#94A3B8; font-size:0.85rem;">النوع</div>
+                    <div style="font-size:1.1rem; font-weight:700; margin-top:4px;">{type_display}</div>
+                </div>
+            </div>
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(245,158,11,0.2);">
+                <div style="color:#CBD5E1;"><strong style="color:#F59E0B;">📊 الفيديوهات المُحلَّلة:</strong> {videos_analyzed}</div>
+                <div style="margin-top:8px; color:#CBD5E1;"><strong style="color:#F59E0B;">🗺️ توزيع المناطق:</strong></div>
+                <div style="margin-top:6px;">{dist_html or '<span style=\"color:#94A3B8;\">—</span>'}</div>
+                {prev_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 🛡️ بطاقة التحفّظ الشفّاف - ✅ Fix3.1
+        st.markdown(f"""
+        <div dir="rtl" style="
+            background:#F1F5F9; padding:16px; border-radius:10px;
+            border-right:4px solid #F59E0B; margin-top:12px; color:#0F172A;
+            font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+        ">
+            <h4 style="margin:0 0 8px 0; color:#0F172A;">🛡️ تحفّظ شفّاف على دقّة الإقامة</h4>
+            <p style="margin:0; line-height:1.8; font-size:0.95rem;">
+                موقع الإقامة المُستنتَج يعتمد على آخر <strong>{videos_analyzed} مقاطع منشورة</strong> + التسلسل الزمني عبر TikWM.
+                إذا توقّف صاحب الحساب عن النشر، أو نشر من بلد سفر مؤقّت، أو حذف مقاطع، قد لا يعكس الموقع الحقيقي للإقامة الراهنة.
+                نلتزم بعدم استخدام IP أو منصّات خارجية حفاظاً على الخصوصية وميثاق المشروع.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 🗺️ ✅ v2.1.7-Light-Fix3.2-Map - خريطة الدول التفاعلية
+    if region_distribution:
+        try:
+            from streamlit_folium import st_folium
+            _map = render_country_choropleth(region_distribution, actual_residence)
+            if _map is not None:
+                st.markdown("""
+                <div dir="rtl" style="
+                    background:#0F172A; padding:14px 18px; border-radius:12px 12px 0 0;
+                    border-right:4px solid #F59E0B; margin-top:18px; color:#F1F5F9;
+                    font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+                ">
+                    <h3 style="color:#F59E0B; margin:0 0 6px 0; font-weight:900;">🗺️ خريطة مناطق الفيديوهات</h3>
+                    <p style="margin:0; color:#CBD5E1; font-size:0.9rem;">
+                        تظليل الدول المُستخرجة من آخر {n} مقاطع — مستوى الدولة فقط، لا مدن ولا إحداثيات دقيقة.
+                    </p>
+                </div>
+                """.format(n=videos_analyzed or len(region_distribution)), unsafe_allow_html=True)
+
+                st_folium(_map, height=400, width=None, returned_objects=[])
+
+                # 🛡️ تحفّظ خاص بالخريطة - Fix3.2
+                st.markdown("""
+                <div dir="rtl" style="
+                    background:#F1F5F9; padding:14px 16px; border-radius:0 0 10px 10px;
+                    border-right:4px solid #F59E0B; margin-top:-4px; color:#0F172A;
+                    font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+                ">
+                    <strong>🛡️ تنبيه:</strong> الخريطة تعرض <strong>دول الفيديوهات</strong>، وليست بالضرورة <strong>دولة الإقامة الحالية</strong>.
+                    لا تستخدم IP ولا Geocoding خارجي — مصدر البيانات: TikWM حصراً ضمن الميثاق.
+                </div>
+                """, unsafe_allow_html=True)
+        except Exception as _map_err:
+            st.markdown(f"""
+            <div dir="rtl" style="
+                background:#FEF3C7; padding:12px; border-radius:8px; color:#0F172A;
+                border-right:4px solid #F59E0B;
+                font-family:'Noto Sans Arabic','Tajawal',sans-serif;
+            ">
+                ℹ️ الخريطة غير متاحة حالياً (تحقّق من حزمة folium في requirements.txt).
+            </div>
+            """, unsafe_allow_html=True)
 
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
