@@ -1794,6 +1794,10 @@ def display_single_result(result):
                 items.append(f'<span style="background:#1E3A8A;color:#F1F5F9;padding:4px 10px;border-radius:8px;margin-left:6px;display:inline-block;margin-bottom:4px;">{ctry_ar} ({ctry}): {cnt} ({pct}%)</span>')
             dist_html = ''.join(items)
 
+        # ✅ Fix-fstring: تحضير fallback آمن خارج f-string
+        _empty_dist_span = '<span style="color:#94A3B8;">—</span>'
+        dist_html_safe = dist_html if dist_html else _empty_dist_span
+
         # سابقة الإقامة
         prev_html = ''
         if previous_residence:
@@ -1828,7 +1832,7 @@ def display_single_result(result):
             <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(245,158,11,0.2);">
                 <div style="color:#CBD5E1;"><strong style="color:#F59E0B;">📊 الفيديوهات المُحلَّلة:</strong> {videos_analyzed}</div>
                 <div style="margin-top:8px; color:#CBD5E1;"><strong style="color:#F59E0B;">🗺️ توزيع المناطق:</strong></div>
-                <div style="margin-top:6px;">{dist_html or '<span style=\"color:#94A3B8;\">—</span>'}</div>
+                <div style="margin-top:6px;">{dist_html_safe}</div>
                 {prev_html}
             </div>
         </div>
