@@ -29,21 +29,21 @@ class TestSourceCodeIntegrity:
     """اختبارات على مستوى مصدر الكود"""
 
     def test_detect_residence_function_exists(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         assert 'def detect_actual_residence' in code, "دالة detect_actual_residence مفقودة"
 
     def test_infer_timezone_function_exists(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         assert 'def _infer_timezone_from_hours' in code, "دالة _infer_timezone_from_hours مفقودة"
 
     def test_fetch_user_region_exists(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         assert 'def fetch_user_region_tikwm' in code, "دالة fetch_user_region_tikwm مفقودة"
 
     def test_globe_function_exists(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         assert 'def render_country_globe_3d' in code, "دالة render_country_globe_3d مفقودة"
