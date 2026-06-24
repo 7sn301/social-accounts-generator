@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # الإصلاح المهمّ: || true يمنع فشل البناء إن وُجد المجلّد
-RUN mkdir -p /app/data || true
+RUN mkdir -p /app/data 
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
