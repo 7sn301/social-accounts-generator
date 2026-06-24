@@ -2,7 +2,6 @@
 # BSR-V217L-REQUIREMENTS-AHMAD-20260613
 # اعتماديات بوت بصير
 # ═══════════════════════════════════════════════════════════
-
 python-telegram-bot>=21.0
 python-dotenv>=1.0.0
 streamlit>=1.30.0
