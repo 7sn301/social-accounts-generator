@@ -23,7 +23,6 @@ COPY . .
 
 # إنشاء مجلّد data بأمان (لا يفشل إن وُجد)
 RUN mkdir -p /app/data || true
-
 # متغيّرات البيئة
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
