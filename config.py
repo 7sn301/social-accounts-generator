@@ -5,7 +5,7 @@
 import os
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "TEST_TOKEN")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "BaseerBot")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "Baseer_Lookup_Bot")
 TIMEZONE = "Asia/Riyadh"
 MODE = "production"
 
