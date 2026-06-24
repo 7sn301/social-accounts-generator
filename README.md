@@ -1,5 +1,5 @@
+[![Telegram Bot](https://img.shields.io/badge/Telegram-@Baseer__Lookup__Bot-0088cc?logo=telegram)](https://t.me/Baseer_Lookup_Bot)
 <div dir="rtl">
-
 # 🤖 بوت بصير (Baseer Bot) — Telegram
 
 [![🧪 Baseer Test Suite](https://github.com/7sn301/social-accounts-generator/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/7sn301/social-accounts-generator/actions)
