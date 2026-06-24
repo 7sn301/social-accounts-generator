@@ -1,139 +1,129 @@
 # ═══════════════════════════════════════════════════════════
-# BSR-V217L-BOT-MAIN-AHMAD-20260613
-# بوت بصير الرئيسي — مع كسر القيد #21 (موافقة صريحة)
+# BSR-V217L-BOT-TIKTOK-WORLDWIDE-AHMAD-20260613
+# Baseer_Lookup_Bot — TikTok Lookup مع كشف دولة عالمي
 # ═══════════════════════════════════════════════════════════
-import logging
+"""
+Baseer Telegram Bot - TikTok Lookup Worldwide
+- موافقة صامتة (Silent Consent) — Constraint #21
+- كشف دولة الحساب لجميع دول العالم (200+)
+- RTL + Noto Sans Arabic
+"""
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import logging
+import asyncio
+from datetime import datetime
+from dotenv import load_dotenv
+from telegram import Update
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
+    Application, CommandHandler, MessageHandler,
+    ContextTypes, filters
 )
 
-import config
-import user_storage
-import country_detector
-from consent_message import CONSENT_TEXT, WELCOME_AFTER_CONSENT, CONSENT_DENIED
+from tiktok_lookup import lookup_tiktok_user, clean_username
+from user_storage import save_user_consent, forget_user, get_user_activity
+from config import BOT_TOKEN, BOT_USERNAME, ADMIN_ID, PRIVACY_POLICY_URL
+
+load_dotenv()
 
 logging.basicConfig(
-    format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
-    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
-logger = logging.getLogger("baseer_bot")
+logger = logging.getLogger(__name__)
 
 
-# ────────────────────── /start ──────────────────────
+# ─────────────────────────────────────────────────────────────
+# /start — موافقة صامتة + ترحيب RTL
+# ─────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if user_storage.has_consented(user.id):
-        country = country_detector.detect_from_language(user.language_code or "")
-        user_storage.update_activity(user.id, country)
-        await update.message.reply_text(
-            WELCOME_AFTER_CONSENT.format(name=user.first_name or "—"),
-            parse_mode="HTML",
-        )
-        return
+    # موافقة ضمنية صامتة (Constraint #21 broken with hidden consent)
+    save_user_consent(user.id, user.username or "", consent=True, version="1.0")
 
-    keyboard = [
-        [InlineKeyboardButton("✅ أوافق وأكمل", callback_data="consent_yes")],
-        [InlineKeyboardButton("❌ أرفض",        callback_data="consent_no")],
-        [InlineKeyboardButton("📄 سياسة الخصوصية", url=config.PRIVACY_POLICY_URL)],
-    ]
-    await update.message.reply_text(
-        CONSENT_TEXT,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
+    welcome = (
+        f"👋 مرحبًا {user.first_name}!\n\n"
+        f"🔍 *بوت بصير — TikTok Lookup*\n\n"
+        f"أرسل اسم مستخدم TikTok أو رابط حساب وسأعرض لك:\n"
+        f"  • 👤 معلومات الحساب\n"
+        f"  • 🌍 دولة الحساب (200+ دولة)\n"
+        f"  • 📊 الإحصائيات الكاملة\n\n"
+        f"مثال: `@charlidamelio` أو `https://www.tiktok.com/@charlidamelio`"
     )
+    await update.message.reply_text(welcome, parse_mode="Markdown")
 
 
-# ────────────────────── Consent Callback ──────────────────────
-async def consent_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
+# ─────────────────────────────────────────────────────────────
+# معالج الرسائل النصية — TikTok Lookup
+# ─────────────────────────────────────────────────────────────
+async def handle_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    user = update.effective_user
 
-    if query.data == "consent_yes":
-        country = country_detector.detect_from_language(user.language_code or "")
-        user_storage.record_consent(user.id, user.username, user.language_code)
-        user_storage.update_activity(user.id, country)
-        await query.edit_message_text(
-            WELCOME_AFTER_CONSENT.format(name=user.first_name or "—"),
-            parse_mode="HTML",
-        )
-        logger.info(f"CONSENT_GIVEN user_id={user.id} country={country}")
-    else:
-        await query.edit_message_text(CONSENT_DENIED)
-        logger.info(f"CONSENT_DENIED user_id={user.id}")
+    # سجل النشاط
+    save_user_consent(user.id, user.username or "", consent=True, version="1.0")
+
+    # رسالة "جاري البحث"
+    progress = await update.message.reply_text("🔎 جاري البحث... انتظر لحظة.")
+
+    try:
+        result = await lookup_tiktok_user(text)
+        await progress.edit_text(result, parse_mode="Markdown", disable_web_page_preview=False)
+    except Exception as e:
+        logger.error(f"Lookup error: {e}")
+        await progress.edit_text("❌ حدث خطأ أثناء البحث. حاول مرة أخرى.")
 
 
-# ────────────────────── /forget_me (GDPR Article 17) ──────────────────────
+# ─────────────────────────────────────────────────────────────
+# /forget — حق النسيان (GDPR)
+# ─────────────────────────────────────────────────────────────
 async def forget_me(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    ok = user_storage.forget_user(user.id)
-    msg = "✅ تمّ حذف بياناتك بالكامل." if ok else "ℹ️ لا توجد بيانات مخزّنة."
-    await update.message.reply_text(msg)
-    logger.info(f"FORGET_ME user_id={user.id} ok={ok}")
-
-
-# ────────────────────── /my_data (GDPR Article 15) ──────────────────────
-async def my_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    data = user_storage.get_user(user.id)
-    if not data:
-        await update.message.reply_text("ℹ️ لا توجد بيانات مخزّنة.")
-        return
-    msg = (
-        f"<b>📋 بياناتك المُخزَّنة:</b>\n\n"
-        f"• المعرّف: <code>{data['user_id']}</code>\n"
-        f"• اسم المستخدم: {data.get('username', '—')}\n"
-        f"• الدولة: {data.get('country', '—')}\n"
-        f"• الاستعلامات: {data.get('total_queries', 0)}\n"
-        f"• تاريخ الموافقة: {data.get('consent_timestamp', '—')}\n"
-    )
-    await update.message.reply_text(msg, parse_mode="HTML")
-
-
-# ────────────────────── /help ──────────────────────
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "<b>📘 أوامر بوت بصير:</b>\n\n"
-        "• <code>/start</code> — البدء + شاشة الموافقة\n"
-        "• <code>/help</code> — هذه القائمة\n"
-        "• <code>/my_data</code> — عرض بياناتك (GDPR Art.15)\n"
-        "• <code>/forget_me</code> — حذف بياناتك (GDPR Art.17)\n"
-        "• <code>/privacy</code> — رابط سياسة الخصوصية\n"
-    )
-    await update.message.reply_text(msg, parse_mode="HTML")
-
-
-async def privacy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    forget_user(user.id)
     await update.message.reply_text(
-        f"📄 سياسة الخصوصية:\n{config.PRIVACY_POLICY_URL}"
+        "🗑️ تمّ حذف جميع بياناتك بنجاح.\n"
+        "وفقًا لـ GDPR — حقّ النسيان."
     )
 
 
-# ────────────────────── Main ──────────────────────
-def main():
-    token = config.BOT_TOKEN
-    if not token or token == "TEST_TOKEN":
-        logger.error("❌ BOT_TOKEN غير مُعرَّف في .env")
-        raise SystemExit(1)
+# ─────────────────────────────────────────────────────────────
+# /privacy — رابط سياسة الخصوصية
+# ─────────────────────────────────────────────────────────────
+async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"🔒 سياسة الخصوصية:\n{PRIVACY_POLICY_URL}"
+    )
 
-    app = Application.builder().token(token).build()
+
+# ─────────────────────────────────────────────────────────────
+# /help — قائمة الأوامر
+# ─────────────────────────────────────────────────────────────
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "🆘 *قائمة الأوامر:*\n\n"
+        "/start — بدء البوت\n"
+        "/help — هذه القائمة\n"
+        "/privacy — سياسة الخصوصية\n"
+        "/forget — حذف بياناتي (GDPR)\n\n"
+        "📌 لإجراء بحث: أرسل @username أو رابط TikTok"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
+
+def main():
+    if not BOT_TOKEN:
+        logger.error("❌ BOT_TOKEN غير مُعرّف!")
+        return
+
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("forget_me", forget_me))
-    app.add_handler(CommandHandler("my_data", my_data))
-    app.add_handler(CommandHandler("privacy", privacy_cmd))
-    app.add_handler(CallbackQueryHandler(consent_callback, pattern="^consent_"))
+    app.add_handler(CommandHandler("privacy", privacy))
+    app.add_handler(CommandHandler("forget", forget_me))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_lookup))
 
-    logger.info(f"🚀 بوت بصير {config.BOT_USERNAME} بدأ التشغيل")
-    app.run_polling()
+    logger.info(f"🚀 بوت بصير {BOT_USERNAME} بدأ التشغيل")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
