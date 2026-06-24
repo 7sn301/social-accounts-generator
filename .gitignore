@@ -1,0 +1,37 @@
+# ═══════════════════════════════════════════════════════════
+# BSR-V217L-GITIGNORE-AHMAD-20260613
+# ═══════════════════════════════════════════════════════════
+
+# 🔒 أسرار — لا ترفع أبدًا
+.env
+.env.local
+.env.production
+
+# 📊 بيانات المستخدمين (PII)
+data/users.json
+data/stats.json
+data/consent_log.jsonl
+
+# 🐍 Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 💻 محرّرات
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 🗂️ نظام التشغيل
+.DS_Store
+Thumbs.db
+
+# 📝 سجلّات
+*.log
+logs/
