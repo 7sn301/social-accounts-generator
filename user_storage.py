@@ -1,38 +1,85 @@
 # ═══════════════════════════════════════════════════════════
-# BSR-V217L-USER-STORAGE-RAW-PII-AHMAD-20260613
-# تخزين user_id الخام مع consent (كسر القيد #21)
+# BSR-V217L-USER-STORAGE-STREAMLIT-CLOUD-FIX-AHMAD-20260613
+# تخزين user_id الخام مع consent + معالجة FileExistsError
 # ═══════════════════════════════════════════════════════════
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 import config
 
-DATA_DIR = Path("./data")
+
+def _get_data_dir() -> Path:
+    """تحديد مجلّد البيانات حسب البيئة (Streamlit Cloud آمن)."""
+    # محاولة 1: المسار الافتراضيّ
+    primary = Path("./data")
+    try:
+        primary.mkdir(parents=True, exist_ok=True)
+        # اختبار الكتابة
+        test_file = primary / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return primary
+    except (FileExistsError, PermissionError, OSError):
+        pass
+
+    # محاولة 2: tmp folder
+    fallback = Path(tempfile.gettempdir()) / "baseer_data"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+DATA_DIR = _get_data_dir()
 USERS_FILE = DATA_DIR / "users.json"
-CONSENT_LOG = Path(config.CONSENT_LOG_FILE)
+CONSENT_LOG = DATA_DIR / "consent_log.jsonl"
 
 
 def _ensure_files():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    """ضمان وجود الملفّات بأمان (idempotent)."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        pass
+
     if not USERS_FILE.exists():
-        USERS_FILE.write_text(json.dumps({"users": {}}, ensure_ascii=False, indent=2))
+        try:
+            USERS_FILE.write_text(
+                json.dumps({"users": {}}, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+        except (FileExistsError, PermissionError):
+            pass
+
     if not CONSENT_LOG.exists():
-        CONSENT_LOG.parent.mkdir(parents=True, exist_ok=True)
-        CONSENT_LOG.touch()
+        try:
+            CONSENT_LOG.touch(exist_ok=True)
+        except (FileExistsError, PermissionError):
+            pass
 
 
 def _load() -> Dict[str, Any]:
     _ensure_files()
-    return json.loads(USERS_FILE.read_text(encoding="utf-8"))
+    try:
+        return json.loads(USERS_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"users": {}}
 
 
 def _save(data: Dict[str, Any]):
-    USERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        USERS_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+    except (PermissionError, OSError):
+        pass
 
 
-def record_consent(user_id: int, username: Optional[str], language_code: Optional[str]) -> bool:
+def record_consent(user_id: int, username: Optional[str],
+                   language_code: Optional[str]) -> bool:
     _ensure_files()
     data = _load()
     uid = str(user_id)
@@ -52,13 +99,16 @@ def record_consent(user_id: int, username: Optional[str], language_code: Optiona
     }
     _save(data)
 
-    with open(CONSENT_LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "user_id": user_id,
-            "action": "CONSENT_GIVEN",
-            "version": config.CONSENT_VERSION,
-            "timestamp": now
-        }, ensure_ascii=False) + "\n")
+    try:
+        with open(CONSENT_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "user_id": user_id,
+                "action": "CONSENT_GIVEN",
+                "version": config.CONSENT_VERSION,
+                "timestamp": now
+            }, ensure_ascii=False) + "\n")
+    except (PermissionError, OSError):
+        pass
     return True
 
 
@@ -88,12 +138,15 @@ def forget_user(user_id: int) -> bool:
         return False
     del data["users"][uid]
     _save(data)
-    with open(CONSENT_LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "user_id": user_id,
-            "action": "DATA_ERASED",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }, ensure_ascii=False) + "\n")
+    try:
+        with open(CONSENT_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "user_id": user_id,
+                "action": "DATA_ERASED",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, ensure_ascii=False) + "\n")
+    except (PermissionError, OSError):
+        pass
     return True
 
 
