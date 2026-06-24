@@ -1,0 +1,22 @@
+# ═══════════════════════════════════════════════════════════
+# BSR-V217L-NIXPACKS-CONFIG-AHMAD-20260613
+# تكوين Nixpacks للنشر الآمن على Railway
+# يتجاوز أخطاء mise install عبر تثبيت Python مباشرة
+# ═══════════════════════════════════════════════════════════
+
+[phases.setup]
+nixPkgs = ['python311', 'gcc', 'pkg-config']
+
+[phases.install]
+cmds = [
+  'python -m pip install --upgrade pip',
+  'pip install -r requirements.txt'
+]
+
+[start]
+cmd = 'python bot.py'
+
+[variables]
+MISE_PYTHON_GITHUB_ATTESTATIONS = "false"
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
