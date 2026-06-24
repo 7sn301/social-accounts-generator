@@ -1274,8 +1274,6 @@ COUNTRY_AR = {
 # 🎨 CSS احترافي + Responsive
 # ═══════════════════════════════════════════════════════════════
 st.markdown("""
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-<meta name="theme-color" content="#0F172A">
 <style>
 /* ✅ Patch9: إخفاء input فارغة وعناصر تشخيصية مكشوفة + RTL على expander */
 div[data-baseweb="input"]:empty { display: none !important; }
