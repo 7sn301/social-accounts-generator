@@ -53,14 +53,14 @@ class TestPrivacyConstraints:
                 f"IP صريح في {proxy['url']}"
 
     def test_no_geocoding_libraries_in_imports(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         forbidden = ['import geopy', 'import geocoder', 'from geopy', 'from opencage']
         for f_imp in forbidden:
             assert f_imp not in code, f"استيراد محظور: {f_imp}"
 
     def test_no_tikapi_apify_imports(self):
-        with open('/home/user/baseer_v217l/app.py', 'r', encoding='utf-8') as f:
+        with open('app.py', 'r', encoding='utf-8') as f:
             code = f.read()
         assert 'tikapi' not in code.lower(), "tikapi مستخدَم"
         assert 'apify' not in code.lower(), "apify مستخدَم"
