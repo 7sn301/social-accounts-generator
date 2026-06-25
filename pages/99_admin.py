@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from admin_auth import authenticate, verify_session, revoke_session
+from admin_auth import authenticate, verify_session, logout as revoke_session
 from analytics_db import get_all_users, get_user_searches, get_stats
 
 # ─────────────────────────────────────────────────────────────
