@@ -1,11 +1,7 @@
-# ═══════════════════════════════════════════════════════════
-# BSR-V217L-REQUIREMENTS-AHMAD-20260613
-# اعتماديات بوت بصير
-# ═══════════════════════════════════════════════════════════
+streamlit>=1.30.0
 python-telegram-bot>=21.0
 python-dotenv>=1.0.0
-streamlit>=1.30.0
-plotly>=5.18.0
-pandas>=2.0.0
 httpx>=0.27.0
-bcrypt
+requests>=2.31.0
+pandas>=2.0.0
+bcrypt>=4.1.0
