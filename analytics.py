@@ -40,3 +40,8 @@ def total_consented_users() -> int:
 
 def total_queries() -> int:
     return sum(u.get("total_queries", 0) for u in user_storage.all_users().values())
+ADMIN_USERNAME = "your_admin_username"
+ADMIN_PASSWORD = "your_super_strong_password_24_chars"
+ADMIN_PASSWORD_SALT = "64_hex_random_chars"
+SESSION_SECRET = "32_byte_url_safe_token"
+ANALYTICS_DB_PATH = "./data/analytics.db"
