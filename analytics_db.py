@@ -1,7 +1,7 @@
 """
-analytics_db.py - Baseer v2.1.8.6
-SQLite Analytics Database - Complete with all required functions
-Compatible with pages/99_admin.py and bot.py
+analytics_db.py - Baseer v2.1.8.7
+SQLite Analytics Database - Backward compatible with bot.py
+Exports: log_user, log_search + record_user_start, record_search (aliases)
 """
 import os
 import sqlite3
@@ -73,7 +73,6 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_searches_country ON searches(target_country)")
 
 
-# Initialize on import
 try:
     init_db()
 except Exception as e:
@@ -142,7 +141,29 @@ def log_search(telegram_id, target_username, target_country=None,
 
 
 # ─────────────────────────────────────
-# Query Functions (used by 99_admin.py)
+# BACKWARD COMPATIBILITY ALIASES (for bot.py)
+# ─────────────────────────────────────
+def record_user_start(telegram_id, username=None, first_name=None, last_name=None,
+                     language_code=None, ip=None, country=None, city=None):
+    """Alias for log_user() - used by bot.py /start handler"""
+    return log_user(telegram_id, username, first_name, last_name,
+                   language_code, ip, country, city)
+
+
+def record_search(telegram_id, target_username, target_country=None,
+                 target_region=None, followers=0):
+    """Alias for log_search() - used by bot.py search handler"""
+    return log_search(telegram_id, target_username, target_country,
+                     target_region, followers)
+
+
+def record_user(telegram_id, username=None, **kwargs):
+    """Alternative alias for log_user()"""
+    return log_user(telegram_id, username=username, **kwargs)
+
+
+# ─────────────────────────────────────
+# Query Functions
 # ─────────────────────────────────────
 def get_all_users(limit=100, offset=0):
     """جلب قائمة المستخدمين مع دعم limit/offset"""
@@ -331,8 +352,14 @@ def get_searches_count():
 # ─────────────────────────────────────
 __all__ = [
     'init_db',
+    # Main names
     'log_user',
     'log_search',
+    # Aliases for bot.py backward compatibility
+    'record_user_start',
+    'record_search',
+    'record_user',
+    # Query functions
     'get_all_users',
     'get_user_searches',
     'get_all_searches',
