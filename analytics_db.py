@@ -1,82 +1,116 @@
 """
-analytics_db.py - Baseer v2.1.8.7
-SQLite Analytics Database - Backward compatible with bot.py
-Exports: log_user, log_search + record_user_start, record_search (aliases)
+analytics_db.py - Baseer v2.1.9
+PostgreSQL/Supabase Cloud Database
+Backward compatible with bot.py and 99_admin.py
 """
 import os
-import sqlite3
-from pathlib import Path
+import logging
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-
-# ─────────────────────────────────────
-# Safe DB Path Handling
-# ─────────────────────────────────────
-DEFAULT_DB = Path(__file__).parent / "data" / "analytics.db"
-DB_PATH = Path(os.getenv("ANALYTICS_DB_PATH", str(DEFAULT_DB)))
-
 try:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-except (FileExistsError, PermissionError, OSError):
-    DB_PATH = Path("/tmp/analytics.db")
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    from psycopg2 import pool
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+    print("⚠️ psycopg2 not installed. Run: pip install psycopg2-binary")
 
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────
-# Database Connection
+# Supabase PostgreSQL Configuration
 # ─────────────────────────────────────
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+if not DATABASE_URL:
+    logger.warning("⚠️ DATABASE_URL not set. Falling back to SQLite for local dev.")
+
+# Connection pool (lazy init)
+_pool = None
+
+
+def get_pool():
+    """Lazy-initialize connection pool"""
+    global _pool
+    if _pool is None and DATABASE_URL and POSTGRES_AVAILABLE:
+        try:
+            _pool = psycopg2.pool.SimpleConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=DATABASE_URL,
+                cursor_factory=RealDictCursor
+            )
+            logger.info("✅ PostgreSQL connection pool initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to init pool: {e}")
+    return _pool
+
+
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
+    """Context manager for DB connections"""
+    pool = get_pool()
+    if not pool:
+        raise RuntimeError("Database pool not available - check DATABASE_URL")
+    conn = pool.getconn()
     try:
         yield conn
         conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"DB error: {e}")
+        raise
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 def init_db():
-    """تهيئة جداول قاعدة البيانات"""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                telegram_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                language_code TEXT,
-                ip_address TEXT,
-                country TEXT,
-                city TEXT,
-                first_seen TEXT,
-                last_seen TEXT,
-                total_searches INTEGER DEFAULT 0
-            )
-        """)
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS searches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER,
-                target_username TEXT,
-                target_country TEXT,
-                target_region TEXT,
-                followers INTEGER DEFAULT 0,
-                timestamp TEXT,
-                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
-            )
-        """)
-        c.execute("CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen DESC)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_searches_tid ON searches(telegram_id, timestamp DESC)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_searches_country ON searches(target_country)")
+    """Initialize tables (idempotent)"""
+    if not POSTGRES_AVAILABLE or not DATABASE_URL:
+        return
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    language_code TEXT,
+                    ip_address TEXT,
+                    country TEXT,
+                    city TEXT,
+                    first_seen TIMESTAMP DEFAULT NOW(),
+                    last_seen TIMESTAMP DEFAULT NOW(),
+                    total_searches INTEGER DEFAULT 0
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS searches (
+                    id SERIAL PRIMARY KEY,
+                    telegram_id BIGINT,
+                    target_username TEXT,
+                    target_country TEXT,
+                    target_region TEXT,
+                    followers INTEGER DEFAULT 0,
+                    timestamp TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen DESC)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_searches_tid ON searches(telegram_id, timestamp DESC)")
+            logger.info("✅ DB tables initialized")
+    except Exception as e:
+        logger.error(f"init_db error: {e}")
 
 
+# Try init on import
 try:
     init_db()
 except Exception as e:
-    print(f"Analytics DB init warning: {e}")
+    logger.warning(f"DB init deferred: {e}")
 
 
 # ─────────────────────────────────────
@@ -84,81 +118,70 @@ except Exception as e:
 # ─────────────────────────────────────
 def log_user(telegram_id, username=None, first_name=None, last_name=None,
              language_code=None, ip=None, country=None, city=None):
-    """تسجيل أو تحديث بيانات مستخدم"""
-    now = datetime.utcnow().isoformat()
+    """Insert or update user"""
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute("SELECT telegram_id FROM users WHERE telegram_id=?", (telegram_id,))
-            exists = c.fetchone()
-            if exists:
-                c.execute("""
-                    UPDATE users SET
-                        username=COALESCE(?, username),
-                        first_name=COALESCE(?, first_name),
-                        last_name=COALESCE(?, last_name),
-                        language_code=COALESCE(?, language_code),
-                        ip_address=COALESCE(?, ip_address),
-                        country=COALESCE(?, country),
-                        city=COALESCE(?, city),
-                        last_seen=?
-                    WHERE telegram_id=?
-                """, (username, first_name, last_name, language_code,
-                      ip, country, city, now, telegram_id))
-            else:
-                c.execute("""
-                    INSERT INTO users
-                    (telegram_id, username, first_name, last_name, language_code,
-                     ip_address, country, city, first_seen, last_seen, total_searches)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                """, (telegram_id, username, first_name, last_name, language_code,
-                      ip, country, city, now, now))
+            c.execute("""
+                INSERT INTO users
+                (telegram_id, username, first_name, last_name, language_code,
+                 ip_address, country, city, first_seen, last_seen, total_searches)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), 0)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    username = COALESCE(EXCLUDED.username, users.username),
+                    first_name = COALESCE(EXCLUDED.first_name, users.first_name),
+                    last_name = COALESCE(EXCLUDED.last_name, users.last_name),
+                    language_code = COALESCE(EXCLUDED.language_code, users.language_code),
+                    ip_address = COALESCE(EXCLUDED.ip_address, users.ip_address),
+                    country = COALESCE(EXCLUDED.country, users.country),
+                    city = COALESCE(EXCLUDED.city, users.city),
+                    last_seen = NOW()
+            """, (telegram_id, username, first_name, last_name,
+                  language_code, ip, country, city))
+            logger.info(f"📊 logged user {telegram_id}")
     except Exception as e:
-        print(f"log_user error: {e}")
+        logger.error(f"log_user error: {e}")
 
 
-# ─────────────────────────────────────
-# Search Logging
-# ─────────────────────────────────────
 def log_search(telegram_id, target_username, target_country=None,
                target_region=None, followers=0):
-    """تسجيل عملية بحث"""
-    now = datetime.utcnow().isoformat()
+    """Log a search"""
     try:
         with get_db() as conn:
             c = conn.cursor()
             c.execute("""
                 INSERT INTO searches
                 (telegram_id, target_username, target_country, target_region, followers, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (telegram_id, target_username, target_country, target_region, followers, now))
+                VALUES (%s, %s, %s, %s, %s, NOW())
+            """, (telegram_id, target_username, target_country, target_region, followers))
             c.execute("""
-                UPDATE users SET total_searches = total_searches + 1, last_seen=?
-                WHERE telegram_id=?
-            """, (now, telegram_id))
+                UPDATE users SET total_searches = total_searches + 1, last_seen = NOW()
+                WHERE telegram_id = %s
+            """, (telegram_id,))
+            logger.info(f"📊 logged search by {telegram_id} → @{target_username}")
     except Exception as e:
-        print(f"log_search error: {e}")
+        logger.error(f"log_search error: {e}")
 
 
 # ─────────────────────────────────────
-# BACKWARD COMPATIBILITY ALIASES (for bot.py)
+# Backward Compatibility Aliases (for bot.py)
 # ─────────────────────────────────────
 def record_user_start(telegram_id, username=None, first_name=None, last_name=None,
-                     language_code=None, ip=None, country=None, city=None):
-    """Alias for log_user() - used by bot.py /start handler"""
+                     language_code=None, ip=None, country=None, city=None, **kwargs):
+    """Alias for log_user() - tolerates extra kwargs"""
     return log_user(telegram_id, username, first_name, last_name,
                    language_code, ip, country, city)
 
 
-def record_search(telegram_id, target_username, target_country=None,
-                 target_region=None, followers=0):
-    """Alias for log_search() - used by bot.py search handler"""
+def record_search(telegram_id, target_username=None, target_country=None,
+                 target_region=None, followers=0, **kwargs):
+    """Alias for log_search() - tolerates extra kwargs"""
     return log_search(telegram_id, target_username, target_country,
                      target_region, followers)
 
 
 def record_user(telegram_id, username=None, **kwargs):
-    """Alternative alias for log_user()"""
+    """Alternative alias"""
     return log_user(telegram_id, username=username, **kwargs)
 
 
@@ -166,56 +189,57 @@ def record_user(telegram_id, username=None, **kwargs):
 # Query Functions
 # ─────────────────────────────────────
 def get_all_users(limit=100, offset=0):
-    """جلب قائمة المستخدمين مع دعم limit/offset"""
+    """Get all users with pagination"""
     try:
         with get_db() as conn:
             c = conn.cursor()
             c.execute("""
                 SELECT * FROM users
                 ORDER BY last_seen DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             """, (limit, offset))
             return [dict(row) for row in c.fetchall()]
     except Exception as e:
-        print(f"get_all_users error: {e}")
+        logger.error(f"get_all_users error: {e}")
         return []
 
 
 def get_user_searches(telegram_id=None, limit=50, offset=0):
-    """جلب سجلات البحث - لمستخدم محدد أو الكل"""
+    """Get searches (filtered by user or all)"""
     try:
         with get_db() as conn:
             c = conn.cursor()
             if telegram_id:
                 c.execute("""
-                    SELECT s.*, u.username as searcher_username, u.first_name as searcher_first_name
+                    SELECT s.*, u.username as searcher_username,
+                           u.first_name as searcher_first_name
                     FROM searches s
                     LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                    WHERE s.telegram_id=?
+                    WHERE s.telegram_id = %s
                     ORDER BY s.timestamp DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """, (telegram_id, limit, offset))
             else:
                 c.execute("""
-                    SELECT s.*, u.username as searcher_username, u.first_name as searcher_first_name
+                    SELECT s.*, u.username as searcher_username,
+                           u.first_name as searcher_first_name
                     FROM searches s
                     LEFT JOIN users u ON s.telegram_id = u.telegram_id
                     ORDER BY s.timestamp DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """, (limit, offset))
             return [dict(row) for row in c.fetchall()]
     except Exception as e:
-        print(f"get_user_searches error: {e}")
+        logger.error(f"get_user_searches error: {e}")
         return []
 
 
 def get_all_searches(limit=100, offset=0):
-    """جلب جميع عمليات البحث"""
     return get_user_searches(telegram_id=None, limit=limit, offset=offset)
 
 
 def get_stats():
-    """الإحصائيات العامة للوحة الإدارة"""
+    """Comprehensive stats"""
     try:
         with get_db() as conn:
             c = conn.cursor()
@@ -236,8 +260,7 @@ def get_stats():
                 SELECT target_country, COUNT(*) as count FROM searches
                 WHERE target_country IS NOT NULL AND target_country != ''
                 GROUP BY target_country
-                ORDER BY count DESC
-                LIMIT 10
+                ORDER BY count DESC LIMIT 10
             """)
             top_countries = [dict(row) for row in c.fetchall()]
 
@@ -245,17 +268,20 @@ def get_stats():
                 SELECT target_username, COUNT(*) as count FROM searches
                 WHERE target_username IS NOT NULL
                 GROUP BY target_username
-                ORDER BY count DESC
-                LIMIT 10
+                ORDER BY count DESC LIMIT 10
             """)
             top_targets = [dict(row) for row in c.fetchall()]
 
-            today = datetime.utcnow().date().isoformat()
-            c.execute("SELECT COUNT(*) as total FROM searches WHERE timestamp >= ?", (today,))
+            c.execute("""
+                SELECT COUNT(*) as total FROM searches
+                WHERE timestamp >= CURRENT_DATE
+            """)
             today_searches = c.fetchone()["total"]
 
-            week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
-            c.execute("SELECT COUNT(DISTINCT telegram_id) as total FROM users WHERE last_seen >= ?", (week_ago,))
+            c.execute("""
+                SELECT COUNT(DISTINCT telegram_id) as total FROM users
+                WHERE last_seen >= NOW() - INTERVAL '7 days'
+            """)
             active_week = c.fetchone()["total"]
 
             return {
@@ -268,65 +294,56 @@ def get_stats():
                 "active_week": active_week,
             }
     except Exception as e:
-        print(f"get_stats error: {e}")
+        logger.error(f"get_stats error: {e}")
         return {
-            "total_users": 0,
-            "total_searches": 0,
-            "total_countries": 0,
-            "top_countries": [],
-            "top_targets": [],
-            "today_searches": 0,
-            "active_week": 0,
+            "total_users": 0, "total_searches": 0, "total_countries": 0,
+            "top_countries": [], "top_targets": [],
+            "today_searches": 0, "active_week": 0,
         }
 
 
 def get_user_by_id(telegram_id):
-    """جلب بيانات مستخدم محدد"""
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
+            c.execute("SELECT * FROM users WHERE telegram_id = %s", (telegram_id,))
             row = c.fetchone()
             return dict(row) if row else None
     except Exception as e:
-        print(f"get_user_by_id error: {e}")
+        logger.error(f"get_user_by_id error: {e}")
         return None
 
 
 def search_users(query, limit=50):
-    """بحث في المستخدمين"""
     try:
         with get_db() as conn:
             c = conn.cursor()
             q = f"%{query}%"
             c.execute("""
                 SELECT * FROM users
-                WHERE username LIKE ? OR first_name LIKE ?
-                   OR last_name LIKE ? OR country LIKE ?
-                ORDER BY last_seen DESC
-                LIMIT ?
+                WHERE username ILIKE %s OR first_name ILIKE %s
+                   OR last_name ILIKE %s OR country ILIKE %s
+                ORDER BY last_seen DESC LIMIT %s
             """, (q, q, q, q, limit))
             return [dict(row) for row in c.fetchall()]
     except Exception as e:
-        print(f"search_users error: {e}")
+        logger.error(f"search_users error: {e}")
         return []
 
 
 def delete_user(telegram_id):
-    """حذف مستخدم وسجلاته (GDPR)"""
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute("DELETE FROM searches WHERE telegram_id=?", (telegram_id,))
-            c.execute("DELETE FROM users WHERE telegram_id=?", (telegram_id,))
+            c.execute("DELETE FROM searches WHERE telegram_id = %s", (telegram_id,))
+            c.execute("DELETE FROM users WHERE telegram_id = %s", (telegram_id,))
             return True
     except Exception as e:
-        print(f"delete_user error: {e}")
+        logger.error(f"delete_user error: {e}")
         return False
 
 
 def get_users_count():
-    """عدد المستخدمين فقط"""
     try:
         with get_db() as conn:
             c = conn.cursor()
@@ -337,7 +354,6 @@ def get_users_count():
 
 
 def get_searches_count():
-    """عدد عمليات البحث فقط"""
     try:
         with get_db() as conn:
             c = conn.cursor()
@@ -347,27 +363,12 @@ def get_searches_count():
         return 0
 
 
-# ─────────────────────────────────────
-# Explicit Exports
-# ─────────────────────────────────────
 __all__ = [
     'init_db',
-    # Main names
-    'log_user',
-    'log_search',
-    # Aliases for bot.py backward compatibility
-    'record_user_start',
-    'record_search',
-    'record_user',
-    # Query functions
-    'get_all_users',
-    'get_user_searches',
-    'get_all_searches',
-    'get_stats',
-    'get_user_by_id',
-    'search_users',
-    'delete_user',
-    'get_users_count',
-    'get_searches_count',
-    'DB_PATH',
+    'log_user', 'log_search',
+    'record_user_start', 'record_search', 'record_user',
+    'get_all_users', 'get_user_searches', 'get_all_searches',
+    'get_stats', 'get_user_by_id', 'search_users', 'delete_user',
+    'get_users_count', 'get_searches_count',
+    'DATABASE_URL',
 ]
