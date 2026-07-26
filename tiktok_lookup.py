@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  BSR-V231-CTO-VPN-AWARE-DETECTION-AHMAD-20260726                 ║
-║  tiktok_lookup.py v2.3.1 - VPN-Aware Detection                   ║
+║  BSR-V232-CTO-MARKDOWN-DOCKERFILE-FIX-AHMAD-20260726             ║
+║  tiktok_lookup.py v2.3.2 - Markdown-Safe + Robust Fallback       ║
 ║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)             ║
 ╚══════════════════════════════════════════════════════════════════╝
 
@@ -567,12 +567,27 @@ async def lookup_tiktok(username: str) -> LookupResult:
 # ═══════════════════════════════════════════════════════════
 # 🎨 Markdown formatter (VPN-aware display)
 # ═══════════════════════════════════════════════════════════
+def _md_escape(text: str) -> str:
+    """Escape Telegram Markdown special chars: _, *, `, [ to prevent parse errors.
+    
+    Critical fix for v2.3.2: usernames like 'citizen_lawyerr' contain _ which
+    Telegram interprets as italic. Without escaping, Telegram returns
+    'Can't parse entities' error.
+    """
+    if not text:
+        return ""
+    s = str(text)
+    for ch in ('_', '*', '`', '['):
+        s = s.replace(ch, '\\' + ch)
+    return s
+
+
 def _format_markdown_for_bot(result: LookupResult) -> str:
     if not result.get("success"):
         err = result.get("error", "فشل جلب البيانات")
         layers = result.get("layers_tried", [])
         return (
-            f"❌ *فشل البحث*\n\n{err}\n"
+            f"❌ *فشل البحث*\n\n{_md_escape(err)}\n"
             f"📡 الطبقات: `{', '.join(layers) if layers else 'لا شيء'}`\n\n"
             f"💡 تأكد من اسم المستخدم وحاول مرة أخرى."
         )
@@ -580,8 +595,8 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
     stats = result.get("stats", {}) or {}
     geo = result.get("geo", {}) or {}
 
-    nickname = result.get("nickname", "") or ""
-    username = result.get("username", "") or ""
+    nickname = _md_escape(result.get("nickname", "") or "")
+    username = _md_escape(result.get("username", "") or "")
     verified_badge = " ✅" if result.get("verified") else ""
     private_badge = " 🔒" if result.get("private") else ""
 
@@ -591,7 +606,7 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
     videos = stats.get("videos", 0) or 0
 
     flag = geo.get("flag", "🏳️") or "🏳️"
-    country_ar = geo.get("country_ar", "غير محدد") or "غير محدد"
+    country_ar = _md_escape(geo.get("country_ar", "غير محدد") or "غير محدد")
     confidence = geo.get("confidence", 0) or 0
     tz = geo.get("timezone") or ""
     continent = geo.get("continent") or ""
@@ -643,13 +658,13 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
 
     reason = geo.get("primary_reason")
     if reason:
-        lines.append(f"ℹ️ _{reason}_")
+        lines.append(f"ℹ️ _{_md_escape(reason)}_")
 
     # 🚨 VPN detection alert
     if vpn_detected and vpn_country:
         vpn_info = get_country_info(vpn_country) if REGIONS_DB_AVAILABLE else None
         vpn_flag = vpn_info[2] if vpn_info else "🏳️"
-        vpn_name = vpn_info[0] if vpn_info else vpn_country
+        vpn_name = _md_escape(vpn_info[0] if vpn_info else vpn_country)
         lines.append("")
         lines.append(f"⚠️ *تحذير VPN:*")
         lines.append(f"   يبدو أن المستخدم يستخدم VPN من {vpn_flag} *{vpn_name}*")
@@ -718,10 +733,12 @@ async def lookup_tiktok_user(username: str) -> str:
         return _format_markdown_for_bot(result)
     except Exception as e:
         logger.error(f"[lookup_tiktok_user] {cleaned}: {e}", exc_info=True)
+        safe_err = _md_escape(str(e)[:200])
+        safe_user = _md_escape(cleaned)
         return (
             f"❌ *فشل البحث*\n\n"
-            f"حدث خطأ داخلي أثناء جلب بيانات @{cleaned}\n"
-            f"`{str(e)[:200]}`\n\n"
+            f"حدث خطأ داخلي أثناء جلب بيانات @{safe_user}\n"
+            f"`{safe_err}`\n\n"
             f"💡 حاول مرة أخرى بعد قليل."
         )
 
