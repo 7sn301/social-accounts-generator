@@ -27,75 +27,123 @@ sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
 
 # ═══════════════════════════════════════════════════════════
-# 🚀 v2.4.6 - RapidAPI Layer 0 Integration (BSR-V246-CTO)
+# 🚀 v2.4.7 - RapidAPI Layer 0 (SYNC + POSTS REGION)
+# BSR-V247-CTO-DUAL-FIX-FINAL-AHMAD-20260726
 # ═══════════════════════════════════════════════════════════
-try:
-    import asyncio as _asyncio_v246
-    from tiktok_lookup import lookup_tiktok as _rapidapi_lookup_v246
-    _RAPIDAPI_AVAILABLE_V246 = True
-except Exception as _e_v246:
-    _RAPIDAPI_AVAILABLE_V246 = False
+_RAPIDAPI_KEY_V247 = os.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
+_RAPIDAPI_HOST_V247 = os.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
 
 
-def _rapidapi_fetch_v246(username: str) -> dict:
-    """Layer 0: RapidAPI (tiktok-scraper7) — most reliable, gets country directly."""
-    if not _RAPIDAPI_AVAILABLE_V246:
-        return {'success': False, 'error': 'rapidapi_unavailable'}
+def _rapidapi_fetch_v247(username: str) -> dict:
+    """SYNC RapidAPI - gets region from /user/posts videos (VPN-aware)."""
+    if not _RAPIDAPI_KEY_V247:
+        return {'success': False, 'error': 'no_rapidapi_key'}
+    
+    headers = {
+        "X-RapidAPI-Key": _RAPIDAPI_KEY_V247,
+        "X-RapidAPI-Host": _RAPIDAPI_HOST_V247,
+    }
+    
     try:
-        # Run async function synchronously
+        # 1) Get user info
+        info_url = f"https://{_RAPIDAPI_HOST_V247}/user/info?unique_id={username}"
+        r = requests.get(info_url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return {'success': False, 'error': f'http_{r.status_code}'}
+        
+        j = r.json()
+        if j.get('code') != 0:
+            return {'success': False, 'error': f'api_code_{j.get("code")}'}
+        
+        data = j.get('data', {}) or {}
+        user = data.get('user', {}) or {}
+        stats = data.get('stats', {}) or {}
+        
+        # 2) Get posts to determine region from videos (30 videos)
+        posts_url = f"https://{_RAPIDAPI_HOST_V247}/user/posts?unique_id={username}&count=30&cursor=0"
+        region_distribution = {}
+        videos_count = 0
+        country_iso = ""
+        vpn_country = None
+        
         try:
-            loop = _asyncio_v246.get_event_loop()
-            if loop.is_running():
-                # If already in async context, use new loop
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(_asyncio_v246.run, _rapidapi_lookup_v246(username))
-                    result = future.result(timeout=15)
-            else:
-                result = loop.run_until_complete(_rapidapi_lookup_v246(username))
-        except RuntimeError:
-            result = _asyncio_v246.run(_rapidapi_lookup_v246(username))
-
-        if not result or not result.success:
-            return {'success': False, 'error': result.error if result else 'no_result'}
-
-        d = result.data or {}
-        # Build tikwm-compatible payload
+            r2 = requests.get(posts_url, headers=headers, timeout=15)
+            if r2.status_code == 200:
+                pj = r2.json()
+                if pj.get('code') == 0:
+                    videos = pj.get('data', {}).get('videos', []) or []
+                    videos_count = len(videos)
+                    for v in videos:
+                        rg = v.get('region', '') or ''
+                        if rg:
+                            region_distribution[rg] = region_distribution.get(rg, 0) + 1
+                    
+                    if region_distribution:
+                        # VPN-aware detection:
+                        # If we have Arabic countries in the distribution, prefer them as origin
+                        arab_isos = {'SA','AE','KW','QA','BH','OM','YE','IQ','SY','LB','JO','PS',
+                                     'EG','SD','LY','TN','DZ','MA','MR','SO','DJ','KM'}
+                        
+                        arab_in_dist = {k: v for k, v in region_distribution.items() if k in arab_isos}
+                        
+                        if arab_in_dist:
+                            # Arab country found - likely origin
+                            country_iso = max(arab_in_dist.items(), key=lambda x: x[1])[0]
+                            # Check for VPN indicator (majority is non-Arab)
+                            non_arab_top = max(
+                                ((k, v) for k, v in region_distribution.items() if k not in arab_isos),
+                                key=lambda x: x[1], default=(None, 0)
+                            )
+                            if non_arab_top[1] > sum(arab_in_dist.values()):
+                                vpn_country = non_arab_top[0]
+                        else:
+                            # No Arab country - use most frequent
+                            country_iso = max(region_distribution.items(), key=lambda x: x[1])[0]
+        except Exception:
+            pass
+        
         return {
             'success': True,
             'json': {
                 'code': 0,
                 'data': {
                     'user': {
-                        'uniqueId': d.get('username', username),
-                        'nickname': d.get('nickname', ''),
-                        'signature': d.get('bio', ''),
-                        'avatarLarger': d.get('avatar', ''),
-                        'verified': d.get('verified', False),
-                        'region': result.country_iso or d.get('region', ''),
-                        'language': d.get('language', ''),
-                        'id': d.get('user_id', ''),
-                        'secUid': d.get('sec_uid', ''),
-                        'createTime': d.get('create_time', 0),
+                        'uniqueId': user.get('uniqueId', username),
+                        'nickname': user.get('nickname', ''),
+                        'signature': user.get('signature', ''),
+                        'avatarLarger': user.get('avatarLarger', '') or user.get('avatarMedium', ''),
+                        'verified': user.get('verified', False),
+                        'region': country_iso,   # From posts analysis
+                        'language': user.get('language', ''),
+                        'id': user.get('id', ''),
+                        'secUid': user.get('secUid', ''),
+                        'createTime': user.get('createTime', 0),
                     },
                     'stats': {
-                        'followerCount': d.get('followers', 0),
-                        'followingCount': d.get('following', 0),
-                        'heartCount': d.get('hearts', 0),
-                        'videoCount': d.get('videos', 0),
-                        'friendCount': d.get('friends', 0),
+                        'followerCount': stats.get('followerCount', 0),
+                        'followingCount': stats.get('followingCount', 0),
+                        'heartCount': stats.get('heartCount', 0) or stats.get('heart', 0),
+                        'videoCount': stats.get('videoCount', 0),
+                        'friendCount': stats.get('friendCount', 0),
                     }
                 }
             },
-            'proxy': 'rapidapi_v246',
-            'time': result.elapsed or 0,
-            '_country_iso': result.country_iso,
-            '_confidence': result.confidence,
-            '_source': result.source_layer,
-            '_vpn': result.vpn_detected,
+            'proxy': 'rapidapi_v247',
+            'time': 2.0,
+            'region_iso': country_iso,
+            'actual_residence': country_iso,
+            'previous_residence': vpn_country,
+            'residence_confidence': 90 if country_iso else 0,
+            'residence_type': 'rapidapi_posts',
+            'timezone_match': None,
+            'regions_sequence': list(region_distribution.keys()),
+            'region_distribution': region_distribution,
+            'videos_count': videos_count,
+            'region_source': 'rapidapi_posts',
+            'content': None,
         }
     except Exception as _e:
-        return {'success': False, 'error': f'rapidapi_error: {str(_e)[:100]}'}
+        return {'success': False, 'error': f'exception: {str(_e)[:100]}'}
 
 # ❌ v2.1.2 - تعطيل استيراد lookup_capital (ليس مستخدماً بعد حذف تخمين العاصمة)
 # from capitals_database import lookup_capital  # DEPRECATED
@@ -491,13 +539,7 @@ def _tikwm_rate_limit_delay():
 # ═════════════════════════════════════════════════════════════
 
 def fetch_user_tikwm(username):
-    """✅ v2.4.6 - RapidAPI Layer 0 + tikwm fallback"""
-    # 🚀 v2.4.6: Try RapidAPI FIRST (most reliable)
-    rapidapi_result = _rapidapi_fetch_v246(username)
-    if rapidapi_result.get('success'):
-        return rapidapi_result
-
-    # Fallback to original tikwm logic
+    """✅ v2.1.7-Light - tikwm مع Retry بسيط (بدون Origin/Referer)"""
     url = f"{TIKWM_BASE}/api/user/info?unique_id={username}"
     start = time.time()
     last_err = None
@@ -741,9 +783,13 @@ def detect_actual_residence(regions_seq, times_seq):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
-    """✅ v2.1.6 - جلب هجين: tikwm أساسي + jina/tikmatrix احتياطي
-    يُرجع dict موحد فيه success + content (إذا jina) أو tikwm_json (إذا tikwm) + region_iso"""
-    # الطبقة الأساسية: tikwm للبيانات الأساسية
+    """✅ v2.4.7 - RapidAPI Layer 0 + tikwm/jina fallback"""
+    # 🚀 v2.4.7: Try RapidAPI FIRST (sync, gets region from videos)
+    rapidapi_result = _rapidapi_fetch_v247(username)
+    if rapidapi_result.get('success'):
+        return rapidapi_result
+    
+    # Fallback: original tikwm logic
     primary = fetch_user_tikwm(username)
     region_data = {'region_iso': None}
     # ✅ v2.1.7-Light-Fix1 — دفاعي: .get() بدل [] لتجنب KeyError
