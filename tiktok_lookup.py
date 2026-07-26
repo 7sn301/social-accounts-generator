@@ -741,3 +741,85 @@ if __name__ == "__main__":
         print(json.dumps(dict(result), ensure_ascii=False, indent=2, default=str))
 
     asyncio.run(_main())
+
+
+# ═══════════════════════════════════════════════════════════
+# 🔄 Backward Compatibility Aliases (for bot.py v2.1.x)
+# ═══════════════════════════════════════════════════════════
+# bot.py legacy imports:
+#   from tiktok_lookup import lookup_tiktok_user, clean_username
+
+def clean_username(raw: str) -> str:
+    """Legacy alias - clean TikTok username."""
+    if not raw:
+        return ""
+    return raw.strip().lstrip("@").split("/")[-1].split("?")[0]
+
+
+async def lookup_tiktok_user(username: str) -> Dict[str, Any]:
+    """
+    Legacy alias for lookup_tiktok() - returns a dict format
+    compatible with bot.py v2.1.x expectations.
+
+    Wraps the new lookup_tiktok() and adds legacy fields.
+    """
+    cleaned = clean_username(username)
+    result = await lookup_tiktok(cleaned)
+
+    if not result.get("success"):
+        return {
+            "success": False,
+            "error": result.get("error", "فشل جلب البيانات"),
+            "username": cleaned,
+        }
+
+    stats = result.get("stats", {})
+    geo = result.get("geo", {})
+
+    # Legacy-compatible dict shape
+    return {
+        "success": True,
+        "username": result.get("username", cleaned),
+        "unique_id": result.get("username", cleaned),
+        "user_id": result.get("user_id"),
+        "nickname": result.get("nickname", ""),
+        "avatar": result.get("avatar", ""),
+        "signature": result.get("signature", ""),
+        "verified": result.get("verified", False),
+        "private": result.get("private", False),
+        # stats (flat)
+        "followers": stats.get("followers", 0),
+        "following": stats.get("following", 0),
+        "hearts": stats.get("hearts", 0),
+        "videos": stats.get("videos", 0),
+        "follower_count": stats.get("followers", 0),
+        "following_count": stats.get("following", 0),
+        "heart_count": stats.get("hearts", 0),
+        "video_count": stats.get("videos", 0),
+        # geo (flat)
+        "country": geo.get("country_ar", "غير محدد"),
+        "country_en": geo.get("country_en", "Unknown"),
+        "country_iso": geo.get("country_iso"),
+        "country_code": geo.get("country_iso"),
+        "flag": geo.get("flag", "🏳️"),
+        "region": geo.get("country_iso"),
+        "timezone": geo.get("timezone"),
+        "continent": geo.get("continent"),
+        "confidence": geo.get("confidence", 0),
+        "is_arab": geo.get("is_arab", False),
+        "is_gcc": geo.get("is_gcc", False),
+        # meta
+        "layers_tried": result.get("layers_tried", []),
+        "primary_source": result.get("primary_source"),
+        "videos_analyzed": result.get("videos_analyzed", 0),
+        "elapsed": result.get("elapsed", 0),
+        "formatted_arabic": format_result_arabic(result),
+        # keep full nested result too
+        "_full_result": dict(result),
+    }
+
+
+# Extra common aliases (defensive):
+lookup = lookup_tiktok_user
+get_tiktok_info = lookup_tiktok_user
+tiktok_lookup = lookup_tiktok_user
