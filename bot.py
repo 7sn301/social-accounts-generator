@@ -132,14 +132,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     welcome = (
         f"👋 مرحبًا <b>{_html_escape(first_name)}</b>!\n\n"
-        f"🔍 <b>بوت بصير — TikTok Lookup v2.4.0</b>\n\n"
+        f"🔍 <b>بوت بصير — TikTok Lookup</b>\n\n"
         f"أرسل اسم مستخدم TikTok أو رابط حساب وسأعرض لك:\n"
         f"  • 👤 معلومات الحساب\n"
         f"  • 🌍 دولة الحساب (249+ دولة)\n"
         f"  • 🎯 كشف VPN تلقائي\n"
-        f"  • 📊 الإحصائيات الكاملة\n\n"
-        f"مثال: <code>@charlidamelio</code>\n"
-        f"أو: <code>citizen_lawyerr</code>"
+        f"  • 📊 الإحصائيات الكاملة"
     )
     await update.message.reply_text(welcome, parse_mode="HTML")
 
