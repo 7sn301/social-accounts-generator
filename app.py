@@ -23,7 +23,8 @@ from datetime import datetime
 from pathlib import Path
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent / 'data'))
+# 🔧 v2.4.4 FIX: regions_database.py is in ROOT, not data/ subdir (BSR-V244-CTO-AHMAD-20260726)
+# sys.path.insert(0, str(Path(__file__).parent / 'data'))  # DEPRECATED
 from regions_database import REGIONS_DATABASE, lookup_region
 # ❌ v2.1.2 - تعطيل استيراد lookup_capital (ليس مستخدماً بعد حذف تخمين العاصمة)
 # from capitals_database import lookup_capital  # DEPRECATED
