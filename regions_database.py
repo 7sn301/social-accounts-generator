@@ -471,3 +471,99 @@ if __name__ == "__main__":
     print(f"  format_country_display('EG') = {format_country_display('EG')}")
     print(f"  is_arab_country('EG') = {is_arab_country('EG')}")
     print(f"  is_gcc_country('MA') = {is_gcc_country('MA')}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 🔄 BACKWARD COMPATIBILITY SHIM v2.4.3 (BSR-V243-CTO-COMPAT-SHIM)
+# ══════════════════════════════════════════════════════════════════
+# app.py v2.1.0 (Streamlit) expects legacy API:
+#   - REGIONS_DATABASE (dict of countries)
+#   - lookup_region(text) -> dict or None
+#
+# We provide these as thin wrappers over v2.2.1 API.
+# ══════════════════════════════════════════════════════════════════
+
+# Build REGIONS_DATABASE dict (legacy format expected by app.py v2.1.0)
+REGIONS_DATABASE = {}
+for _iso, _data in WORLD_COUNTRIES.items():
+    _ar_name, _en_name, _flag, _tz, _continent = _data
+    REGIONS_DATABASE[_iso] = {
+        "iso": _iso,
+        "code": _iso,
+        "name_ar": _ar_name,
+        "name_en": _en_name,
+        "arabic_name": _ar_name,
+        "english_name": _en_name,
+        "flag": _flag,
+        "timezone": _tz,
+        "continent": _continent,
+        "is_arab": _iso in ARAB_COUNTRIES,
+        "is_gcc": _iso in GCC_COUNTRIES,
+        "is_eu": _iso in EU_COUNTRIES,
+        # Legacy fields expected by old app.py
+        "country": _en_name,
+        "region": _ar_name,
+        "capital": _ar_name,
+    }
+
+
+def lookup_region(text: str) -> Optional[Dict]:
+    """
+    Legacy function for app.py v2.1.0 Streamlit compatibility.
+    Searches for a country match by:
+      - ISO code (SA, US, EG)
+      - Arabic name (السعودية, مصر)
+      - English name (Saudi Arabia, Egypt)
+      - Timezone (Asia/Riyadh)
+      - Flag emoji (🇸🇦)
+    Returns the country dict or None.
+    """
+    if not text or not isinstance(text, str):
+        return None
+
+    text_lower = text.strip().lower()
+    text_upper = text.strip().upper()
+
+    # 1) Direct ISO code match
+    if text_upper in REGIONS_DATABASE:
+        return REGIONS_DATABASE[text_upper]
+
+    # 2) Timezone match
+    tz_match = get_country_by_timezone(text)
+    if tz_match and tz_match in REGIONS_DATABASE:
+        return REGIONS_DATABASE[tz_match]
+
+    # 3) Name / Flag search
+    for iso, data in REGIONS_DATABASE.items():
+        # Flag match
+        if data["flag"] and data["flag"] in text:
+            return data
+        # English name (partial, case-insensitive)
+        if data["name_en"] and data["name_en"].lower() in text_lower:
+            return data
+        # Arabic name
+        if data["name_ar"] and data["name_ar"] in text:
+            return data
+
+    return None
+
+
+# Aliases for extra compatibility with any v2.1.x variants
+COUNTRIES = REGIONS_DATABASE
+CAPITALS_DATABASE = REGIONS_DATABASE  # legacy
+
+
+def lookup_capital(text: str) -> Optional[Dict]:
+    """Legacy alias — same behavior as lookup_region for app.py compatibility."""
+    return lookup_region(text)
+
+
+# Sanity log at import
+try:
+    import logging as _lg
+    _lg.getLogger(__name__).info(
+        f"[regions_database] v2.4.3 compat shim loaded — "
+        f"{len(REGIONS_DATABASE)} countries, lookup_region ready"
+    )
+except Exception:
+    pass
