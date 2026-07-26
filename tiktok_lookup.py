@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  BSR-V232-CTO-MARKDOWN-DOCKERFILE-FIX-AHMAD-20260726             ║
-║  tiktok_lookup.py v2.3.2 - Markdown-Safe + Robust Fallback       ║
+║  BSR-V233-CTO-RUNTIME-ENV-LOOKUP-AHMAD-20260726                  ║
+║  tiktok_lookup.py v2.3.3 - Runtime Env Lookup (Railway fix)      ║
 ║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)             ║
 ╚══════════════════════════════════════════════════════════════════╝
 
@@ -73,16 +73,36 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════
-# 🏆 RapidAPI Configuration
+# 🏆 RapidAPI Configuration - RUNTIME LOOKUP (v2.3.3 fix)
 # ═══════════════════════════════════════════════════════════
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "").strip()
-RAPIDAPI_HOST = os.getenv("RAPIDAPI_HOST", "tiktok-scraper7.p.rapidapi.com").strip()
-RAPIDAPI_ENABLED = bool(RAPIDAPI_KEY)
+# ⚠️ Do NOT capture os.getenv at module-level. Railway may inject
+# ENV variables AFTER Python imports this module. Read them inside
+# functions on each call (lazy/runtime lookup).
 
-if RAPIDAPI_ENABLED:
-    logger.info(f"[L0] ✅ RapidAPI enabled: {RAPIDAPI_HOST}")
+def _get_rapidapi_config():
+    """Read RAPIDAPI credentials at CALL time (not import time).
+
+    Also tries load_dotenv() as fallback for local dev.
+    """
+    key = os.getenv("RAPIDAPI_KEY", "").strip()
+    host = os.getenv("RAPIDAPI_HOST", "tiktok-scraper7.p.rapidapi.com").strip()
+    if not key:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=False)
+            key = os.getenv("RAPIDAPI_KEY", "").strip()
+            host = os.getenv("RAPIDAPI_HOST", host).strip()
+        except ImportError:
+            pass
+    return key, host, bool(key)
+
+
+# Import-time snapshot (for logging only — not used for decisions)
+_INITIAL_KEY, _INITIAL_HOST, _INITIAL_ENABLED = _get_rapidapi_config()
+if _INITIAL_ENABLED:
+    logger.info(f"[L0] ✅ RapidAPI enabled at import: {_INITIAL_HOST}")
 else:
-    logger.warning("[L0] ⚠️ RAPIDAPI_KEY not set")
+    logger.warning("[L0] ⚠️ RAPIDAPI_KEY not set at import (will retry at runtime)")
 
 # Config
 POSTS_COUNT = 30  # Sample size for VPN-aware analysis
@@ -132,19 +152,22 @@ class LookupResult(dict):
 # 🏆 LAYER 0: RapidAPI tiktok-scraper7
 # ═══════════════════════════════════════════════════════════
 async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
-    """RapidAPI primary layer - most reliable."""
-    if not RAPIDAPI_ENABLED:
+    """RapidAPI primary layer - reads env at CALL time (v2.3.3)."""
+    rapidapi_key, rapidapi_host, rapidapi_enabled = _get_rapidapi_config()
+    if not rapidapi_enabled:
+        logger.warning(f"[L0] RAPIDAPI_KEY still not available for @{username}")
         return None
 
+    logger.info(f"[L0] 🚀 Attempting RapidAPI for @{username} (host={rapidapi_host})")
     headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "x-rapidapi-host": RAPIDAPI_HOST,
+        "x-rapidapi-key": rapidapi_key,
+        "x-rapidapi-host": rapidapi_host,
     }
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             # ── /user/info ──
-            info_url = f"https://{RAPIDAPI_HOST}/user/info"
+            info_url = f"https://{rapidapi_host}/user/info"
             info_resp = await client.get(info_url, headers=headers, params={"unique_id": username})
 
             if info_resp.status_code == 429:
@@ -185,7 +208,7 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
 
             # ── /user/posts (30 videos for VPN-aware analysis) ──
             try:
-                posts_url = f"https://{RAPIDAPI_HOST}/user/posts"
+                posts_url = f"https://{rapidapi_host}/user/posts"
                 posts_resp = await client.get(
                     posts_url, headers=headers,
                     params={"unique_id": username, "count": str(POSTS_COUNT), "cursor": "0"},
@@ -518,9 +541,13 @@ async def lookup_tiktok(username: str) -> LookupResult:
     user_info = None
     start = time.time()
 
-    if RAPIDAPI_ENABLED:
+    # v2.3.3: Read env at runtime (not module-level)
+    _key, _host, _enabled = _get_rapidapi_config()
+    if _enabled:
         layers_tried.append("L0_rapidapi")
         user_info = await layer0_rapidapi(username)
+    else:
+        logger.warning("[lookup_tiktok] Skipping L0 - no RAPIDAPI_KEY at runtime")
 
     if not user_info:
         layers_tried.append("L1_web")
@@ -559,7 +586,7 @@ async def lookup_tiktok(username: str) -> LookupResult:
         "videos_analyzed": len(videos),
         "elapsed": round(time.time() - start, 2),
         "regions_db_version": REGIONS_STATS.get("version", "unknown") if REGIONS_DB_AVAILABLE else "MISSING",
-        "rapidapi_enabled": RAPIDAPI_ENABLED,
+        "rapidapi_enabled": _enabled,
     })
     return result
 
@@ -798,7 +825,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     username = sys.argv[1] if len(sys.argv) > 1 else "citizen_lawyerr"
     print(f"\n🔍 Testing: @{username}")
-    print(f"🏆 RapidAPI: {RAPIDAPI_ENABLED}\n")
+    _, _, _rapid_enabled = _get_rapidapi_config()
+    print(f"🏆 RapidAPI: {_rapid_enabled}\n")
 
     async def _main():
         s = await lookup_tiktok_user(username)
