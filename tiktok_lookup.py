@@ -61,8 +61,16 @@ def _get_rapidapi_config() -> Tuple[str, str, bool]:
     v2.4.0: Also loads .env file as fallback for both local dev
     and edge cases where Railway env injection is delayed.
     """
-    key = os.getenv("RAPIDAPI_KEY", "").strip()
-    host = os.getenv("RAPIDAPI_HOST", "tiktok-scraper7.p.rapidapi.com").strip()
+    # ═══════════════════════════════════════════════════════════
+    # 🚨 HARDCODED FALLBACK v2.4.2 (BSR-V242-CTO-HARDCODED-AHMAD)
+    # Railway env-vars take PRECEDENCE. Fallback ensures bot works.
+    # ⚠️ SECURITY: Rotate this key after successful deployment.
+    # ═══════════════════════════════════════════════════════════
+    _HARDCODED_KEY = "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
+    _HARDCODED_HOST = "tiktok-scraper7.p.rapidapi.com"
+
+    key = os.getenv("RAPIDAPI_KEY", "").strip() or _HARDCODED_KEY
+    host = os.getenv("RAPIDAPI_HOST", "").strip() or _HARDCODED_HOST
 
     if not key:
         try:
