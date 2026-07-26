@@ -756,65 +756,168 @@ def clean_username(raw: str) -> str:
     return raw.strip().lstrip("@").split("/")[-1].split("?")[0]
 
 
-async def lookup_tiktok_user(username: str) -> Dict[str, Any]:
+def _format_markdown_for_bot(result: LookupResult) -> str:
     """
-    Legacy alias for lookup_tiktok() - returns a dict format
-    compatible with bot.py v2.1.x expectations.
+    Render result as Markdown text ready for Telegram edit_text().
+    Returns the exact string that bot.py expects to send to users.
+    """
+    if not result.get("success"):
+        err = result.get("error", "فشل جلب البيانات")
+        return f"❌ *فشل البحث*\n\n{err}\n\n💡 تأكد من اسم المستخدم وحاول مرة أخرى."
 
-    Wraps the new lookup_tiktok() and adds legacy fields.
+    stats = result.get("stats", {}) or {}
+    geo = result.get("geo", {}) or {}
+
+    nickname = result.get("nickname", "") or ""
+    username = result.get("username", "") or ""
+    verified_badge = " ✅" if result.get("verified") else ""
+    private_badge = " 🔒" if result.get("private") else ""
+
+    followers = stats.get("followers", 0) or 0
+    following = stats.get("following", 0) or 0
+    hearts = stats.get("hearts", 0) or 0
+    videos = stats.get("videos", 0) or 0
+
+    flag = geo.get("flag", "🏳️") or "🏳️"
+    country_ar = geo.get("country_ar", "غير محدد") or "غير محدد"
+    confidence = geo.get("confidence", 0) or 0
+    tz = geo.get("timezone") or ""
+    continent = geo.get("continent") or ""
+
+    src = geo.get("primary_source") or ""
+    src_labels = {
+        "video_region": "📹 من metadata الفيديوهات",
+        "user_region": "👤 من ملف المستخدم",
+        "timezone": "⏰ من تحليل توقيت النشر",
+        "none": "❌ لا توجد إشارات كافية",
+    }
+    src_display = src_labels.get(src, "") if src else ""
+
+    continent_ar = {
+        "Asia": "آسيا",
+        "Africa": "إفريقيا",
+        "Europe": "أوروبا",
+        "Americas": "الأمريكتان",
+        "Oceania": "أوقيانوسيا",
+        "Antarctica": "أنتاركتيكا",
+    }.get(continent, continent)
+
+    lines = []
+    lines.append(f"👤 *{nickname}*{verified_badge}{private_badge}")
+    lines.append(f"🔗 @{username}")
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("📊 *الإحصائيات*")
+    lines.append(f"👥 المتابعون: `{followers:,}`")
+    lines.append(f"➕ يتابع: `{following:,}`")
+    lines.append(f"📹 الفيديوهات: `{videos:,}`")
+    lines.append(f"❤️ الإعجابات: `{hearts:,}`")
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("🌍 *التحليل الجغرافي*")
+    lines.append(f"🎯 الدولة: {flag} *{country_ar}*")
+
+    if confidence > 0:
+        conf_bar = "🟢" if confidence >= 70 else ("🟡" if confidence >= 40 else "🔴")
+        lines.append(f"📊 مستوى الثقة: {conf_bar} `{confidence}%`")
+
+    if src_display:
+        lines.append(f"🔍 المصدر: {src_display}")
+
+    reason = geo.get("primary_reason")
+    if reason:
+        lines.append(f"ℹ️ {reason}")
+
+    if tz:
+        lines.append(f"🕐 التوقيت المحلي: `{tz}`")
+
+    if continent_ar:
+        lines.append(f"🌐 القارة: {continent_ar}")
+
+    if geo.get("is_arab"):
+        badge = "🕌 دولة عربية"
+        if geo.get("is_gcc"):
+            badge += " _(خليجية 🕋)_"
+        lines.append(badge)
+
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("🔬 _تحليل Data-Driven فقط_")
+    lines.append("✅ لا اعتماد على الاسم/اللهجة")
+
+    layers = result.get("layers_tried", [])
+    if layers:
+        lines.append(f"📡 الطبقات: `{', '.join(layers)}`")
+
+    analyzed = result.get("videos_analyzed", 0) or 0
+    if analyzed:
+        lines.append(f"📹 الفيديوهات المُحللة: `{analyzed}`")
+
+    elapsed = result.get("elapsed", 0) or 0
+    if elapsed:
+        lines.append(f"⚡ زمن الاستجابة: `{elapsed}s`")
+
+    lines.append("🗺️ قاعدة: `v2.2.1` (249 دولة)")
+
+    return "\n".join(lines)
+
+
+async def lookup_tiktok_user(username: str) -> str:
+    """
+    Legacy-compatible wrapper for bot.py v2.1.8.9.
+
+    Returns a Markdown STRING (not dict) ready for Telegram edit_text().
+    Includes country name for regex extraction by bot.py.
+
+    Fixes: 'TypeError: expected str, got dict' in bot.py handle_lookup.
+    """
+    cleaned = clean_username(username)
+    try:
+        result = await lookup_tiktok(cleaned)
+        return _format_markdown_for_bot(result)
+    except Exception as e:
+        logger.error(f"[lookup_tiktok_user] exception for @{cleaned}: {e}")
+        return (
+            f"❌ *فشل البحث*\n\n"
+            f"حدث خطأ أثناء جلب بيانات @{cleaned}\n"
+            f"`{str(e)[:200]}`\n\n"
+            f"💡 حاول مرة أخرى بعد قليل."
+        )
+
+
+async def lookup_tiktok_user_dict(username: str) -> Dict[str, Any]:
+    """
+    New API — returns full structured dict for advanced consumers.
+    Use this instead of lookup_tiktok_user() when you need raw data.
     """
     cleaned = clean_username(username)
     result = await lookup_tiktok(cleaned)
-
     if not result.get("success"):
         return {
             "success": False,
             "error": result.get("error", "فشل جلب البيانات"),
             "username": cleaned,
         }
-
     stats = result.get("stats", {})
     geo = result.get("geo", {})
-
-    # Legacy-compatible dict shape
     return {
         "success": True,
         "username": result.get("username", cleaned),
-        "unique_id": result.get("username", cleaned),
-        "user_id": result.get("user_id"),
         "nickname": result.get("nickname", ""),
-        "avatar": result.get("avatar", ""),
-        "signature": result.get("signature", ""),
         "verified": result.get("verified", False),
-        "private": result.get("private", False),
-        # stats (flat)
         "followers": stats.get("followers", 0),
         "following": stats.get("following", 0),
         "hearts": stats.get("hearts", 0),
         "videos": stats.get("videos", 0),
-        "follower_count": stats.get("followers", 0),
-        "following_count": stats.get("following", 0),
-        "heart_count": stats.get("hearts", 0),
-        "video_count": stats.get("videos", 0),
-        # geo (flat)
         "country": geo.get("country_ar", "غير محدد"),
-        "country_en": geo.get("country_en", "Unknown"),
         "country_iso": geo.get("country_iso"),
-        "country_code": geo.get("country_iso"),
         "flag": geo.get("flag", "🏳️"),
-        "region": geo.get("country_iso"),
         "timezone": geo.get("timezone"),
         "continent": geo.get("continent"),
         "confidence": geo.get("confidence", 0),
         "is_arab": geo.get("is_arab", False),
         "is_gcc": geo.get("is_gcc", False),
-        # meta
-        "layers_tried": result.get("layers_tried", []),
-        "primary_source": result.get("primary_source"),
-        "videos_analyzed": result.get("videos_analyzed", 0),
-        "elapsed": result.get("elapsed", 0),
-        "formatted_arabic": format_result_arabic(result),
-        # keep full nested result too
+        "formatted_markdown": _format_markdown_for_bot(result),
         "_full_result": dict(result),
     }
 
