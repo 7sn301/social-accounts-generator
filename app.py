@@ -23,9 +23,80 @@ from datetime import datetime
 from pathlib import Path
 
 import sys
-# 🔧 v2.4.4 FIX: regions_database.py is in ROOT, not data/ subdir (BSR-V244-CTO-AHMAD-20260726)
-# sys.path.insert(0, str(Path(__file__).parent / 'data'))  # DEPRECATED
+sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
+
+# ═══════════════════════════════════════════════════════════
+# 🚀 v2.4.6 - RapidAPI Layer 0 Integration (BSR-V246-CTO)
+# ═══════════════════════════════════════════════════════════
+try:
+    import asyncio as _asyncio_v246
+    from tiktok_lookup import lookup_tiktok as _rapidapi_lookup_v246
+    _RAPIDAPI_AVAILABLE_V246 = True
+except Exception as _e_v246:
+    _RAPIDAPI_AVAILABLE_V246 = False
+
+
+def _rapidapi_fetch_v246(username: str) -> dict:
+    """Layer 0: RapidAPI (tiktok-scraper7) — most reliable, gets country directly."""
+    if not _RAPIDAPI_AVAILABLE_V246:
+        return {'success': False, 'error': 'rapidapi_unavailable'}
+    try:
+        # Run async function synchronously
+        try:
+            loop = _asyncio_v246.get_event_loop()
+            if loop.is_running():
+                # If already in async context, use new loop
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(_asyncio_v246.run, _rapidapi_lookup_v246(username))
+                    result = future.result(timeout=15)
+            else:
+                result = loop.run_until_complete(_rapidapi_lookup_v246(username))
+        except RuntimeError:
+            result = _asyncio_v246.run(_rapidapi_lookup_v246(username))
+
+        if not result or not result.success:
+            return {'success': False, 'error': result.error if result else 'no_result'}
+
+        d = result.data or {}
+        # Build tikwm-compatible payload
+        return {
+            'success': True,
+            'json': {
+                'code': 0,
+                'data': {
+                    'user': {
+                        'uniqueId': d.get('username', username),
+                        'nickname': d.get('nickname', ''),
+                        'signature': d.get('bio', ''),
+                        'avatarLarger': d.get('avatar', ''),
+                        'verified': d.get('verified', False),
+                        'region': result.country_iso or d.get('region', ''),
+                        'language': d.get('language', ''),
+                        'id': d.get('user_id', ''),
+                        'secUid': d.get('sec_uid', ''),
+                        'createTime': d.get('create_time', 0),
+                    },
+                    'stats': {
+                        'followerCount': d.get('followers', 0),
+                        'followingCount': d.get('following', 0),
+                        'heartCount': d.get('hearts', 0),
+                        'videoCount': d.get('videos', 0),
+                        'friendCount': d.get('friends', 0),
+                    }
+                }
+            },
+            'proxy': 'rapidapi_v246',
+            'time': result.elapsed or 0,
+            '_country_iso': result.country_iso,
+            '_confidence': result.confidence,
+            '_source': result.source_layer,
+            '_vpn': result.vpn_detected,
+        }
+    except Exception as _e:
+        return {'success': False, 'error': f'rapidapi_error: {str(_e)[:100]}'}
+
 # ❌ v2.1.2 - تعطيل استيراد lookup_capital (ليس مستخدماً بعد حذف تخمين العاصمة)
 # from capitals_database import lookup_capital  # DEPRECATED
 
@@ -420,7 +491,13 @@ def _tikwm_rate_limit_delay():
 # ═════════════════════════════════════════════════════════════
 
 def fetch_user_tikwm(username):
-    """✅ v2.1.7-Light - tikwm مع Retry بسيط (بدون Origin/Referer)"""
+    """✅ v2.4.6 - RapidAPI Layer 0 + tikwm fallback"""
+    # 🚀 v2.4.6: Try RapidAPI FIRST (most reliable)
+    rapidapi_result = _rapidapi_fetch_v246(username)
+    if rapidapi_result.get('success'):
+        return rapidapi_result
+
+    # Fallback to original tikwm logic
     url = f"{TIKWM_BASE}/api/user/info?unique_id={username}"
     start = time.time()
     last_err = None
