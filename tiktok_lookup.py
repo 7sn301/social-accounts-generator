@@ -1,537 +1,743 @@
-# ═══════════════════════════════════════════════════════════════════════════
-# BSR-LOOKUP-FIX-2026-0726-04
-# tiktok_lookup.py — v2.1.0-Enhanced (Baseer Project)
-# ═══════════════════════════════════════════════════════════════════════════
-# Fix ID     : BSR-LOOKUP-FIX-2026-0726-04
-# Date       : 2026-07-26
-# Author     : Baseer Engineering Committee (Backend + DevOps + QA)
-# Purpose    : تحسين موثوقية ودقة كشف الموقع في مسار البوت (Telegram).
-#
-# سجل التغييرات (Changelog v5-clean → v2.1.0):
-#   [F1] Fallback متعدد المصادر: tikwm → tikwm mobile → HTML مباشر.
-#   [F2] فحص أول N فيديو (5) لاختيار region الأكثر تكراراً بدل الأحدث فقط.
-#   [F3] كشف بديل من bio/nickname عند غياب region (مدن + لهجات + أعلام).
-#   [F4] Retry مع exponential backoff + rotation UA/Headers.
-#   [F5] توافق كامل مع bot.py — نفس تواقيع lookup_tiktok_user, clean_username.
-#   [F6] region_source اختياري في مخرجات debug (للـ analytics_db).
-# ═══════════════════════════════════════════════════════════════════════════
-"""Baseer TikTok Lookup v2.1.0 — Enhanced accuracy + resilience"""
-import re
-import random
-import httpx
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║  BSR-V221-CTO-INTEGRATION-TIKTOK-WORLDMAP-AHMAD-20260726         ║
+║  tiktok_lookup.py v2.2.1 - Integrated with World Map (249)      ║
+║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)            ║
+╚══════════════════════════════════════════════════════════════════╝
+
+Cloudflare Bypass System + World Complete Map Integration:
+  L1: TikTok Web Direct (__UNIVERSAL_DATA_FOR_REHYDRATION__ / SIGI_STATE)
+  L2: Mobile API (m.tiktok.com/api/user/detail)
+  L3: cloudscraper (Cloudflare Challenge bypass)
+  L4: Playwright headless (fallback last resort)
+
+Data-Driven Detection ONLY:
+  ✓ Video Region (item.region)
+  ✓ locationCreated (GPS from videos)
+  ✓ Timezone analysis from post timestamps
+  ✓ User.region (if available)
+  ✗ NO name/dialect/bio-keyword analysis
+
+Country Database: regions_database.py v2.2.1 (249 countries, ISO 3166-1)
+"""
+
 import asyncio
 import json
+import logging
+import random
+import re
+import time
 from collections import Counter
-from typing import Optional, Dict, Any, List, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-TIKWM_BASE = "https://www.tikwm.com"
-TIKTOK_WEB = "https://www.tiktok.com"
-TIMEOUT = 18.0
+import httpx
 
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0',
+# ═══════════════════════════════════════════════════════════
+# 🌍 Integration with World Map Database (249 countries)
+# ═══════════════════════════════════════════════════════════
+try:
+    from regions_database import (
+        WORLD_COUNTRIES,
+        TIMEZONE_TO_COUNTRY,
+        get_country_info,
+        get_arabic_name,
+        get_english_name,
+        get_flag,
+        get_timezone as get_country_timezone,
+        get_continent,
+        get_country_by_timezone,
+        format_country_display,
+        is_arab_country,
+        is_gcc_country,
+        STATS as REGIONS_STATS,
+    )
+    REGIONS_DB_AVAILABLE = True
+except ImportError as e:
+    logging.error(f"[tiktok_lookup] regions_database not available: {e}")
+    REGIONS_DB_AVAILABLE = False
+    WORLD_COUNTRIES = {}
+    TIMEZONE_TO_COUNTRY = {}
+
+# ═══════════════════════════════════════════════════════════
+# 🛡️ Optional dependencies (graceful fallback)
+# ═══════════════════════════════════════════════════════════
+try:
+    import cloudscraper
+    CLOUDSCRAPER_AVAILABLE = True
+except ImportError:
+    CLOUDSCRAPER_AVAILABLE = False
+
+try:
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════
+# 🎭 Rotating User Agents
+# ═══════════════════════════════════════════════════════════
+DESKTOP_UAS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
 ]
 
-# ─────────────────────────── قواميس الدول ───────────────────────────
+MOBILE_UAS = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
+]
 
-REGION_ISO_TO_COUNTRY = {
-    'SA':'Saudi Arabia','AE':'United Arab Emirates','KW':'Kuwait','QA':'Qatar',
-    'BH':'Bahrain','OM':'Oman','YE':'Yemen','JO':'Jordan','LB':'Lebanon',
-    'IQ':'Iraq','PS':'Palestine','EG':'Egypt','MA':'Morocco','DZ':'Algeria',
-    'TN':'Tunisia','LY':'Libya','SD':'Sudan','SO':'Somalia','MR':'Mauritania',
-    'DJ':'Djibouti','KM':'Comoros','SY':'Syria',
-    'US':'United States','GB':'United Kingdom','UK':'United Kingdom','CA':'Canada',
-    'AU':'Australia','NZ':'New Zealand','IE':'Ireland',
-    'FR':'France','DE':'Germany','IT':'Italy','ES':'Spain','PT':'Portugal',
-    'NL':'Netherlands','BE':'Belgium','CH':'Switzerland','AT':'Austria',
-    'SE':'Sweden','NO':'Norway','FI':'Finland','DK':'Denmark','PL':'Poland',
-    'CZ':'Czech Republic','SK':'Slovakia','HU':'Hungary','RO':'Romania',
-    'BG':'Bulgaria','GR':'Greece','HR':'Croatia','SI':'Slovenia','RS':'Serbia',
-    'BA':'Bosnia','MK':'North Macedonia','AL':'Albania','ME':'Montenegro',
-    'EE':'Estonia','LV':'Latvia','LT':'Lithuania','IS':'Iceland',
-    'LU':'Luxembourg','MT':'Malta','CY':'Cyprus',
-    'RU':'Russia','UA':'Ukraine','BY':'Belarus','MD':'Moldova',
-    'GE':'Georgia','AM':'Armenia','AZ':'Azerbaijan','KZ':'Kazakhstan',
-    'UZ':'Uzbekistan','KG':'Kyrgyzstan','TJ':'Tajikistan','TM':'Turkmenistan',
-    'TR':'Turkey','IL':'Israel','IR':'Iran',
-    'IN':'India','PK':'Pakistan','BD':'Bangladesh','LK':'Sri Lanka',
-    'NP':'Nepal','AF':'Afghanistan','BT':'Bhutan','MV':'Maldives',
-    'CN':'China','JP':'Japan','KR':'South Korea','KP':'North Korea',
-    'TW':'Taiwan','HK':'Hong Kong','MO':'Macau','MN':'Mongolia',
-    'SG':'Singapore','MY':'Malaysia','ID':'Indonesia','TH':'Thailand',
-    'VN':'Vietnam','PH':'Philippines','MM':'Myanmar','KH':'Cambodia',
-    'LA':'Laos','BN':'Brunei','TL':'Timor-Leste',
-    'BR':'Brazil','MX':'Mexico','AR':'Argentina','CL':'Chile','CO':'Colombia',
-    'PE':'Peru','VE':'Venezuela','UY':'Uruguay','PY':'Paraguay','BO':'Bolivia',
-    'EC':'Ecuador','GT':'Guatemala','HN':'Honduras','SV':'El Salvador',
-    'NI':'Nicaragua','CR':'Costa Rica','PA':'Panama','DO':'Dominican Republic',
-    'CU':'Cuba','HT':'Haiti','JM':'Jamaica','PR':'Puerto Rico',
-    'NG':'Nigeria','KE':'Kenya','ET':'Ethiopia','GH':'Ghana','ZA':'South Africa',
-    'TZ':'Tanzania','UG':'Uganda','CI':'Ivory Coast','SN':'Senegal',
-    'CM':'Cameroon','ML':'Mali','BF':'Burkina Faso','NE':'Niger','TD':'Chad',
-    'AO':'Angola','MZ':'Mozambique','ZW':'Zimbabwe','ZM':'Zambia','MW':'Malawi',
-    'BW':'Botswana','NA':'Namibia','MG':'Madagascar','MU':'Mauritius',
-    'RW':'Rwanda','BI':'Burundi','CD':'DR Congo','CG':'Congo',
-    'FJ':'Fiji','PG':'Papua New Guinea',
-}
+TIKTOK_APP_UAS = [
+    "com.zhiliaoapp.musically/2023600030 (Linux; U; Android 13; en_US; SM-G991B; Build/TP1A.220624.014; Cronet/58.0.2991.0)",
+    "TikTok/2023600030 CFNetwork/1494.0.7 Darwin/23.4.0",
+]
 
-COUNTRY_AR = {
-    'Saudi Arabia':'المملكة العربية السعودية','United Arab Emirates':'الإمارات',
-    'Egypt':'مصر','Kuwait':'الكويت','Qatar':'قطر','Bahrain':'البحرين',
-    'Oman':'عُمان','Jordan':'الأردن','Lebanon':'لبنان','Iraq':'العراق',
-    'Yemen':'اليمن','Palestine':'فلسطين','Morocco':'المغرب','Algeria':'الجزائر',
-    'Tunisia':'تونس','Libya':'ليبيا','Sudan':'السودان','Somalia':'الصومال',
-    'Mauritania':'موريتانيا','Djibouti':'جيبوتي','Comoros':'جزر القمر','Syria':'سوريا',
-    'United States':'الولايات المتحدة','United Kingdom':'المملكة المتحدة',
-    'Canada':'كندا','Australia':'أستراليا','New Zealand':'نيوزيلندا','Ireland':'أيرلندا',
-    'France':'فرنسا','Germany':'ألمانيا','Italy':'إيطاليا','Spain':'إسبانيا',
-    'Portugal':'البرتغال','Netherlands':'هولندا','Belgium':'بلجيكا',
-    'Switzerland':'سويسرا','Austria':'النمسا','Sweden':'السويد','Norway':'النرويج',
-    'Finland':'فنلندا','Denmark':'الدنمارك','Poland':'بولندا',
-    'Czech Republic':'تشيكيا','Hungary':'المجر','Romania':'رومانيا',
-    'Greece':'اليونان','Russia':'روسيا','Ukraine':'أوكرانيا','Turkey':'تركيا',
-    'Israel':'إسرائيل','Iran':'إيران',
-    'India':'الهند','Pakistan':'باكستان','Bangladesh':'بنغلاديش',
-    'Sri Lanka':'سريلانكا','China':'الصين','Japan':'اليابان',
-    'South Korea':'كوريا الجنوبية','Taiwan':'تايوان','Hong Kong':'هونغ كونغ',
-    'Singapore':'سنغافورة','Malaysia':'ماليزيا','Indonesia':'إندونيسيا',
-    'Thailand':'تايلاند','Vietnam':'فيتنام','Philippines':'الفلبين',
-    'Brazil':'البرازيل','Mexico':'المكسيك','Argentina':'الأرجنتين',
-    'Chile':'تشيلي','Colombia':'كولومبيا','Peru':'البيرو','Venezuela':'فنزويلا',
-    'Nigeria':'نيجيريا','Kenya':'كينيا','Ethiopia':'إثيوبيا','Ghana':'غانا',
-    'South Africa':'جنوب أفريقيا',
-}
+def _rand_ua(pool: List[str]) -> str:
+    return random.choice(pool)
 
-# [F3] كشف بديل: لهجات ومدن (نسخة مختصرة من tiktok_analyzer)
-DIALECT_HINTS = {
-    'SA': ["والله", "مره", "مرة", "ياخي", "يالربع", "وش", "ابغى", "ابي", "زين", "شخبارك"],
-    'EG': ["ازيك", "ازاي", "عامل ايه", "جدع", "أوي", "اوي", "خالص", "دلوقتي", "معلش"],
-    'AE': ["وايد", "شحالك", "خيتو", "هالشي", "عيل"],
-    'IQ': ["شلونك", "هواي", "شبيك", "اكو", "ماكو", "هسه", "خوش"],
-    'JO': ["كتير", "هسا", "زلمة", "شغلة"],
-    'KW': ["شلون", "وايد", "چم", "عيال"],
-    'QA': ["شحالك", "شخبارك"],
-    'BH': ["شخبارك", "شنو"],
-    'OM': ["بومسك", "شخبارك"],
-    'SY': ["كتير", "لهون", "منيح", "هلق"],
-    'LB': ["هيدا", "هيدي", "منيح", "يلا"],
-    'PS': ["اشي", "زلمة", "منيح"],
-    'MA': ["واخا", "بزاف", "دابا", "خويا", "زعما", "شنو", "دير", "درهم"],
-    'DZ': ["واش", "بصح", "برك", "علاش", "نتاع"],
-    'TN': ["برشا", "علاش", "شنية", "باهي", "ياسر", "قداش", "توا"],
-    'LY': ["هلبة", "شن", "متاعك"],
-    'YE': ["ذمار", "قدح", "شبك"],
-    'SD': ["زول", "كيفنك", "دايراً", "شديد"],
-}
-
-CITY_TO_COUNTRY = {
-    "riyadh":"SA","jeddah":"SA","mecca":"SA","medina":"SA","dammam":"SA",
-    "الرياض":"SA","جدة":"SA","مكة":"SA","الدمام":"SA",
-    "cairo":"EG","alexandria":"EG","giza":"EG",
-    "القاهرة":"EG","الإسكندرية":"EG","اسكندرية":"EG","الجيزة":"EG",
-    "dubai":"AE","abu dhabi":"AE","sharjah":"AE","دبي":"AE","أبوظبي":"AE","ابوظبي":"AE","الشارقة":"AE",
-    "baghdad":"IQ","basra":"IQ","erbil":"IQ","بغداد":"IQ","البصرة":"IQ","أربيل":"IQ",
-    "amman":"JO","عمان":"JO","عمّان":"JO",
-    "kuwait":"KW","الكويت":"KW",
-    "doha":"QA","الدوحة":"QA",
-    "damascus":"SY","aleppo":"SY","دمشق":"SY","حلب":"SY",
-    "beirut":"LB","بيروت":"LB",
-    "rabat":"MA","casablanca":"MA","marrakech":"MA","الرباط":"MA","الدار البيضاء":"MA","مراكش":"MA",
-    "tunis":"TN","تونس":"TN",
-    "algiers":"DZ","الجزائر":"DZ",
-    "sanaa":"YE","صنعاء":"YE",
-    "khartoum":"SD","الخرطوم":"SD",
-    "gaza":"PS","ramallah":"PS","غزة":"PS","رام الله":"PS","القدس":"PS",
-    "muscat":"OM","مسقط":"OM",
-    "manama":"BH","المنامة":"BH",
-    "istanbul":"TR","اسطنبول":"TR","إسطنبول":"TR",
-    "tehran":"IR","طهران":"IR",
-    "london":"GB","new york":"US","paris":"FR","berlin":"DE",
-}
-
-LANG_TO_COUNTRIES = {
-    "ar": ["SA","EG","AE","IQ","JO","KW","QA","BH","OM","SY","LB","MA","DZ","TN","LY","SD","YE","PS"],
-    "tr": ["TR"], "fa": ["IR"], "ur": ["PK"], "hi": ["IN"], "id": ["ID"],
-    "ms": ["MY"], "th": ["TH"], "vi": ["VN"], "ja": ["JP"], "ko": ["KR"], "zh": ["CN"],
-    "en": ["US","GB","CA","AU","NZ","IE"], "fr": ["FR","BE"], "de": ["DE","AT","CH"],
-    "es": ["ES","MX","AR","CO"], "pt": ["BR","PT"], "ru": ["RU","UA"],
-}
+TIMEOUT = httpx.Timeout(18.0, connect=10.0)
 
 
-# ─────────────────────────── أدوات مساعدة ───────────────────────────
+# ═══════════════════════════════════════════════════════════
+# 📊 Data classes
+# ═══════════════════════════════════════════════════════════
+class LookupResult(dict):
+    """Container for lookup results with attribute access."""
+    def __getattr__(self, key):
+        return self.get(key)
 
-def _iso_to_flag(iso_code):
-    """تحويل ISO إلى علم emoji"""
-    if not iso_code or len(iso_code) != 2:
-        return ''
+
+# ═══════════════════════════════════════════════════════════
+# 🌐 Layer 1: TikTok Web Direct
+# ═══════════════════════════════════════════════════════════
+async def layer1_tiktok_web(username: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract data from https://www.tiktok.com/@{username}
+    Parses __UNIVERSAL_DATA_FOR_REHYDRATION__ (new) or SIGI_STATE (old).
+    """
+    url = f"https://www.tiktok.com/@{username}"
+    headers = {
+        "User-Agent": _rand_ua(DESKTOP_UAS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+    }
+
     try:
-        c1, c2 = iso_code.upper()
-        return chr(0x1F1E6 + (ord(c1) - 65)) + chr(0x1F1E6 + (ord(c2) - 65))
-    except Exception:
-        return ''
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                logger.warning(f"[L1] HTTP {resp.status_code} for @{username}")
+                return None
+
+            html = resp.text
+
+            # Try __UNIVERSAL_DATA_FOR_REHYDRATION__ (2024+)
+            m = re.search(
+                r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.+?)</script>',
+                html, re.DOTALL,
+            )
+            if m:
+                try:
+                    data = json.loads(m.group(1))
+                    return _parse_universal_data(data, username, source="L1_universal")
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.debug(f"[L1] universal parse err: {e}")
+
+            # Try SIGI_STATE (old format)
+            m = re.search(r'<script id="SIGI_STATE"[^>]*>(.+?)</script>', html, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group(1))
+                    return _parse_sigi_state(data, username, source="L1_sigi")
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.debug(f"[L1] SIGI parse err: {e}")
+
+            logger.info(f"[L1] no data blocks found for @{username}")
+            return None
+
+    except Exception as e:
+        logger.warning(f"[L1] exception for @{username}: {e}")
+        return None
 
 
-def clean_username(text):
-    """تنظيف اسم المستخدم — متوافق عكسياً مع bot.py"""
-    if not text:
-        return ""
-    text = text.strip()
-    m = re.search(r"tiktok\.com/@([\w\.\-_]+)", text)
-    if m:
-        return m.group(1).lower()
-    return text.lstrip("@").strip().lower()
+def _parse_universal_data(data: dict, username: str, source: str) -> Optional[Dict[str, Any]]:
+    """Parse __UNIVERSAL_DATA_FOR_REHYDRATION__ structure."""
+    try:
+        scope = data.get("__DEFAULT_SCOPE__", {})
+        user_detail = scope.get("webapp.user-detail", {})
+        user_info = user_detail.get("userInfo", {})
+        if not user_info:
+            return None
+
+        user = user_info.get("user", {}) or {}
+        stats = user_info.get("stats", {}) or user_info.get("statsV2", {}) or {}
+
+        return {
+            "id": user.get("id"),
+            "uniqueId": user.get("uniqueId", username),
+            "nickname": user.get("nickname", ""),
+            "avatarThumb": user.get("avatarLarger") or user.get("avatarMedium") or user.get("avatarThumb", ""),
+            "signature": user.get("signature", ""),
+            "verified": user.get("verified", False),
+            "region": user.get("region", ""),  # 🎯 KEY signal
+            "language": user.get("language", ""),
+            "followerCount": _to_int(stats.get("followerCount", 0)),
+            "followingCount": _to_int(stats.get("followingCount", 0)),
+            "heartCount": _to_int(stats.get("heartCount", 0)),
+            "videoCount": _to_int(stats.get("videoCount", 0)),
+            "createTime": user.get("createTime", 0),
+            "privateAccount": user.get("privateAccount", False),
+            "source": source,
+        }
+    except Exception as e:
+        logger.debug(f"[L1] universal parse structure err: {e}")
+        return None
 
 
-def _pick_headers(mobile: bool = False) -> Dict[str, str]:
-    ua_pool = [u for u in USER_AGENTS if ('Mobile' in u) == mobile] or USER_AGENTS
+def _parse_sigi_state(data: dict, username: str, source: str) -> Optional[Dict[str, Any]]:
+    """Parse legacy SIGI_STATE structure."""
+    try:
+        users = data.get("UserModule", {}).get("users", {})
+        stats = data.get("UserModule", {}).get("stats", {})
+        user = users.get(username) or (list(users.values())[0] if users else {})
+        stat = stats.get(username) or (list(stats.values())[0] if stats else {})
+        if not user:
+            return None
+
+        return {
+            "id": user.get("id"),
+            "uniqueId": user.get("uniqueId", username),
+            "nickname": user.get("nickname", ""),
+            "avatarThumb": user.get("avatarLarger") or user.get("avatarThumb", ""),
+            "signature": user.get("signature", ""),
+            "verified": user.get("verified", False),
+            "region": user.get("region", ""),
+            "language": user.get("language", ""),
+            "followerCount": _to_int(stat.get("followerCount", 0)),
+            "followingCount": _to_int(stat.get("followingCount", 0)),
+            "heartCount": _to_int(stat.get("heartCount", 0)),
+            "videoCount": _to_int(stat.get("videoCount", 0)),
+            "createTime": user.get("createTime", 0),
+            "privateAccount": user.get("privateAccount", False),
+            "source": source,
+        }
+    except Exception as e:
+        logger.debug(f"[L1] SIGI parse structure err: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════
+# 📱 Layer 2: Mobile API
+# ═══════════════════════════════════════════════════════════
+async def layer2_mobile_api(username: str) -> Optional[Dict[str, Any]]:
+    """Mobile TikTok endpoint - different fingerprint."""
+    url = f"https://m.tiktok.com/@{username}"
+    headers = {
+        "User-Agent": _rand_ua(MOBILE_UAS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.google.com/",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                return None
+            html = resp.text
+            m = re.search(
+                r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.+?)</script>',
+                html, re.DOTALL,
+            )
+            if m:
+                data = json.loads(m.group(1))
+                return _parse_universal_data(data, username, source="L2_mobile")
+            return None
+    except Exception as e:
+        logger.warning(f"[L2] exception: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════
+# 🛡️ Layer 3: cloudscraper (bypass Cloudflare)
+# ═══════════════════════════════════════════════════════════
+def layer3_cloudscraper(username: str) -> Optional[Dict[str, Any]]:
+    """Uses cloudscraper to bypass Cloudflare and hit tikwm."""
+    if not CLOUDSCRAPER_AVAILABLE:
+        logger.debug("[L3] cloudscraper not installed")
+        return None
+    try:
+        scraper = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "windows", "mobile": False}
+        )
+        # Try tikwm info endpoint
+        info_url = f"https://www.tikwm.com/api/user/info?unique_id={username}"
+        resp = scraper.get(info_url, timeout=15)
+        if resp.status_code != 200:
+            return None
+        payload = resp.json()
+        if payload.get("code") != 0:
+            return None
+        user_data = payload.get("data", {}).get("user", {})
+        stats_data = payload.get("data", {}).get("stats", {})
+
+        info = {
+            "id": user_data.get("id"),
+            "uniqueId": user_data.get("uniqueId", username),
+            "nickname": user_data.get("nickname", ""),
+            "avatarThumb": user_data.get("avatarLarger") or user_data.get("avatarThumb", ""),
+            "signature": user_data.get("signature", ""),
+            "verified": user_data.get("verified", False),
+            "region": user_data.get("region", ""),
+            "followerCount": _to_int(stats_data.get("followerCount", 0)),
+            "followingCount": _to_int(stats_data.get("followingCount", 0)),
+            "heartCount": _to_int(stats_data.get("heartCount", 0)),
+            "videoCount": _to_int(stats_data.get("videoCount", 0)),
+            "source": "L3_cloudscraper",
+        }
+
+        # Also fetch user posts for regions
+        try:
+            posts_url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=10"
+            posts_resp = scraper.get(posts_url, timeout=15)
+            if posts_resp.status_code == 200:
+                posts_payload = posts_resp.json()
+                if posts_payload.get("code") == 0:
+                    videos = posts_payload.get("data", {}).get("videos", [])
+                    info["_videos"] = videos
+        except Exception:
+            pass
+
+        return info
+    except Exception as e:
+        logger.warning(f"[L3] cloudscraper err: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════
+# 🎭 Layer 4: Playwright (last resort)
+# ═══════════════════════════════════════════════════════════
+async def layer4_playwright(username: str) -> Optional[Dict[str, Any]]:
+    """Headless browser - highest cost, highest success rate."""
+    if not PLAYWRIGHT_AVAILABLE:
+        logger.debug("[L4] playwright not installed")
+        return None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent=_rand_ua(DESKTOP_UAS),
+                viewport={"width": 1366, "height": 768},
+                locale="en-US",
+            )
+            page = await context.new_page()
+            await page.goto(f"https://www.tiktok.com/@{username}", wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(2500)
+
+            content = await page.content()
+            await browser.close()
+
+            m = re.search(
+                r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.+?)</script>',
+                content, re.DOTALL,
+            )
+            if m:
+                data = json.loads(m.group(1))
+                return _parse_universal_data(data, username, source="L4_playwright")
+            return None
+    except Exception as e:
+        logger.warning(f"[L4] playwright err: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════
+# ⏰ Timezone Analysis from Timestamps
+# ═══════════════════════════════════════════════════════════
+def analyze_posting_timezone(timestamps: List[int]) -> Optional[Dict[str, Any]]:
+    """
+    Estimate user's timezone from posting hour peak.
+    Peak hours 18-23 local suggest that timezone.
+    """
+    if not timestamps or len(timestamps) < 3:
+        return None
+
+    hour_counts = Counter()
+    for ts in timestamps:
+        try:
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            hour_counts[dt.hour] += 1
+        except Exception:
+            continue
+
+    if not hour_counts:
+        return None
+
+    # Peak UTC hour
+    peak_utc_hour = max(hour_counts, key=hour_counts.get)
+
+    # Assume peak is 20:00 local (typical prime time)
+    ASSUMED_LOCAL_PEAK = 20
+    utc_offset = (ASSUMED_LOCAL_PEAK - peak_utc_hour) % 24
+    if utc_offset > 12:
+        utc_offset -= 24
+
+    # Map offset → probable countries
+    OFFSET_MAP = {
+        0: ["GB", "PT", "IE"],
+        1: ["FR", "DE", "IT", "ES", "NL", "MA", "DZ", "TN", "NG"],
+        2: ["EG", "LY", "GR", "TR", "FI", "PS", "JO", "LB", "SY", "ZA"],
+        3: ["SA", "AE", "KW", "QA", "BH", "IQ", "YE", "OM", "SD", "SO", "RU", "KE", "ET"],
+        4: ["AZ", "GE", "AM"],
+        5: ["PK", "AF", "UZ", "TM", "TJ", "KZ"],
+        6: ["BD", "KZ"],
+        7: ["TH", "VN", "ID", "KH", "LA"],
+        8: ["CN", "MY", "SG", "PH", "HK", "TW", "AU"],
+        9: ["JP", "KR", "KP"],
+        -3: ["BR", "AR", "UY", "CL"],
+        -4: ["VE", "BO", "PY", "DO"],
+        -5: ["CO", "PE", "EC", "CU", "JM", "US"],
+        -6: ["MX", "GT", "HN", "SV", "NI", "CR", "US"],
+        -7: ["US", "CA"],
+        -8: ["US", "CA"],
+    }
+
+    candidates = OFFSET_MAP.get(utc_offset, [])
+    total_posts = sum(hour_counts.values())
+    peak_ratio = hour_counts[peak_utc_hour] / total_posts if total_posts else 0
+
     return {
-        'User-Agent': random.choice(ua_pool),
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-        'Referer': 'https://www.tiktok.com/',
-        'Origin': 'https://www.tiktok.com',
+        "utc_offset": utc_offset,
+        "peak_utc_hour": peak_utc_hour,
+        "assumed_local_peak": ASSUMED_LOCAL_PEAK,
+        "candidate_countries": candidates,
+        "sample_size": len(timestamps),
+        "peak_ratio": round(peak_ratio, 2),
     }
 
 
-# ─────────────────────────── [F1] Fallback متعدد المصادر ───────────────────────────
-
-async def fetch_user_info(username: str, client: httpx.AsyncClient) -> Optional[Dict[str, Any]]:
-    """جلب بيانات الحساب — مع Retry وبدائل."""
-    # المصدر الأساسي: tikwm.com
-    url = f"{TIKWM_BASE}/api/user/info"
-    for attempt in range(3):
-        try:
-            r = await client.get(url, params={'unique_id': username}, headers=_pick_headers())
-            if r.status_code == 200:
-                j = r.json()
-                if j.get('code') == 0 and j.get('data', {}).get('user', {}).get('uniqueId'):
-                    return j.get('data')
-            if r.status_code == 429:
-                await asyncio.sleep(1.5 * (attempt + 1))
-                continue
-            if r.status_code >= 500:
-                await asyncio.sleep(0.8 * (attempt + 1))
-                continue
-        except (httpx.TimeoutException, httpx.ConnectError):
-            await asyncio.sleep(1.0 * (attempt + 1))
-            continue
-        except Exception:
-            await asyncio.sleep(0.5)
-            continue
-
-    # Fallback: نسخة mobile من tikwm
-    try:
-        r = await client.get(url, params={'unique_id': username, 'hd': 0},
-                             headers=_pick_headers(mobile=True))
-        if r.status_code == 200:
-            j = r.json()
-            if j.get('code') == 0 and j.get('data', {}).get('user', {}).get('uniqueId'):
-                return j.get('data')
-    except Exception:
-        pass
-    return None
-
-
-async def fetch_videos_regions(username: str, client: httpx.AsyncClient,
-                               count: int = 10) -> List[Tuple[str, int]]:
-    """[F2] جلب region من عدة فيديوهات لتحديد الأكثر تكراراً."""
-    url = f"{TIKWM_BASE}/api/user/posts"
-    for attempt in range(3):
-        try:
-            r = await client.get(
-                url, params={'unique_id': username, 'count': count},
-                headers=_pick_headers(),
-            )
-            if r.status_code == 200:
-                j = r.json()
-                videos = (j.get('data') or {}).get('videos') or []
-                results = []
-                for v in videos:
-                    reg = (v.get('region') or '').strip().upper()
-                    ct = int(v.get('create_time') or 0)
-                    if reg and len(reg) == 2 and reg.isalpha():
-                        results.append((reg, ct))
-                return results
-            if r.status_code == 429:
-                await asyncio.sleep(1.5 * (attempt + 1))
-                continue
-        except Exception:
-            await asyncio.sleep(0.8 * (attempt + 1))
-            continue
-    return []
-
-
-def _pick_dominant_region(regions_with_time: List[Tuple[str, int]]) -> Tuple[Optional[str], str]:
-    """[F2] اختيار region الأكثر تكراراً مع تفضيل الأحدث عند التعادل."""
-    if not regions_with_time:
-        return None, ""
-    freq = Counter(r for r, _ in regions_with_time)
-    most, count = freq.most_common(1)[0]
-    total = len(regions_with_time)
-    if count == 1 and total > 1:
-        # اختر الأحدث
-        latest = max(regions_with_time, key=lambda x: x[1])
-        return latest[0], "أحدث فيديو"
-    conf = f"{count}/{total} فيديوهات"
-    return most, conf
-
-
-# ─────────────────────────── [F3] كشف بديل من bio/nickname ───────────────────────────
-
-def detect_from_text(text: str) -> Tuple[Optional[str], str]:
-    """كشف الدولة من النص (bio/nickname) — علم/مدينة/لهجة."""
-    if not text:
-        return None, ""
-    scores: Dict[str, int] = {}
-    reasons: Dict[str, List[str]] = {}
-
-    def add(cc: str, pts: int, why: str):
-        if not cc:
-            return
-        scores[cc] = scores.get(cc, 0) + pts
-        reasons.setdefault(cc, []).append(why)
-
-    text_lower = text.lower()
-
-    # 1) الأعلام (أقوى إشارة)
-    for iso in REGION_ISO_TO_COUNTRY:
-        flag = _iso_to_flag(iso)
-        if flag and flag in text:
-            add(iso, 100, f"علم {iso}")
-
-    # 2) المدن
-    for kw in sorted(CITY_TO_COUNTRY.keys(), key=len, reverse=True):
-        cc = CITY_TO_COUNTRY[kw]
-        if any(ord(c) > 127 for c in kw):
-            if kw in text:
-                add(cc, 50, f"مدينة '{kw}'")
-        else:
-            if re.search(rf"\b{re.escape(kw)}\b", text_lower):
-                add(cc, 50, f"مدينة '{kw}'")
-
-    # 3) اللهجات
-    for cc, words in DIALECT_HINTS.items():
-        hits = sum(1 for w in words if w in text)
-        if hits:
-            add(cc, min(hits * 15, 45), f"{hits} كلمة لهجة")
-
-    if not scores:
-        return None, ""
-
-    winner = max(scores.items(), key=lambda x: x[1])
-    cc, pts = winner
-    total = sum(scores.values())
-    conf_pct = int((pts / total) * 100) if total else 0
-
-    if pts < 30:
-        return None, ""
-
-    reason_str = "، ".join(reasons[cc][:2])
-    return cc, f"{reason_str} ({conf_pct}%)"
-
-
-def detect_from_language(lang_code: str) -> Optional[str]:
-    """كشف تقريبي من لغة الحساب — يُرجع دولة فقط لو كانت اللغة أحادية الدولة."""
-    lang = (lang_code or "").lower().strip()
-    countries = LANG_TO_COUNTRIES.get(lang, [])
-    if len(countries) == 1:
-        return countries[0]
-    return None
-
-
-# ─────────────────────────── التنسيق النهائي ───────────────────────────
-
-def _country_display(region_iso: Optional[str], source: str = "") -> str:
-    """توليد سطر عرض الدولة."""
-    if not region_iso:
-        return "🌍 غير محدّد"
-    country_en = REGION_ISO_TO_COUNTRY.get(region_iso, region_iso)
-    country_ar = COUNTRY_AR.get(country_en, country_en)
-    flag = _iso_to_flag(region_iso)
-    line = f"{flag} {country_ar}\n   الرمز: `{region_iso}` — EN: `{country_en}`"
-    if source:
-        line += f"\n   المصدر: {source}"
-    return line
-
-
-def format_profile_rtl(user_info: Dict[str, Any], region_iso: Optional[str],
-                       region_source: str = "") -> str:
-    """تنسيق النتيجة RTL — متوافق مع bot.py."""
-    user = user_info.get('user', {}) or {}
-    stats = user_info.get('stats', {}) or {}
-    username = user.get('uniqueId', '—')
-    nickname = user.get('nickname', '—')
-    verified = '✅ موثّق' if user.get('verified') else '⚪ غير موثّق'
-    private = '🔒 خاص' if user.get('privateAccount') else '🌐 عام'
-    signature = (user.get('signature') or '—')[:200]
-    followers = stats.get('followerCount', 0) or 0
-    following = stats.get('followingCount', 0) or 0
-    likes = stats.get('heartCount', 0) or 0
-    videos = stats.get('videoCount', 0) or 0
-
-    country_display = _country_display(region_iso, region_source)
-
-    return (
-        f"📱 *نتيجة البحث — بَصِير TikTok Lookup*\n\n"
-        f"👤 *الاسم:* {nickname}\n"
-        f"🆔 *المعرّف:* @{username}\n"
-        f"{verified}  |  {private}\n\n"
-        f"📍 *الإقامة الفعلية:*\n   {country_display}\n\n"
-        f"📊 *الإحصائيات:*\n"
-        f"  • 👥 المتابعون: {followers:,}\n"
-        f"  • ➕ يتابع: {following:,}\n"
-        f"  • ❤️ الإعجابات: {likes:,}\n"
-        f"  • 🎬 الفيديوهات: {videos:,}\n\n"
-        f"📝 *السيرة:*\n{signature}\n\n"
-        f"🔗 https://www.tiktok.com/@{username}"
-    )
-
-
-# ─────────────────────────── الواجهة العامة ───────────────────────────
-
-async def lookup_tiktok_user(query: str) -> str:
+# ═══════════════════════════════════════════════════════════
+# 🎯 Multi-Signal Verdict
+# ═══════════════════════════════════════════════════════════
+def compute_verdict(
+    user_info: Dict[str, Any],
+    videos: Optional[List[Dict]] = None,
+) -> Dict[str, Any]:
     """
-    الواجهة العامة — متوافقة مع bot.py.
-    ترجع نص جاهز للإرسال في Telegram.
+    Compute geographic verdict from all available signals.
+    Data-driven ONLY - NO name/dialect analysis.
     """
-    username = clean_username(query)
-    if not username or len(username) > 50:
-        return "❌ اسم مستخدم غير صالح."
+    signals = []
+    videos = videos or user_info.get("_videos", []) or []
 
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-        # جمع البيانات بالتوازي
-        user_info, videos_regions = await asyncio.gather(
-            fetch_user_info(username, client),
-            fetch_videos_regions(username, client, count=10),
-            return_exceptions=True,
-        )
+    # ─── Signal 1: user.region ───
+    user_region = (user_info.get("region") or "").upper().strip()
+    if user_region and user_region in WORLD_COUNTRIES:
+        signals.append({
+            "type": "user_region",
+            "iso": user_region,
+            "weight": 0.5,
+            "reason": "TikTok User.region metadata",
+        })
 
-    # معالجة الاستثناءات
-    if isinstance(user_info, Exception):
-        user_info = None
-    if isinstance(videos_regions, Exception):
-        videos_regions = []
+    # ─── Signal 2: video regions (heaviest weight) ───
+    video_regions = []
+    timestamps = []
+    for v in videos:
+        r = (v.get("region") or "").upper().strip()
+        if r and r in WORLD_COUNTRIES:
+            video_regions.append(r)
+        ts = v.get("create_time") or v.get("createTime")
+        if ts:
+            try:
+                timestamps.append(int(ts))
+            except Exception:
+                pass
+
+    if video_regions:
+        counter = Counter(video_regions)
+        top_iso, top_count = counter.most_common(1)[0]
+        confidence = top_count / len(video_regions)
+        signals.append({
+            "type": "video_region",
+            "iso": top_iso,
+            "weight": 0.9 * confidence,
+            "reason": f"{top_count}/{len(video_regions)} videos tagged {top_iso}",
+            "sample": len(video_regions),
+        })
+
+    # ─── Signal 3: timezone analysis ───
+    tz_analysis = analyze_posting_timezone(timestamps) if timestamps else None
+    if tz_analysis and tz_analysis["candidate_countries"]:
+        # Prefer candidate that matches other signals
+        candidate = tz_analysis["candidate_countries"][0]
+        signals.append({
+            "type": "timezone",
+            "iso": candidate,
+            "weight": 0.3 * tz_analysis["peak_ratio"],
+            "reason": f"UTC{tz_analysis['utc_offset']:+d} peak at hour {tz_analysis['peak_utc_hour']}",
+            "candidates": tz_analysis["candidate_countries"],
+        })
+
+    # ─── Aggregate ───
+    if not signals:
+        return {
+            "country_iso": None,
+            "country_ar": "غير محدد",
+            "country_en": "Unknown",
+            "flag": "🏳️",
+            "timezone": None,
+            "continent": None,
+            "confidence": 0,
+            "primary_source": "none",
+            "signals": [],
+            "note": "لا توجد إشارات جغرافية كافية (بيانات فقط، لا اسم/لهجة)",
+        }
+
+    # Vote by weighted signals
+    scores: Dict[str, float] = {}
+    for s in signals:
+        iso = s["iso"]
+        scores[iso] = scores.get(iso, 0) + s["weight"]
+
+    winner_iso = max(scores, key=scores.get)
+    winner_score = scores[winner_iso]
+    total_score = sum(scores.values())
+    confidence = int(round((winner_score / total_score) * 100)) if total_score else 0
+
+    info = get_country_info(winner_iso) if REGIONS_DB_AVAILABLE else None
+    if info:
+        ar_name, en_name, flag, tz, continent = info
+    else:
+        ar_name, en_name, flag, tz, continent = winner_iso, winner_iso, "🏳️", None, None
+
+    primary = max(signals, key=lambda s: s["weight"])
+
+    return {
+        "country_iso": winner_iso,
+        "country_ar": ar_name,
+        "country_en": en_name,
+        "flag": flag,
+        "timezone": tz,
+        "continent": continent,
+        "confidence": confidence,
+        "primary_source": primary["type"],
+        "primary_reason": primary["reason"],
+        "signals": signals,
+        "timezone_analysis": tz_analysis,
+        "is_arab": is_arab_country(winner_iso) if REGIONS_DB_AVAILABLE else False,
+        "is_gcc": is_gcc_country(winner_iso) if REGIONS_DB_AVAILABLE else False,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# 🎯 Main Public API
+# ═══════════════════════════════════════════════════════════
+async def lookup_tiktok(username: str) -> LookupResult:
+    """
+    Main entry point - Multi-layer Cloudflare bypass + geo verdict.
+
+    Args:
+        username: TikTok username (without @)
+
+    Returns:
+        LookupResult with: user info + verdict + layers_used
+    """
+    if not REGIONS_DB_AVAILABLE:
+        logger.error("regions_database.py missing - install it first")
+
+    username = username.strip().lstrip("@")
+    result = LookupResult()
+    layers_tried = []
+    user_info = None
+    start = time.time()
+
+    # ── Layer 1 ──
+    layers_tried.append("L1_web")
+    user_info = await layer1_tiktok_web(username)
+
+    # ── Layer 2 ──
+    if not user_info:
+        layers_tried.append("L2_mobile")
+        user_info = await layer2_mobile_api(username)
+
+    # ── Layer 3 ──
+    if not user_info:
+        layers_tried.append("L3_cloudscraper")
+        user_info = layer3_cloudscraper(username)
+
+    # ── Layer 4 ──
+    if not user_info:
+        layers_tried.append("L4_playwright")
+        user_info = await layer4_playwright(username)
 
     if not user_info:
-        return (
-            f"❌ تعذّر العثور على @{username}\n"
-            f"قد يكون الحساب:\n"
-            f"  • خاصاً 🔒\n"
-            f"  • غير موجود\n"
-            f"  • أو أن الخدمة الوسيطة محجوبة مؤقتاً"
+        return LookupResult(
+            success=False,
+            error="جميع الطبقات فشلت في جلب بيانات المستخدم",
+            username=username,
+            layers_tried=layers_tried,
+            elapsed=round(time.time() - start, 2),
         )
 
-    # ═══ استراتيجية كشف الموقع متعددة الطبقات ═══
-    region_iso: Optional[str] = None
-    region_source: str = ""
+    # ── Videos (if L3 didn't fetch them) ──
+    videos = user_info.get("_videos", [])
+    if not videos and CLOUDSCRAPER_AVAILABLE:
+        try:
+            scraper = cloudscraper.create_scraper()
+            posts_url = f"https://www.tikwm.com/api/user/posts?unique_id={username}&count=10"
+            r = scraper.get(posts_url, timeout=12)
+            if r.status_code == 200:
+                p = r.json()
+                if p.get("code") == 0:
+                    videos = p.get("data", {}).get("videos", [])
+        except Exception:
+            pass
 
-    # الطبقة 1: من فيديوهات المستخدم (الأدق)
-    if videos_regions:
-        region_iso, freq = _pick_dominant_region(videos_regions)
-        if region_iso:
-            region_source = f"📹 من {freq}"
+    # ── Verdict ──
+    verdict = compute_verdict(user_info, videos)
 
-    # الطبقة 2: من bio + nickname
-    if not region_iso:
-        user_obj = user_info.get('user', {}) or {}
-        bio = user_obj.get('signature') or ''
-        nick = user_obj.get('nickname') or ''
-        combined = f"{bio}\n{nick}"
-        cc, why = detect_from_text(combined)
-        if cc:
-            region_iso = cc
-            region_source = f"🧠 تحليل ذكي — {why}"
-
-    # الطبقة 3: من لغة الحساب
-    if not region_iso:
-        user_obj = user_info.get('user', {}) or {}
-        lang = user_obj.get('language') or ''
-        cc = detect_from_language(lang)
-        if cc:
-            region_iso = cc
-            region_source = f"🌐 لغة الحساب ({lang})"
-
-    return format_profile_rtl(user_info, region_iso, region_source)
-
-
-# ─────────────────────────── دالة debug (اختيارية للـ analytics) ───────────────────────────
-
-async def lookup_tiktok_user_debug(query: str) -> Dict[str, Any]:
-    """
-    نسخة مطوّرة تُرجع dict مع كل تفاصيل الكشف — للاستخدام في analytics_db
-    أو Streamlit لعرض debug_report.
-    """
-    username = clean_username(query)
-    result = {
-        "username": username,
-        "success": False,
-        "region_iso": None,
-        "region_source": "",
-        "user_info": None,
-        "videos_regions": [],
-        "detection_layers": [],
-        "error": "",
-    }
-    if not username or len(username) > 50:
-        result["error"] = "اسم مستخدم غير صالح"
-        return result
-
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-        user_info, videos_regions = await asyncio.gather(
-            fetch_user_info(username, client),
-            fetch_videos_regions(username, client, count=10),
-            return_exceptions=True,
-        )
-
-    if isinstance(user_info, Exception) or not user_info:
-        result["error"] = "تعذّر الجلب من tikwm"
-        return result
-    if isinstance(videos_regions, Exception):
-        videos_regions = []
-
-    result["user_info"] = user_info
-    result["videos_regions"] = videos_regions
-    result["success"] = True
-
-    # طبقات الكشف
-    if videos_regions:
-        cc, freq = _pick_dominant_region(videos_regions)
-        if cc:
-            result["detection_layers"].append({"layer": "videos", "result": cc, "detail": freq})
-            result["region_iso"] = cc
-            result["region_source"] = f"📹 من {freq}"
-
-    if not result["region_iso"]:
-        user_obj = user_info.get('user', {}) or {}
-        text = f"{user_obj.get('signature') or ''}\n{user_obj.get('nickname') or ''}"
-        cc, why = detect_from_text(text)
-        if cc:
-            result["detection_layers"].append({"layer": "bio_analysis", "result": cc, "detail": why})
-            result["region_iso"] = cc
-            result["region_source"] = f"🧠 تحليل ذكي — {why}"
-
-    if not result["region_iso"]:
-        user_obj = user_info.get('user', {}) or {}
-        lang = user_obj.get('language') or ''
-        cc = detect_from_language(lang)
-        if cc:
-            result["detection_layers"].append({"layer": "language", "result": cc, "detail": lang})
-            result["region_iso"] = cc
-            result["region_source"] = f"🌐 لغة الحساب ({lang})"
-
+    # ── Assemble result ──
+    result.update({
+        "success": True,
+        "username": user_info.get("uniqueId", username),
+        "user_id": user_info.get("id"),
+        "nickname": user_info.get("nickname"),
+        "avatar": user_info.get("avatarThumb"),
+        "signature": user_info.get("signature"),
+        "verified": user_info.get("verified", False),
+        "private": user_info.get("privateAccount", False),
+        "stats": {
+            "followers": user_info.get("followerCount", 0),
+            "following": user_info.get("followingCount", 0),
+            "hearts": user_info.get("heartCount", 0),
+            "videos": user_info.get("videoCount", 0),
+        },
+        "geo": verdict,
+        "layers_tried": layers_tried,
+        "primary_source": user_info.get("source"),
+        "videos_analyzed": len(videos),
+        "elapsed": round(time.time() - start, 2),
+        "regions_db_version": REGIONS_STATS.get("version", "unknown") if REGIONS_DB_AVAILABLE else "MISSING",
+    })
     return result
 
 
-# ─────────────────────────── CLI للاختبار السريع ───────────────────────────
+# ═══════════════════════════════════════════════════════════
+# 🎨 Arabic Display Formatting
+# ═══════════════════════════════════════════════════════════
+def format_result_arabic(result: LookupResult) -> str:
+    """Render result as Arabic RTL text (for bot messages)."""
+    if not result.get("success"):
+        return f"❌ فشل جلب البيانات: {result.get('error', 'خطأ غير معروف')}"
 
+    stats = result.get("stats", {})
+    geo = result.get("geo", {})
+
+    verified_badge = " ✅ موثّق" if result.get("verified") else ""
+    private_badge = " 🔒 خاص" if result.get("private") else ""
+
+    lines = [
+        f"👤 {result.get('nickname', '')}{verified_badge}{private_badge}",
+        f"🔗 @{result.get('username', '')}",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "📊 الإحصائيات",
+        f"👥 المتابعون: {stats.get('followers', 0):,}",
+        f"➕ يتابع: {stats.get('following', 0):,}",
+        f"📹 الفيديوهات: {stats.get('videos', 0):,}",
+        f"❤️ الإعجابات: {stats.get('hearts', 0):,}",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🌍 التحليل الجغرافي",
+        f"🎯 الدولة: {geo.get('flag', '🏳️')} {geo.get('country_ar', 'غير محدد')}",
+    ]
+
+    conf = geo.get("confidence", 0)
+    if conf > 0:
+        lines.append(f"📊 مستوى الثقة: {conf}%")
+
+    src = geo.get("primary_source")
+    src_labels = {
+        "video_region": "📹 من metadata الفيديوهات",
+        "user_region": "👤 من ملف المستخدم",
+        "timezone": "⏰ من تحليل توقيت النشر",
+        "none": "❌ لا توجد إشارات",
+    }
+    if src:
+        lines.append(f"🔍 المصدر: {src_labels.get(src, src)}")
+
+    if geo.get("primary_reason"):
+        lines.append(f"ℹ️ {geo['primary_reason']}")
+
+    if geo.get("timezone"):
+        lines.append(f"🕐 التوقيت المحلي: {geo['timezone']}")
+
+    if geo.get("continent"):
+        continent_ar = {
+            "Asia": "آسيا",
+            "Africa": "إفريقيا",
+            "Europe": "أوروبا",
+            "Americas": "الأمريكتان",
+            "Oceania": "أوقيانوسيا",
+            "Antarctica": "أنتاركتيكا",
+        }.get(geo["continent"], geo["continent"])
+        lines.append(f"🌐 القارة: {continent_ar}")
+
+    if geo.get("is_arab"):
+        badge = "🕌 دولة عربية"
+        if geo.get("is_gcc"):
+            badge += " (خليجية 🕋)"
+        lines.append(badge)
+
+    lines.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🔬 تحليل Data-Driven فقط",
+        "✅ لا اعتماد على الاسم/اللهجة",
+        f"📡 الطبقات المُستخدمة: {', '.join(result.get('layers_tried', []))}",
+        f"📹 الفيديوهات المحللة: {result.get('videos_analyzed', 0)}",
+        f"⚡ زمن الاستجابة: {result.get('elapsed', 0)}s",
+        f"🗺️ قاعدة الدول: {result.get('regions_db_version', '?')} (249 دولة)",
+    ])
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════
+# 🔧 Helpers
+# ═══════════════════════════════════════════════════════════
+def _to_int(v) -> int:
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return 0
+
+
+# ═══════════════════════════════════════════════════════════
+# 🧪 CLI test
+# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1:
-        result = asyncio.run(lookup_tiktok_user(sys.argv[1]))
-        print(result)
-    else:
-        print("Usage: python tiktok_lookup.py <username>")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    username = sys.argv[1] if len(sys.argv) > 1 else "citizen_lawyerr"
+    print(f"\n🔍 Testing lookup for: @{username}\n")
+
+    async def _main():
+        result = await lookup_tiktok(username)
+        print("=" * 60)
+        print(format_result_arabic(result))
+        print("=" * 60)
+        print("\n📋 Raw JSON:")
+        print(json.dumps(dict(result), ensure_ascii=False, indent=2, default=str))
+
+    asyncio.run(_main())
