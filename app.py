@@ -27,45 +27,45 @@ sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
 
 # ═══════════════════════════════════════════════════════════
-# 🚀 v2.4.7 - RapidAPI Layer 0 (SYNC + POSTS REGION)
-# BSR-V247-CTO-DUAL-FIX-FINAL-AHMAD-20260726
+# 🚀 v2.4.8 - RapidAPI Layer 0 (SYNC + POSTS REGION)
+# BSR-V248-CTO-CLEAN-EDITION-AHMAD-20260726
 # ═══════════════════════════════════════════════════════════
-_RAPIDAPI_KEY_V247 = os.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
-_RAPIDAPI_HOST_V247 = os.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
+import os as _os_v248   # ✅ FIX: explicit os import
+_RAPIDAPI_KEY_V248 = _os_v248.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
+_RAPIDAPI_HOST_V248 = _os_v248.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
 
 
-def _rapidapi_fetch_v247(username: str) -> dict:
+def _rapidapi_fetch_v248(username: str) -> dict:
     """SYNC RapidAPI - gets region from /user/posts videos (VPN-aware)."""
-    if not _RAPIDAPI_KEY_V247:
+    if not _RAPIDAPI_KEY_V248:
         return {'success': False, 'error': 'no_rapidapi_key'}
-    
+
     headers = {
-        "X-RapidAPI-Key": _RAPIDAPI_KEY_V247,
-        "X-RapidAPI-Host": _RAPIDAPI_HOST_V247,
+        "X-RapidAPI-Key": _RAPIDAPI_KEY_V248,
+        "X-RapidAPI-Host": _RAPIDAPI_HOST_V248,
     }
-    
+
     try:
-        # 1) Get user info
-        info_url = f"https://{_RAPIDAPI_HOST_V247}/user/info?unique_id={username}"
+        info_url = f"https://{_RAPIDAPI_HOST_V248}/user/info?unique_id={username}"
         r = requests.get(info_url, headers=headers, timeout=15)
         if r.status_code != 200:
             return {'success': False, 'error': f'http_{r.status_code}'}
-        
+
         j = r.json()
         if j.get('code') != 0:
             return {'success': False, 'error': f'api_code_{j.get("code")}'}
-        
+
         data = j.get('data', {}) or {}
         user = data.get('user', {}) or {}
         stats = data.get('stats', {}) or {}
-        
-        # 2) Get posts to determine region from videos (30 videos)
-        posts_url = f"https://{_RAPIDAPI_HOST_V247}/user/posts?unique_id={username}&count=30&cursor=0"
+
+        # Posts endpoint for region detection
+        posts_url = f"https://{_RAPIDAPI_HOST_V248}/user/posts?unique_id={username}&count=30&cursor=0"
         region_distribution = {}
         videos_count = 0
         country_iso = ""
         vpn_country = None
-        
+
         try:
             r2 = requests.get(posts_url, headers=headers, timeout=15)
             if r2.status_code == 200:
@@ -77,19 +77,14 @@ def _rapidapi_fetch_v247(username: str) -> dict:
                         rg = v.get('region', '') or ''
                         if rg:
                             region_distribution[rg] = region_distribution.get(rg, 0) + 1
-                    
+
                     if region_distribution:
-                        # VPN-aware detection:
-                        # If we have Arabic countries in the distribution, prefer them as origin
                         arab_isos = {'SA','AE','KW','QA','BH','OM','YE','IQ','SY','LB','JO','PS',
                                      'EG','SD','LY','TN','DZ','MA','MR','SO','DJ','KM'}
-                        
                         arab_in_dist = {k: v for k, v in region_distribution.items() if k in arab_isos}
-                        
+
                         if arab_in_dist:
-                            # Arab country found - likely origin
                             country_iso = max(arab_in_dist.items(), key=lambda x: x[1])[0]
-                            # Check for VPN indicator (majority is non-Arab)
                             non_arab_top = max(
                                 ((k, v) for k, v in region_distribution.items() if k not in arab_isos),
                                 key=lambda x: x[1], default=(None, 0)
@@ -97,11 +92,10 @@ def _rapidapi_fetch_v247(username: str) -> dict:
                             if non_arab_top[1] > sum(arab_in_dist.values()):
                                 vpn_country = non_arab_top[0]
                         else:
-                            # No Arab country - use most frequent
                             country_iso = max(region_distribution.items(), key=lambda x: x[1])[0]
         except Exception:
             pass
-        
+
         return {
             'success': True,
             'json': {
@@ -113,7 +107,7 @@ def _rapidapi_fetch_v247(username: str) -> dict:
                         'signature': user.get('signature', ''),
                         'avatarLarger': user.get('avatarLarger', '') or user.get('avatarMedium', ''),
                         'verified': user.get('verified', False),
-                        'region': country_iso,   # From posts analysis
+                        'region': country_iso,
                         'language': user.get('language', ''),
                         'id': user.get('id', ''),
                         'secUid': user.get('secUid', ''),
@@ -128,7 +122,7 @@ def _rapidapi_fetch_v247(username: str) -> dict:
                     }
                 }
             },
-            'proxy': 'rapidapi_v247',
+            'proxy': 'rapidapi_v248',
             'time': 2.0,
             'region_iso': country_iso,
             'actual_residence': country_iso,
@@ -783,12 +777,12 @@ def detect_actual_residence(regions_seq, times_seq):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
-    """✅ v2.4.7 - RapidAPI Layer 0 + tikwm/jina fallback"""
-    # 🚀 v2.4.7: Try RapidAPI FIRST (sync, gets region from videos)
-    rapidapi_result = _rapidapi_fetch_v247(username)
+    """✅ v2.4.8 - RapidAPI Layer 0 + tikwm/jina fallback"""
+    # 🚀 v2.4.8: Try RapidAPI FIRST (sync, gets region from videos)
+    rapidapi_result = _rapidapi_fetch_v248(username)
     if rapidapi_result.get('success'):
         return rapidapi_result
-    
+
     # Fallback: original tikwm logic
     primary = fetch_user_tikwm(username)
     region_data = {'region_iso': None}
