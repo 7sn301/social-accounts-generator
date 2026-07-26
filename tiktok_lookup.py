@@ -640,24 +640,7 @@ def _format_html_for_bot(result: LookupResult) -> str:
             badge += " <i>(خليجية 🕋)</i>"
         lines.append(badge)
 
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🏆 <b>مدعوم بـ RapidAPI + VPN-Aware</b>")
-    lines.append("✅ لا اعتماد على الاسم/اللهجة")
-
-    layers = result.get("layers_tried", [])
-    if layers:
-        lines.append(f"📡 الطبقات: <code>{', '.join(layers)}</code>")
-
-    analyzed = result.get("videos_analyzed", 0) or 0
-    if analyzed:
-        lines.append(f"📹 المُحلَّل: <code>{analyzed} فيديو</code>")
-
-    elapsed = result.get("elapsed", 0) or 0
-    if elapsed:
-        lines.append(f"⚡ الاستجابة: <code>{elapsed}s</code>")
-
-    lines.append("🗺️ قاعدة: <code>v2.4.0</code> (249 دولة)")
+    # 🎨 v2.4.8: Footer section removed for cleaner output
     return "\n".join(lines)
 
 
