@@ -1,943 +1,473 @@
 """
-🌍 قاعدة المناطق الشاملة عالمياً - Baseer v1.9.6
-═══════════════════════════════════════════════════════════════
-تشمل: مدن + مناطق إدارية + محافظات + مقاطعات + بلديات + مراكز
-مستوى التفصيل: من العاصمة حتى "حوطة بني تميم"
+╔══════════════════════════════════════════════════════════════╗
+║  BSR-V221-CTO-WORLD-MAP-COMPLETE-AHMAD-20260726             ║
+║  regions_database.py v2.2.1 - World Complete Map            ║
+║  Total: 249 countries/territories (ISO 3166-1 alpha-2)      ║
+║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)        ║
+╚══════════════════════════════════════════════════════════════╝
 
-التغطية:
-  🇸🇦 السعودية: 13 منطقة + 200+ محافظة ومدينة
-  🇦🇪 الإمارات: 7 إمارات + 50+ مدينة
-  🇰🇼 الكويت: 6 محافظات + 40+ منطقة
-  🇶🇦 قطر: 8 بلديات + 30+ منطقة
-  🇧🇭 البحرين: 4 محافظات + 25+ منطقة
-  🇴🇲 عمان: 11 محافظة + 50+ ولاية
-  🇪🇬 مصر: 27 محافظة + 100+ مدينة
-  🇯🇴 الأردن: 12 محافظة + 50+ مدينة
-  🇲🇦 المغرب، 🇩🇿 الجزائر، 🇹🇳 تونس، 🇱🇧 لبنان، 🇮🇶 العراق، 🇸🇾 سوريا
-  🇺🇸 أمريكا، 🇨🇦 كندا، 🇬🇧 بريطانيا، 🇫🇷 فرنسا، 🇩🇪 ألمانيا، 🇪🇸 إسبانيا، 🇮🇹 إيطاليا
-  🇯🇵 اليابان، 🇰🇷 كوريا، 🇨🇳 الصين، 🇮🇳 الهند، 🇵🇰 باكستان، 🇮🇩 إندونيسيا
-  🇧🇷 البرازيل، 🇦🇷 الأرجنتين، 🇲🇽 المكسيك، 🇨🇴 كولومبيا
-  🇦🇺 أستراليا، 🇳🇿 نيوزيلندا
-  🇳🇬 نيجيريا، 🇿🇦 جنوب أفريقيا، 🇰🇪 كينيا، 🇲🇦 المغرب
-═══════════════════════════════════════════════════════════════
+قاعدة بيانات شاملة لجميع دول العالم مع:
+- ISO 3166-1 alpha-2 code
+- الاسم العربي الرسمي
+- الاسم الإنجليزي
+- علم Emoji
+- المنطقة الزمنية الأساسية (IANA)
+- القارة
+
+الاستخدام:
+    from regions_database import (
+        WORLD_COUNTRIES,
+        get_country_info,
+        get_country_by_timezone,
+        get_flag,
+        get_arabic_name,
+        get_all_arab_countries,
+    )
 """
 
-REGIONS_DATABASE = {
-    # ═══════════════ 🇸🇦 المملكة العربية السعودية ═══════════════
-    'Saudi Arabia': {
-        # العاصمة والمدن الرئيسية
-        'riyadh': 'الرياض', 'jeddah': 'جدة', 'mecca': 'مكة المكرمة',
-        'makkah': 'مكة المكرمة', 'medina': 'المدينة المنورة', 'madinah': 'المدينة المنورة',
-        'dammam': 'الدمام', 'khobar': 'الخبر', 'al-khobar': 'الخبر',
-        'dhahran': 'الظهران', 'taif': 'الطائف', 'tabuk': 'تبوك',
-        'buraydah': 'بريدة', 'buraidah': 'بريدة', 'khamis mushait': 'خميس مشيط',
-        'abha': 'أبها', 'hail': 'حائل', 'hofuf': 'الهفوف',
-        'jubail': 'الجبيل', 'yanbu': 'ينبع', 'najran': 'نجران',
-        'al-baha': 'الباحة', 'baha': 'الباحة', 'jizan': 'جازان',
-        'jazan': 'جازان', 'arar': 'عرعر', 'sakaka': 'سكاكا',
-        'qatif': 'القطيف', 'unaizah': 'عنيزة', 'rabigh': 'رابغ',
-        # محافظات منطقة الرياض
-        'diriyah': 'الدرعية', 'kharj': 'الخرج', 'al-kharj': 'الخرج',
-        'majmaah': 'المجمعة', 'al-majmaah': 'المجمعة',
-        'zulfi': 'الزلفي', 'al-zulfi': 'الزلفي',
-        'shaqra': 'شقراء', 'shaqraa': 'شقراء',
-        'dawadmi': 'الدوادمي', 'al-dawadmi': 'الدوادمي',
-        'afif': 'عفيف', 'al-afif': 'عفيف',
-        'wadi al-dawasir': 'وادي الدواسر', 'wadi addawasir': 'وادي الدواسر',
-        'sulayyil': 'السليل', 'al-sulayyil': 'السليل',
-        'aflaj': 'الأفلاج', 'al-aflaj': 'الأفلاج',
-        'hawtat bani tamim': 'حوطة بني تميم', 'howta': 'حوطة بني تميم',
-        'huraymila': 'حريملاء', 'huraimila': 'حريملاء',
-        'thadiq': 'ثادق', 'rumah': 'رماح',
-        'quwaiyah': 'القويعية', 'al-quwaiyah': 'القويعية',
-        'muzahimiyah': 'المزاحمية', 'al-muzahimiyah': 'المزاحمية',
-        # محافظات منطقة مكة
-        'jamum': 'الجموم', 'al-jamum': 'الجموم',
-        'khulays': 'خليص', 'kholais': 'خليص',
-        'ranya': 'رنية', 'turabah': 'تربة',
-        'qunfudhah': 'القنفذة', 'al-qunfudhah': 'القنفذة',
-        'al-lith': 'الليث', 'lith': 'الليث',
-        'al-kamil': 'الكامل', 'adam': 'أضم',
-        # محافظات منطقة المدينة
-        'badr': 'بدر', 'mahd al-dhahab': 'مهد الذهب',
-        'khaybar': 'خيبر', 'ula': 'العلا', 'al-ula': 'العلا',
-        'wadi al-fara': 'وادي الفرع',
-        # المنطقة الشرقية
-        'ahsa': 'الأحساء', 'al-ahsa': 'الأحساء',
-        'mubarraz': 'المبرز', 'al-mubarraz': 'المبرز',
-        'khafji': 'الخفجي', 'al-khafji': 'الخفجي',
-        'nairyah': 'النعيرية', 'al-nairyah': 'النعيرية',
-        'qaisumah': 'القيصومة', 'safwa': 'صفوى',
-        'rastanura': 'رأس تنورة', 'ras tanura': 'رأس تنورة',
-        # القصيم
-        'rass': 'الرس', 'al-rass': 'الرس',
-        'badaya': 'البدائع', 'bukayriyah': 'البكيرية',
-        'al-asyah': 'الأسياح', 'midhnab': 'المذنب',
-        # حائل
-        'baqaa': 'بقعاء', 'al-shinan': 'الشنان',
-        'al-ghazalah': 'الغزالة', 'al-haaeit': 'الحائط',
-        # تبوك
-        'duba': 'ضباء', 'al-wajh': 'الوجه',
-        'umluj': 'أملج', 'tayma': 'تيماء',
-        'haql': 'حقل', 'al-bidaa': 'البدع',
-        # الجوف
-        'qurayyat': 'القريات', 'dawmat al-jandal': 'دومة الجندل',
-        # عسير
-        'mahayil': 'محايل عسير', 'mahayl asir': 'محايل',
-        'tathlith': 'تثليث', 'sarat abidah': 'سراة عبيدة',
-        'rijal almaa': 'رجال ألمع', 'al-namas': 'النماص',
-        'bisha': 'بيشة', 'ahad rufaidah': 'أحد رفيدة',
-        # جازان
-        'sabya': 'صبيا', 'abu arish': 'أبو عريش',
-        'samtah': 'صامطة', 'al-darb': 'الدرب',
-        'farasan': 'فرسان', 'ahad al-masarihah': 'أحد المسارحة',
-        # نجران
-        'sharurah': 'شرورة', 'habuna': 'حبونا',
-        'badr al-junub': 'بدر الجنوب', 'thar': 'ثار',
-        # الباحة
-        'al-mandaq': 'المندق', 'baljurashi': 'بلجرشي',
-        'al-mikhwah': 'المخواة', 'qilwah': 'قلوة',
-    },
-
-    # ═══════════════ 🇦🇪 الإمارات العربية المتحدة ═══════════════
-    'United Arab Emirates': {
-        'abu dhabi': 'أبوظبي', 'abudhabi': 'أبوظبي',
-        'dubai': 'دبي', 'sharjah': 'الشارقة',
-        'ajman': 'عجمان', 'fujairah': 'الفجيرة',
-        'ras al-khaimah': 'رأس الخيمة', 'rak': 'رأس الخيمة',
-        'umm al-quwain': 'أم القيوين', 'uaq': 'أم القيوين',
-        'al-ain': 'العين', 'alain': 'العين',
-        'khalifa city': 'مدينة خليفة', 'mussafah': 'المصفح',
-        'mohammed bin zayed city': 'مدينة محمد بن زايد',
-        'yas island': 'جزيرة ياس', 'saadiyat': 'جزيرة السعديات',
-        'reem island': 'جزيرة الريم', 'corniche': 'الكورنيش',
-        'jumeirah': 'جميرا', 'deira': 'ديرة',
-        'bur dubai': 'بر دبي', 'al-barsha': 'البرشاء',
-        'marina': 'مرسى دبي', 'dubai marina': 'مرسى دبي',
-        'jbr': 'جميرا بيتش ريزيدنس', 'palm jumeirah': 'نخلة جميرا',
-        'downtown dubai': 'وسط دبي', 'business bay': 'الخليج التجاري',
-        'silicon oasis': 'واحة السيليكون', 'dip': 'مجمع دبي للاستثمار',
-        'jvc': 'قرية جميرا الدائرية', 'al-quoz': 'القوز',
-        'mirdif': 'مردف', 'al-warqa': 'الورقاء',
-        'nad al-sheba': 'ند الشبا',
-        'al-khan': 'الخان', 'al-majaz': 'المجاز',
-        'al-nahda': 'النهدة', 'al-qasimiya': 'القاسمية',
-        'kalba': 'كلباء', 'khor fakkan': 'خورفكان',
-        'dibba': 'دبا', 'masfut': 'مصفوت',
-        'hatta': 'حتا', 'liwa': 'ليوا',
-        'madinat zayed': 'مدينة زايد', 'ruwais': 'الرويس',
-    },
-
-    # ═══════════════ 🇰🇼 دولة الكويت ═══════════════
-    'Kuwait': {
-        'kuwait city': 'مدينة الكويت', 'al-kuwait': 'مدينة الكويت',
-        'hawalli': 'حولي', 'hawally': 'حولي',
-        'salmiya': 'السالمية', 'al-salmiya': 'السالمية',
-        'farwaniya': 'الفروانية', 'al-farwaniya': 'الفروانية',
-        'jahra': 'الجهراء', 'al-jahra': 'الجهراء',
-        'ahmadi': 'الأحمدي', 'al-ahmadi': 'الأحمدي',
-        'mubarak al-kabeer': 'مبارك الكبير',
-        'jabriya': 'الجابرية', 'al-jabriya': 'الجابرية',
-        'fintas': 'الفنطاس', 'mahboula': 'المهبولة',
-        'fahaheel': 'الفحيحيل', 'mangaf': 'المنقف',
-        'abu halifa': 'أبو حليفة', 'abu fatira': 'أبو فطيرة',
-        'shaab': 'الشعب', 'al-shaab': 'الشعب',
-        'rumaithiya': 'الرميثية', 'bayan': 'بيان',
-        'salwa': 'سلوى', 'mishrif': 'مشرف',
-        'sabah al-salem': 'صباح السالم', 'qurain': 'القرين',
-        'adan': 'العدان', 'qusur': 'القصور',
-        'jaber al-ali': 'جابر العلي',
-        'andalus': 'الأندلس', 'firdous': 'الفردوس',
-        'omariya': 'العمرية', 'abdullah al-mubarak': 'عبدالله المبارك',
-        'sulaibikhat': 'الصليبخات', 'doha': 'الدوحة',
-        'qibla': 'قبلة', 'sharq': 'شرق',
-        'mirqab': 'المرقاب', 'salhiya': 'الصالحية',
-        'dasma': 'الدسمة', 'shamiya': 'الشامية',
-        'mansouriya': 'المنصورية', 'qadsiya': 'القادسية',
-        'faiha': 'الفيحاء', 'kaifan': 'كيفان',
-        'shuwaikh': 'الشويخ', 'nuzha': 'النزهة',
-        'yarmouk': 'اليرموك', 'rawda': 'الروضة',
-        'adailiya': 'العديلية', 'khaldiya': 'الخالدية',
-        'surra': 'السرة',
-        'south surra': 'جنوب السرة',
-    },
-
-    # ═══════════════ 🇶🇦 دولة قطر ═══════════════
-    'Qatar': {
-        'doha': 'الدوحة', 'al-doha': 'الدوحة',
-        'al-rayyan': 'الريان', 'rayyan': 'الريان',
-        'al-wakrah': 'الوكرة', 'wakra': 'الوكرة',
-        'al-khor': 'الخور', 'khor': 'الخور',
-        'umm salal': 'أم صلال', 'al-shahaniya': 'الشحانية',
-        'mesaieed': 'مسيعيد', 'dukhan': 'دخان',
-        'ras laffan': 'راس لفان', 'al-shamal': 'الشمال',
-        'lusail': 'لوسيل', 'al-daayen': 'الضعاين',
-        'west bay': 'الخليج الغربي', 'pearl': 'اللؤلؤة',
-        'pearl qatar': 'اللؤلؤة قطر', 'katara': 'كتارا',
-        'msheireb': 'مشيرب', 'souq waqif': 'سوق واقف',
-        'al-sadd': 'السد', 'al-aziziyah': 'العزيزية',
-        'al-dafna': 'الدفنة', 'al-gharafa': 'الغرافة',
-        'al-waab': 'الوعب', 'al-thumama': 'الثمامة',
-    },
-
-    # ═══════════════ 🇧🇭 مملكة البحرين ═══════════════
-    'Bahrain': {
-        'manama': 'المنامة', 'al-manama': 'المنامة',
-        'muharraq': 'المحرق', 'al-muharraq': 'المحرق',
-        'riffa': 'الرفاع', 'al-riffa': 'الرفاع',
-        'hamad town': 'مدينة حمد', 'isa town': 'مدينة عيسى',
-        'sitra': 'سترة', 'budaiya': 'البديع',
-        'juffair': 'الجفير', 'seef': 'السيف',
-        'adliya': 'العدلية', 'hidd': 'الحد',
-        'amwaj': 'أمواج', 'durrat': 'درة البحرين',
-        'sanad': 'سند', 'jidhafs': 'جدحفص',
-        'arad': 'عراد', 'galali': 'قلالي',
-        'tubli': 'توبلي', 'aali': 'عالي',
-        'malkiya': 'المالكية', 'sakhir': 'الصخير',
-        'zallaq': 'الزلاق', 'awali': 'عوالي',
-    },
-
-    # ═══════════════ 🇴🇲 سلطنة عمان ═══════════════
-    'Oman': {
-        'muscat': 'مسقط', 'salalah': 'صلالة',
-        'sohar': 'صحار', 'nizwa': 'نزوى',
-        'sur': 'صور', 'rustaq': 'الرستاق',
-        'ibri': 'عبري', 'bahla': 'بهلاء',
-        'buraimi': 'البريمي', 'khasab': 'خصب',
-        'mutrah': 'مطرح', 'ruwi': 'روي',
-        'qurum': 'القرم', 'azaiba': 'العذيبة',
-        'ghala': 'غلا', 'seeb': 'السيب',
-        'al-amerat': 'العامرات', 'bawshar': 'بوشر',
-        'barka': 'بركاء', 'masirah': 'مصيرة',
-        'duqm': 'الدقم', 'thumrait': 'ثمريت',
-        'mirbat': 'مرباط', 'taqah': 'طاقة',
-    },
-
-    # ═══════════════ 🇪🇬 جمهورية مصر العربية ═══════════════
-    'Egypt': {
-        'cairo': 'القاهرة', 'al-qahirah': 'القاهرة',
-        'alexandria': 'الإسكندرية', 'iskandariya': 'الإسكندرية',
-        'giza': 'الجيزة', 'al-jizah': 'الجيزة',
-        'shubra': 'شبرا', 'shubra el-kheima': 'شبرا الخيمة',
-        'port said': 'بورسعيد', 'portsaid': 'بورسعيد',
-        'suez': 'السويس', 'ismailia': 'الإسماعيلية',
-        'mansoura': 'المنصورة', 'tanta': 'طنطا',
-        'asyut': 'أسيوط', 'minya': 'المنيا',
-        'beni suef': 'بني سويف', 'fayoum': 'الفيوم',
-        'sohag': 'سوهاج', 'qena': 'قنا', 'aswan': 'أسوان',
-        'luxor': 'الأقصر', 'hurghada': 'الغردقة',
-        'sharm el-sheikh': 'شرم الشيخ', 'sharm': 'شرم الشيخ',
-        'dahab': 'دهب', 'marsa alam': 'مرسى علم',
-        'damietta': 'دمياط', 'kafr el-sheikh': 'كفر الشيخ',
-        'damanhour': 'دمنهور', 'mahalla': 'المحلة الكبرى',
-        'zagazig': 'الزقازيق', 'banha': 'بنها',
-        'matruh': 'مرسى مطروح', 'arish': 'العريش',
-        'new cairo': 'القاهرة الجديدة', 'maadi': 'المعادي',
-        'zamalek': 'الزمالك', 'heliopolis': 'مصر الجديدة',
-        'nasr city': 'مدينة نصر', 'sixth october': 'السادس من أكتوبر',
-        'sheikh zayed': 'الشيخ زايد', 'new capital': 'العاصمة الإدارية',
-        'ras gharib': 'رأس غارب', 'safaga': 'سفاجا',
-        'taba': 'طابا', 'el-tor': 'الطور',
-        'siwa': 'سيوة', 'edfu': 'إدفو',
-        'kom ombo': 'كوم أمبو', 'esna': 'إسنا',
-    },
-
-    # ═══════════════ 🇯🇴 المملكة الأردنية الهاشمية ═══════════════
-    'Jordan': {
-        'amman': 'عمّان', 'zarqa': 'الزرقاء',
-        'irbid': 'إربد', 'aqaba': 'العقبة',
-        'salt': 'السلط', 'al-salt': 'السلط',
-        'mafraq': 'المفرق', 'karak': 'الكرك',
-        'al-karak': 'الكرك', 'tafilah': 'الطفيلة',
-        'al-tafilah': 'الطفيلة', 'maan': 'معان',
-        'maán': 'معان', 'jerash': 'جرش',
-        'ajloun': 'عجلون', 'madaba': 'مادبا',
-        'ramtha': 'الرمثا', 'al-ramtha': 'الرمثا',
-        'azraq': 'الأزرق', 'wadi rum': 'وادي رم',
-        'petra': 'البتراء', 'wadi musa': 'وادي موسى',
-    },
-
-    # ═══════════════ 🇱🇧 الجمهورية اللبنانية ═══════════════
-    'Lebanon': {
-        'beirut': 'بيروت', 'tripoli': 'طرابلس',
-        'sidon': 'صيدا', 'saida': 'صيدا',
-        'tyre': 'صور', 'sour': 'صور',
-        'jounieh': 'جونية', 'byblos': 'جبيل',
-        'jbeil': 'جبيل', 'zahle': 'زحلة',
-        'baalbek': 'بعلبك', 'nabatieh': 'النبطية',
-        'baabda': 'بعبدا', 'aley': 'عاليه',
-        'broumana': 'برمانا', 'bhamdoun': 'بحمدون',
-        'harissa': 'حريصا', 'ehden': 'إهدن',
-    },
-
-    # ═══════════════ 🇮🇶 جمهورية العراق ═══════════════
-    'Iraq': {
-        'baghdad': 'بغداد', 'basra': 'البصرة',
-        'basrah': 'البصرة', 'mosul': 'الموصل',
-        'erbil': 'أربيل', 'arbil': 'أربيل',
-        'kirkuk': 'كركوك', 'sulaymaniyah': 'السليمانية',
-        'duhok': 'دهوك', 'najaf': 'النجف',
-        'karbala': 'كربلاء', 'kerbala': 'كربلاء',
-        'kufa': 'الكوفة', 'samawah': 'السماوة',
-        'nasiriyah': 'الناصرية', 'amarah': 'العمارة',
-        'kut': 'الكوت', 'diwaniyah': 'الديوانية',
-        'hillah': 'الحلة', 'baqubah': 'بعقوبة',
-        'ramadi': 'الرمادي', 'fallujah': 'الفلوجة',
-        'tikrit': 'تكريت', 'samarra': 'سامراء',
-    },
-
-    # ═══════════════ 🇸🇾 الجمهورية العربية السورية ═══════════════
-    'Syria': {
-        'damascus': 'دمشق', 'aleppo': 'حلب',
-        'homs': 'حمص', 'hama': 'حماة',
-        'latakia': 'اللاذقية', 'tartus': 'طرطوس',
-        'deir ez-zor': 'دير الزور', 'raqqa': 'الرقة',
-        'idlib': 'إدلب', 'daraa': 'درعا',
-        'sweida': 'السويداء', 'qamishli': 'القامشلي',
-        'hasakah': 'الحسكة',
-    },
-
-    # ═══════════════ 🇾🇪 الجمهورية اليمنية ═══════════════
-    'Yemen': {
-        'sanaa': 'صنعاء', 'sana': 'صنعاء',
-        'aden': 'عدن', 'taiz': 'تعز',
-        'hodeidah': 'الحديدة', 'al-hudaydah': 'الحديدة',
-        'mukalla': 'المكلا', 'ibb': 'إب',
-        'dhamar': 'ذمار', 'saada': 'صعدة',
-        'marib': 'مأرب', 'hajjah': 'حجة',
-        'amran': 'عمران', 'shabwa': 'شبوة',
-        'lahj': 'لحج', 'abyan': 'أبين',
-    },
-
-    # ═══════════════ 🇵🇸 فلسطين ═══════════════
-    'Palestine': {
-        'jerusalem': 'القدس', 'al-quds': 'القدس',
-        'gaza': 'غزة', 'ramallah': 'رام الله',
-        'hebron': 'الخليل', 'al-khalil': 'الخليل',
-        'nablus': 'نابلس', 'bethlehem': 'بيت لحم',
-        'jenin': 'جنين', 'tulkarm': 'طولكرم',
-        'qalqilya': 'قلقيلية', 'jericho': 'أريحا',
-        'rafah': 'رفح', 'khan younis': 'خان يونس',
-    },
-
-    # ═══════════════ 🇲🇦 المملكة المغربية ═══════════════
-    'Morocco': {
-        'casablanca': 'الدار البيضاء', 'rabat': 'الرباط',
-        'marrakech': 'مراكش', 'marrakesh': 'مراكش',
-        'fes': 'فاس', 'fez': 'فاس',
-        'tangier': 'طنجة', 'tanger': 'طنجة',
-        'agadir': 'أكادير', 'meknes': 'مكناس',
-        'oujda': 'وجدة', 'kenitra': 'القنيطرة',
-        'tetouan': 'تطوان', 'safi': 'آسفي',
-        'el jadida': 'الجديدة', 'beni mellal': 'بني ملال',
-        'nador': 'الناظور', 'taza': 'تازة',
-        'settat': 'سطات', 'mohammedia': 'المحمدية',
-        'khouribga': 'خريبكة', 'ouarzazate': 'ورزازات',
-        'chefchaouen': 'شفشاون', 'essaouira': 'الصويرة',
-        'ifrane': 'إفران', 'dakhla': 'الداخلة',
-        'laayoune': 'العيون',
-    },
-
-    # ═══════════════ 🇩🇿 الجمهورية الجزائرية ═══════════════
-    'Algeria': {
-        'algiers': 'الجزائر العاصمة', 'oran': 'وهران',
-        'constantine': 'قسنطينة', 'annaba': 'عنابة',
-        'blida': 'البليدة', 'batna': 'باتنة',
-        'setif': 'سطيف', 'tlemcen': 'تلمسان',
-        'bejaia': 'بجاية', 'tizi ouzou': 'تيزي وزو',
-        'ghardaia': 'غرداية', 'biskra': 'بسكرة',
-        'tamanrasset': 'تمنراست', 'ouargla': 'ورقلة',
-        'mostaganem': 'مستغانم', 'sidi bel abbes': 'سيدي بلعباس',
-    },
-
-    # ═══════════════ 🇹🇳 الجمهورية التونسية ═══════════════
-    'Tunisia': {
-        'tunis': 'تونس العاصمة', 'sfax': 'صفاقس',
-        'sousse': 'سوسة', 'kairouan': 'القيروان',
-        'bizerte': 'بنزرت', 'gabes': 'قابس',
-        'ariana': 'أريانة', 'gafsa': 'قفصة',
-        'monastir': 'المنستير', 'nabeul': 'نابل',
-        'tataouine': 'تطاوين', 'medenine': 'مدنين',
-        'tozeur': 'توزر', 'beja': 'باجة',
-        'jendouba': 'جندوبة', 'kasserine': 'القصرين',
-        'mahdia': 'المهدية', 'kebili': 'قبلي',
-        'hammamet': 'الحمامات', 'djerba': 'جربة',
-        'sidi bouzid': 'سيدي بوزيد', 'zaghouan': 'زغوان',
-    },
-
-    # ═══════════════ 🇱🇾 ليبيا ═══════════════
-    'Libya': {
-        'tripoli': 'طرابلس', 'benghazi': 'بنغازي',
-        'misrata': 'مصراتة', 'sabha': 'سبها',
-        'zliten': 'زليتن', 'tobruk': 'طبرق',
-        'derna': 'درنة', 'sirte': 'سرت',
-        'gharyan': 'غريان', 'al-bayda': 'البيضاء',
-    },
-
-    # ═══════════════ 🇸🇩 السودان ═══════════════
-    'Sudan': {
-        'khartoum': 'الخرطوم', 'omdurman': 'أم درمان',
-        'port sudan': 'بورتسودان', 'kassala': 'كسلا',
-        'el-obeid': 'الأبيض', 'nyala': 'نيالا',
-        'wad medani': 'ود مدني', 'el fasher': 'الفاشر',
-        'gedaref': 'القضارف', 'sennar': 'سنار',
-    },
-
-    # ═══════════════ 🇺🇸 الولايات المتحدة الأمريكية ═══════════════
-    'United States': {
-        'washington': 'واشنطن', 'new york': 'نيويورك',
-        'los angeles': 'لوس أنجلوس', 'chicago': 'شيكاغو',
-        'houston': 'هيوستن', 'phoenix': 'فينيكس',
-        'philadelphia': 'فيلادلفيا', 'san antonio': 'سان أنطونيو',
-        'san diego': 'سان دييغو', 'dallas': 'دالاس',
-        'san jose': 'سان خوسيه', 'austin': 'أوستن',
-        'jacksonville': 'جاكسونفيل', 'fort worth': 'فورت وورث',
-        'columbus': 'كولومبوس', 'charlotte': 'شارلوت',
-        'san francisco': 'سان فرانسيسكو', 'indianapolis': 'إنديانابوليس',
-        'seattle': 'سياتل', 'denver': 'دنفر',
-        'boston': 'بوسطن', 'detroit': 'ديترويت',
-        'nashville': 'ناشفيل', 'memphis': 'ممفيس',
-        'portland': 'بورتلاند', 'oklahoma city': 'أوكلاهوما سيتي',
-        'las vegas': 'لاس فيغاس', 'baltimore': 'بالتيمور',
-        'milwaukee': 'ميلووكي', 'atlanta': 'أتلانتا',
-        'miami': 'ميامي', 'orlando': 'أورلاندو',
-        'tampa': 'تامبا', 'new orleans': 'نيو أورلينز',
-        'cleveland': 'كليفلاند', 'pittsburgh': 'بيتسبرغ',
-        'cincinnati': 'سينسيناتي', 'minneapolis': 'مينيابوليس',
-        'st louis': 'سانت لويس', 'kansas city': 'كانساس سيتي',
-        'sacramento': 'ساكرامنتو', 'long beach': 'لونغ بيتش',
-        'oakland': 'أوكلاند', 'tucson': 'توسان',
-        'fresno': 'فريسنو', 'mesa': 'ميسا',
-        'honolulu': 'هونولولو', 'anchorage': 'أنكوريج',
-        'salt lake city': 'سولت ليك سيتي', 'albuquerque': 'ألبوكيركي',
-        'brooklyn': 'بروكلين', 'manhattan': 'مانهاتن',
-        'queens': 'كوينز', 'bronx': 'برونكس',
-        'staten island': 'ستاتن آيلاند', 'hollywood': 'هوليوود',
-        'beverly hills': 'بيفرلي هيلز', 'malibu': 'ماليبو',
-        'silicon valley': 'وادي السيليكون',
-    },
-
-    # ═══════════════ 🇨🇦 كندا ═══════════════
-    'Canada': {
-        'toronto': 'تورنتو', 'montreal': 'مونتريال',
-        'vancouver': 'فانكوفر', 'calgary': 'كالغاري',
-        'edmonton': 'إدمونتون', 'ottawa': 'أوتاوا',
-        'winnipeg': 'وينيبيغ', 'quebec city': 'مدينة كيبيك',
-        'hamilton': 'هاميلتون', 'mississauga': 'ميسيساغا',
-        'brampton': 'برامبتون', 'surrey': 'ساري',
-        'laval': 'لافال', 'halifax': 'هاليفاكس',
-        'london ontario': 'لندن أونتاريو', 'markham': 'ماركهام',
-        'victoria': 'فيكتوريا', 'gatineau': 'غاتينو',
-    },
-
-    # ═══════════════ 🇬🇧 المملكة المتحدة ═══════════════
-    'United Kingdom': {
-        'london': 'لندن', 'manchester': 'مانشستر',
-        'birmingham': 'برمنغهام', 'liverpool': 'ليفربول',
-        'leeds': 'ليدز', 'sheffield': 'شيفيلد',
-        'bristol': 'بريستول', 'newcastle': 'نيوكاسل',
-        'edinburgh': 'إدنبرة', 'glasgow': 'غلاسكو',
-        'cardiff': 'كارديف', 'belfast': 'بلفاست',
-        'cambridge': 'كامبريدج', 'oxford': 'أكسفورد',
-        'brighton': 'برايتون', 'nottingham': 'نوتنغهام',
-        'leicester': 'ليستر', 'southampton': 'ساوثهامبتون',
-        'plymouth': 'بليموث', 'aberdeen': 'أبردين',
-        'westminster': 'وستمنستر', 'chelsea': 'تشيلسي',
-        'kensington': 'كنسينغتون',
-    },
-
-    # ═══════════════ 🇫🇷 فرنسا ═══════════════
-    'France': {
-        'paris': 'باريس', 'marseille': 'مرسيليا',
-        'lyon': 'ليون', 'toulouse': 'تولوز',
-        'nice': 'نيس', 'nantes': 'نانت',
-        'strasbourg': 'ستراسبورغ', 'montpellier': 'مونبلييه',
-        'bordeaux': 'بوردو', 'lille': 'ليل',
-        'rennes': 'رين', 'cannes': 'كان',
-        'le havre': 'لوهافر', 'saint-etienne': 'سانت إتيان',
-        'reims': 'ريمس', 'toulon': 'تولون',
-        'grenoble': 'غرونوبل', 'angers': 'أنجيه',
-        'dijon': 'ديجون', 'avignon': 'أفينيون',
-        'versailles': 'فرساي', 'monaco': 'موناكو',
-    },
-
-    # ═══════════════ 🇩🇪 ألمانيا ═══════════════
-    'Germany': {
-        'berlin': 'برلين', 'hamburg': 'هامبورغ',
-        'munich': 'ميونخ', 'munchen': 'ميونخ',
-        'cologne': 'كولونيا', 'koln': 'كولونيا',
-        'frankfurt': 'فرانكفورت', 'stuttgart': 'شتوتغارت',
-        'dusseldorf': 'دوسلدورف', 'leipzig': 'لايبزيغ',
-        'dortmund': 'دورتموند', 'essen': 'إيسن',
-        'bremen': 'بريمن', 'dresden': 'دريسدن',
-        'hannover': 'هانوفر', 'nuremberg': 'نورمبرغ',
-        'bonn': 'بون', 'heidelberg': 'هايدلبرغ',
-    },
-
-    # ═══════════════ 🇮🇹 إيطاليا ═══════════════
-    'Italy': {
-        'rome': 'روما', 'roma': 'روما',
-        'milan': 'ميلانو', 'milano': 'ميلانو',
-        'naples': 'نابولي', 'napoli': 'نابولي',
-        'turin': 'تورينو', 'torino': 'تورينو',
-        'palermo': 'باليرمو', 'genoa': 'جنوة',
-        'bologna': 'بولونيا', 'florence': 'فلورنسا',
-        'firenze': 'فلورنسا', 'venice': 'البندقية',
-        'venezia': 'البندقية', 'verona': 'فيرونا',
-        'pisa': 'بيزا', 'siena': 'سيينا',
-        'catania': 'كاتانيا', 'bari': 'باري',
-        'cagliari': 'كالياري', 'sardinia': 'سردينيا',
-        'sicily': 'صقلية',
-    },
-
-    # ═══════════════ 🇪🇸 إسبانيا ═══════════════
-    'Spain': {
-        'madrid': 'مدريد', 'barcelona': 'برشلونة',
-        'valencia': 'فالنسيا', 'seville': 'إشبيلية',
-        'sevilla': 'إشبيلية', 'zaragoza': 'سرقسطة',
-        'malaga': 'ملقا', 'murcia': 'مورسية',
-        'palma': 'بالما', 'bilbao': 'بلباو',
-        'alicante': 'أليكانتي', 'cordoba': 'قرطبة',
-        'valladolid': 'بلد الوليد', 'granada': 'غرناطة',
-        'toledo': 'طليطلة', 'salamanca': 'سلامنكا',
-        'ibiza': 'إيبيزا', 'tenerife': 'تينيريفي',
-        'mallorca': 'مايوركا',
-    },
-
-    # ═══════════════ 🇵🇹 البرتغال ═══════════════
-    'Portugal': {
-        'lisbon': 'لشبونة', 'lisboa': 'لشبونة',
-        'porto': 'بورتو', 'braga': 'براغا',
-        'coimbra': 'كويمبرا', 'faro': 'فارو',
-        'funchal': 'فونشال', 'aveiro': 'أفيرو',
-    },
-
-    # ═══════════════ 🇳🇱 هولندا ═══════════════
-    'Netherlands': {
-        'amsterdam': 'أمستردام', 'rotterdam': 'روتردام',
-        'the hague': 'لاهاي', 'utrecht': 'أوتريخت',
-        'eindhoven': 'آيندهوفن', 'groningen': 'غرونينغن',
-        'tilburg': 'تيلبورخ', 'breda': 'بريدا',
-    },
-
-    # ═══════════════ 🇹🇷 تركيا ═══════════════
-    'Turkey': {
-        'istanbul': 'إسطنبول', 'ankara': 'أنقرة',
-        'izmir': 'إزمير', 'bursa': 'بورصة',
-        'antalya': 'أنطاليا', 'konya': 'قونيا',
-        'gaziantep': 'غازي عنتاب', 'sanliurfa': 'شانلي أورفا',
-        'mersin': 'مرسين', 'diyarbakir': 'ديار بكر',
-        'adana': 'أضنة', 'trabzon': 'طرابزون',
-        'cappadocia': 'كبادوكيا', 'bodrum': 'بودروم',
-        'fethiye': 'فتحية', 'kayseri': 'قيصري',
-    },
-
-    # ═══════════════ 🇷🇺 روسيا ═══════════════
-    'Russia': {
-        'moscow': 'موسكو', 'st petersburg': 'سان بطرسبرغ',
-        'saint petersburg': 'سان بطرسبرغ', 'novosibirsk': 'نوفوسيبيرسك',
-        'yekaterinburg': 'يكاترينبورغ', 'nizhny novgorod': 'نيجني نوفغورود',
-        'kazan': 'قازان', 'chelyabinsk': 'تشيليابينسك',
-        'samara': 'سمارة', 'rostov': 'روستوف',
-        'sochi': 'سوتشي', 'vladivostok': 'فلاديفوستوك',
-    },
-
-    # ═══════════════ 🇯🇵 اليابان ═══════════════
-    'Japan': {
-        'tokyo': 'طوكيو', 'osaka': 'أوساكا',
-        'kyoto': 'كيوتو', 'yokohama': 'يوكوهاما',
-        'nagoya': 'ناغويا', 'sapporo': 'سابورو',
-        'kobe': 'كوبي', 'fukuoka': 'فوكوكا',
-        'hiroshima': 'هيروشيما', 'sendai': 'سينداي',
-        'nara': 'نارا', 'okinawa': 'أوكيناوا',
-        'shibuya': 'شيبويا', 'shinjuku': 'شينجوكو',
-        'akihabara': 'أكيهابارا', 'ginza': 'غينزا',
-        'harajuku': 'هاراجوكو', 'kanazawa': 'كانازاوا',
-    },
-
-    # ═══════════════ 🇰🇷 كوريا الجنوبية ═══════════════
-    'South Korea': {
-        'seoul': 'سيول', 'busan': 'بوسان',
-        'incheon': 'إنتشون', 'daegu': 'دايغو',
-        'daejeon': 'دايجون', 'gwangju': 'غوانغجو',
-        'suwon': 'سوون', 'ulsan': 'أولسان',
-        'changwon': 'تشانغوون', 'jeju': 'جيجو',
-        'gangnam': 'غانغنام', 'hongdae': 'هونغداي',
-        'itaewon': 'إيتايون', 'myeongdong': 'ميونغ دونغ',
-    },
-
-    # ═══════════════ 🇨🇳 الصين ═══════════════
-    'China': {
-        'beijing': 'بكين', 'shanghai': 'شنغهاي',
-        'guangzhou': 'غوانغتشو', 'shenzhen': 'شنزن',
-        'chengdu': 'تشنغدو', 'chongqing': 'تشونغتشينغ',
-        'tianjin': 'تيانجين', 'wuhan': 'ووهان',
-        'xian': 'شيآن', "xi'an": 'شيآن',
-        'hangzhou': 'هانغتشو', 'nanjing': 'نانجينغ',
-        'qingdao': 'تشينغداو', 'dalian': 'داليان',
-        'suzhou': 'سوتشو', 'kunming': 'كونمينغ',
-        'macau': 'ماكاو', 'sanya': 'سانيا',
-    },
-
-    # ═══════════════ 🇹🇼 تايوان ═══════════════
-    'Taiwan': {
-        'taipei': 'تايبيه', 'kaohsiung': 'كاوهسيونغ',
-        'taichung': 'تايتشونغ', 'tainan': 'تاينان',
-        'hsinchu': 'هسينشو', 'keelung': 'كيلونغ',
-    },
-
-    # ═══════════════ 🇭🇰 هونغ كونغ ═══════════════
-    'Hong Kong': {
-        'hong kong': 'هونغ كونغ', 'kowloon': 'كولون',
-        'central': 'سنترال', 'mong kok': 'مونغ كوك',
-        'tsim sha tsui': 'تسيم شا تسوي', 'causeway bay': 'كوزواي باي',
-    },
-
-    # ═══════════════ 🇸🇬 سنغافورة ═══════════════
-    'Singapore': {
-        'singapore': 'سنغافورة', 'marina bay': 'مارينا باي',
-        'orchard': 'أوركارد', 'sentosa': 'سنتوسا',
-        'chinatown': 'الحي الصيني', 'little india': 'ليتل إنديا',
-    },
-
-    # ═══════════════ 🇹🇭 تايلاند ═══════════════
-    'Thailand': {
-        'bangkok': 'بانكوك', 'chiang mai': 'شيانغ ماي',
-        'phuket': 'بوكيت', 'pattaya': 'باتايا',
-        'krabi': 'كرابي', 'koh samui': 'كوه ساموي',
-        'hua hin': 'هوا هين', 'ayutthaya': 'أيوتايا',
-        'chiang rai': 'شيانغ راي',
-    },
-
-    # ═══════════════ 🇻🇳 فيتنام ═══════════════
-    'Vietnam': {
-        'hanoi': 'هانوي', 'ho chi minh': 'هو تشي مينه',
-        'ho chi minh city': 'هو تشي مينه', 'saigon': 'سايغون',
-        'da nang': 'دا نانغ', 'hue': 'هوي',
-        'hoi an': 'هوي آن', 'nha trang': 'نا ترانغ',
-        'haiphong': 'هايفونغ', 'can tho': 'كان ثو',
-    },
-
-    # ═══════════════ 🇮🇩 إندونيسيا ═══════════════
-    'Indonesia': {
-        'jakarta': 'جاكرتا', 'surabaya': 'سورابايا',
-        'bandung': 'باندونغ', 'medan': 'ميدان',
-        'bali': 'بالي', 'denpasar': 'دنباسار',
-        'yogyakarta': 'يوجياكارتا', 'semarang': 'سيمارانغ',
-        'makassar': 'ماكاسار', 'palembang': 'باليمبانغ',
-        'ubud': 'أوبود', 'lombok': 'لومبوك',
-    },
-
-    # ═══════════════ 🇲🇾 ماليزيا ═══════════════
-    'Malaysia': {
-        'kuala lumpur': 'كوالالمبور', 'penang': 'بينانغ',
-        'george town': 'جورج تاون', 'johor bahru': 'جوهور باهرو',
-        'ipoh': 'إيبوه', 'malacca': 'ملقا',
-        'melaka': 'ملقا', 'kota kinabalu': 'كوتا كينابالو',
-        'kuching': 'كوتشينغ', 'putrajaya': 'بوتراجايا',
-        'langkawi': 'لانكاوي',
-    },
-
-    # ═══════════════ 🇵🇭 الفلبين ═══════════════
-    'Philippines': {
-        'manila': 'مانيلا', 'quezon city': 'مدينة كويزون',
-        'cebu': 'سيبو', 'davao': 'دافاو',
-        'makati': 'ماكاتي', 'taguig': 'تاغويغ',
-        'pasig': 'باسيغ', 'boracay': 'بوراكاي',
-        'palawan': 'بالاوان', 'bohol': 'بوهول',
-    },
-
-    # ═══════════════ 🇮🇳 الهند ═══════════════
-    'India': {
-        'mumbai': 'مومباي', 'delhi': 'دلهي',
-        'new delhi': 'نيودلهي', 'bangalore': 'بنغالور',
-        'bengaluru': 'بنغالور', 'hyderabad': 'حيدر آباد',
-        'chennai': 'تشيناي', 'kolkata': 'كولكاتا',
-        'calcutta': 'كولكاتا', 'pune': 'بوني',
-        'ahmedabad': 'أحمد آباد', 'surat': 'سورات',
-        'jaipur': 'جايبور', 'lucknow': 'لكناو',
-        'kanpur': 'كانبور', 'nagpur': 'ناغبور',
-        'indore': 'إندور', 'thane': 'ثاني',
-        'bhopal': 'بوبال', 'visakhapatnam': 'فيساخاباتنام',
-        'patna': 'باتنا', 'goa': 'غوا',
-        'kerala': 'كيرالا', 'agra': 'أغرا',
-        'varanasi': 'فاراناسي',
-    },
-
-    # ═══════════════ 🇵🇰 باكستان ═══════════════
-    'Pakistan': {
-        'karachi': 'كراتشي', 'lahore': 'لاهور',
-        'islamabad': 'إسلام آباد', 'faisalabad': 'فيصل آباد',
-        'rawalpindi': 'روالبندي', 'multan': 'ملتان',
-        'peshawar': 'بيشاور', 'quetta': 'كويتا',
-        'sialkot': 'سيالكوت', 'gujranwala': 'غوجرانوالا',
-        'hyderabad': 'حيدر آباد', 'sargodha': 'سرغودا',
-    },
-
-    # ═══════════════ 🇧🇩 بنغلاديش ═══════════════
-    'Bangladesh': {
-        'dhaka': 'دكا', 'chittagong': 'شيتاغونغ',
-        'khulna': 'خولنا', 'rajshahi': 'راجشاهي',
-        'sylhet': 'سيلهيت', 'barisal': 'باريسال',
-    },
-
-    # ═══════════════ 🇧🇷 البرازيل ═══════════════
-    'Brazil': {
-        'sao paulo': 'ساو باولو', 'rio de janeiro': 'ريو دي جانيرو',
-        'rio': 'ريو دي جانيرو', 'brasilia': 'برازيليا',
-        'salvador': 'سلفادور', 'fortaleza': 'فورتاليزا',
-        'belo horizonte': 'بيلو هوريزونتي', 'manaus': 'ماناوس',
-        'curitiba': 'كوريتيبا', 'recife': 'ريسيفي',
-        'porto alegre': 'بورتو أليغري', 'goiania': 'غويانيا',
-        'belem': 'بيليم', 'florianopolis': 'فلوريانوبوليس',
-    },
-
-    # ═══════════════ 🇦🇷 الأرجنتين ═══════════════
-    'Argentina': {
-        'buenos aires': 'بوينس آيرس', 'cordoba': 'كوردوبا',
-        'rosario': 'روزاريو', 'mendoza': 'مندوزا',
-        'la plata': 'لا بلاتا', 'mar del plata': 'مار ديل بلاتا',
-        'salta': 'سالتا', 'bariloche': 'باريلوتشي',
-    },
-
-    # ═══════════════ 🇲🇽 المكسيك ═══════════════
-    'Mexico': {
-        'mexico city': 'مكسيكو سيتي', 'guadalajara': 'غوادالاخارا',
-        'monterrey': 'مونتيري', 'puebla': 'بويبلا',
-        'tijuana': 'تيخوانا', 'cancun': 'كانكون',
-        'merida': 'ميريدا', 'leon': 'ليون',
-        'queretaro': 'كيريتارو', 'oaxaca': 'واهاكا',
-        'playa del carmen': 'بلايا ديل كارمن', 'cabo': 'كابو',
-        'puerto vallarta': 'بويرتو فالارتا',
-    },
-
-    # ═══════════════ 🇨🇴 كولومبيا ═══════════════
-    'Colombia': {
-        'bogota': 'بوغوتا', 'medellin': 'ميديلين',
-        'cali': 'كالي', 'barranquilla': 'بارانكويلا',
-        'cartagena': 'قرطاجنة', 'santa marta': 'سانتا مارتا',
-    },
-
-    # ═══════════════ 🇨🇱 تشيلي ═══════════════
-    'Chile': {
-        'santiago': 'سانتياغو', 'valparaiso': 'فالبارايسو',
-        'concepcion': 'كونثيبسيون', 'vina del mar': 'فينيا ديل مار',
-    },
-
-    # ═══════════════ 🇵🇪 البيرو ═══════════════
-    'Peru': {
-        'lima': 'ليما', 'cusco': 'كوسكو',
-        'arequipa': 'أريكويبا', 'trujillo': 'تروخيو',
-        'machu picchu': 'ماتشو بيتشو',
-    },
-
-    # ═══════════════ 🇻🇪 فنزويلا ═══════════════
-    'Venezuela': {
-        'caracas': 'كاراكاس', 'maracaibo': 'ماراكايبو',
-        'valencia': 'فالنسيا', 'maracay': 'ماراكاي',
-    },
-
-    # ═══════════════ 🇦🇺 أستراليا ═══════════════
-    'Australia': {
-        'sydney': 'سيدني', 'melbourne': 'ملبورن',
-        'brisbane': 'بريسبان', 'perth': 'بيرث',
-        'adelaide': 'أديلايد', 'canberra': 'كانبيرا',
-        'gold coast': 'غولد كوست', 'newcastle': 'نيوكاسل',
-        'hobart': 'هوبارت', 'darwin': 'داروين',
-        'cairns': 'كيرنز', 'wollongong': 'ولونغونغ',
-        'geelong': 'جيلونغ', 'townsville': 'تاونزفيل',
-        'byron bay': 'خليج بايرون',
-    },
-
-    # ═══════════════ 🇳🇿 نيوزيلندا ═══════════════
-    'New Zealand': {
-        'auckland': 'أوكلاند', 'wellington': 'ويلينغتون',
-        'christchurch': 'كرايستشيرش', 'hamilton': 'هاميلتون',
-        'queenstown': 'كوينزتاون', 'dunedin': 'دانيدن',
-        'tauranga': 'تاورانغا', 'rotorua': 'روتوروا',
-    },
-
-    # ═══════════════ 🇳🇬 نيجيريا ═══════════════
-    'Nigeria': {
-        'lagos': 'لاغوس', 'abuja': 'أبوجا',
-        'kano': 'كانو', 'ibadan': 'إبادان',
-        'port harcourt': 'بورت هاركورت', 'benin city': 'مدينة بنين',
-        'kaduna': 'كادونا', 'enugu': 'إنوغو',
-    },
-
-    # ═══════════════ 🇿🇦 جنوب أفريقيا ═══════════════
-    'South Africa': {
-        'johannesburg': 'جوهانسبرغ', 'cape town': 'كيب تاون',
-        'durban': 'ديربان', 'pretoria': 'بريتوريا',
-        'port elizabeth': 'بورت إليزابيث', 'bloemfontein': 'بلومفونتين',
-        'soweto': 'سويتو',
-    },
-
-    # ═══════════════ 🇰🇪 كينيا ═══════════════
-    'Kenya': {
-        'nairobi': 'نيروبي', 'mombasa': 'مومباسا',
-        'kisumu': 'كيسومو', 'nakuru': 'ناكورو',
-    },
-
-    # ═══════════════ 🇬🇭 غانا ═══════════════
-    'Ghana': {
-        'accra': 'أكرا', 'kumasi': 'كوماسي',
-        'tamale': 'تامالي',
-    },
-
-    # ═══════════════ 🇹🇿 تنزانيا ═══════════════
-    'Tanzania': {
-        'dar es salaam': 'دار السلام', 'dodoma': 'دودوما',
-        'arusha': 'أروشا', 'zanzibar': 'زنجبار',
-        'mwanza': 'موانزا',
-    },
-
-    # ═══════════════ 🇪🇹 إثيوبيا ═══════════════
-    'Ethiopia': {
-        'addis ababa': 'أديس أبابا', 'dire dawa': 'ديري داوا',
-        'mekele': 'ميكيلي', 'gondar': 'غوندار',
-    },
-
-    # ═══════════════ 🇮🇷 إيران ═══════════════
-    'Iran': {
-        'tehran': 'طهران', 'mashhad': 'مشهد',
-        'isfahan': 'أصفهان', 'shiraz': 'شيراز',
-        'tabriz': 'تبريز', 'qom': 'قم',
-        'ahvaz': 'الأهواز', 'kerman': 'كرمان',
-        'yazd': 'يزد', 'rasht': 'رشت',
-    },
-
-    # ═══════════════ 🇮🇱 إسرائيل ═══════════════
-    'Israel': {
-        'tel aviv': 'تل أبيب', 'jerusalem': 'القدس',
-        'haifa': 'حيفا', 'beersheba': 'بئر السبع',
-    },
-
-    # ═══════════════ 🇨🇭 سويسرا ═══════════════
-    'Switzerland': {
-        'zurich': 'زيورخ', 'geneva': 'جنيف',
-        'basel': 'بازل', 'bern': 'برن',
-        'lausanne': 'لوزان', 'lucerne': 'لوسرن',
-        'davos': 'دافوس', 'zermatt': 'زيرمات',
-    },
-
-    # ═══════════════ 🇦🇹 النمسا ═══════════════
-    'Austria': {
-        'vienna': 'فيينا', 'salzburg': 'سالزبورغ',
-        'graz': 'غراتس', 'innsbruck': 'إنسبروك',
-    },
-
-    # ═══════════════ 🇧🇪 بلجيكا ═══════════════
-    'Belgium': {
-        'brussels': 'بروكسل', 'antwerp': 'أنتويرب',
-        'ghent': 'غنت', 'bruges': 'بروج',
-        'liege': 'لييج',
-    },
-
-    # ═══════════════ 🇸🇪 السويد ═══════════════
-    'Sweden': {
-        'stockholm': 'ستوكهولم', 'gothenburg': 'غوتنبرغ',
-        'malmo': 'مالمو', 'uppsala': 'أوبسالا',
-    },
-
-    # ═══════════════ 🇳🇴 النرويج ═══════════════
-    'Norway': {
-        'oslo': 'أوسلو', 'bergen': 'بيرغن',
-        'trondheim': 'تروندهايم', 'stavanger': 'ستافانغر',
-        'tromso': 'ترومسو',
-    },
-
-    # ═══════════════ 🇩🇰 الدنمارك ═══════════════
-    'Denmark': {
-        'copenhagen': 'كوبنهاغن', 'aarhus': 'آرهوس',
-        'odense': 'أودنسي', 'aalborg': 'ألبورغ',
-    },
-
-    # ═══════════════ 🇫🇮 فنلندا ═══════════════
-    'Finland': {
-        'helsinki': 'هلسنكي', 'tampere': 'تامبيري',
-        'turku': 'توركو', 'rovaniemi': 'روفانييمي',
-    },
-
-    # ═══════════════ 🇬🇷 اليونان ═══════════════
-    'Greece': {
-        'athens': 'أثينا', 'thessaloniki': 'ثيسالونيكي',
-        'patras': 'باتراس', 'mykonos': 'ميكونوس',
-        'santorini': 'سانتوريني', 'rhodes': 'رودس',
-        'crete': 'كريت',
-    },
-
-    # ═══════════════ 🇵🇱 بولندا ═══════════════
-    'Poland': {
-        'warsaw': 'وارسو', 'krakow': 'كراكوف',
-        'lodz': 'لودز', 'wroclaw': 'فروتسواف',
-        'poznan': 'بوزنان', 'gdansk': 'غدانسك',
-    },
+from typing import Optional, Tuple, List, Dict
+
+# ============================================================
+# 🌍 قاعدة البيانات الرئيسية - 249 دولة/إقليم
+# الصيغة: "ISO": ("عربي", "English", "🚩", "IANA/Timezone", "Continent")
+# ============================================================
+
+WORLD_COUNTRIES: Dict[str, Tuple[str, str, str, str, str]] = {
+    # ═══════════ 🇸🇦 الدول العربية (22) ═══════════
+    "SA": ("المملكة العربية السعودية", "Saudi Arabia", "🇸🇦", "Asia/Riyadh", "Asia"),
+    "AE": ("الإمارات العربية المتحدة", "United Arab Emirates", "🇦🇪", "Asia/Dubai", "Asia"),
+    "KW": ("الكويت", "Kuwait", "🇰🇼", "Asia/Kuwait", "Asia"),
+    "QA": ("قطر", "Qatar", "🇶🇦", "Asia/Qatar", "Asia"),
+    "BH": ("البحرين", "Bahrain", "🇧🇭", "Asia/Bahrain", "Asia"),
+    "OM": ("عُمان", "Oman", "🇴🇲", "Asia/Muscat", "Asia"),
+    "YE": ("اليمن", "Yemen", "🇾🇪", "Asia/Aden", "Asia"),
+    "IQ": ("العراق", "Iraq", "🇮🇶", "Asia/Baghdad", "Asia"),
+    "SY": ("سوريا", "Syria", "🇸🇾", "Asia/Damascus", "Asia"),
+    "LB": ("لبنان", "Lebanon", "🇱🇧", "Asia/Beirut", "Asia"),
+    "JO": ("الأردن", "Jordan", "🇯🇴", "Asia/Amman", "Asia"),
+    "PS": ("فلسطين", "Palestine", "🇵🇸", "Asia/Gaza", "Asia"),
+    "EG": ("مصر", "Egypt", "🇪🇬", "Africa/Cairo", "Africa"),
+    "SD": ("السودان", "Sudan", "🇸🇩", "Africa/Khartoum", "Africa"),
+    "LY": ("ليبيا", "Libya", "🇱🇾", "Africa/Tripoli", "Africa"),
+    "TN": ("تونس", "Tunisia", "🇹🇳", "Africa/Tunis", "Africa"),
+    "DZ": ("الجزائر", "Algeria", "🇩🇿", "Africa/Algiers", "Africa"),
+    "MA": ("المغرب", "Morocco", "🇲🇦", "Africa/Casablanca", "Africa"),
+    "MR": ("موريتانيا", "Mauritania", "🇲🇷", "Africa/Nouakchott", "Africa"),
+    "SO": ("الصومال", "Somalia", "🇸🇴", "Africa/Mogadishu", "Africa"),
+    "DJ": ("جيبوتي", "Djibouti", "🇩🇯", "Africa/Djibouti", "Africa"),
+    "KM": ("جزر القمر", "Comoros", "🇰🇲", "Indian/Comoro", "Africa"),
+
+    # ═══════════ 🌍 باقي إفريقيا (38) ═══════════
+    "NG": ("نيجيريا", "Nigeria", "🇳🇬", "Africa/Lagos", "Africa"),
+    "ET": ("إثيوبيا", "Ethiopia", "🇪🇹", "Africa/Addis_Ababa", "Africa"),
+    "KE": ("كينيا", "Kenya", "🇰🇪", "Africa/Nairobi", "Africa"),
+    "ZA": ("جنوب أفريقيا", "South Africa", "🇿🇦", "Africa/Johannesburg", "Africa"),
+    "GH": ("غانا", "Ghana", "🇬🇭", "Africa/Accra", "Africa"),
+    "TZ": ("تنزانيا", "Tanzania", "🇹🇿", "Africa/Dar_es_Salaam", "Africa"),
+    "UG": ("أوغندا", "Uganda", "🇺🇬", "Africa/Kampala", "Africa"),
+    "CI": ("ساحل العاج", "Ivory Coast", "🇨🇮", "Africa/Abidjan", "Africa"),
+    "AO": ("أنغولا", "Angola", "🇦🇴", "Africa/Luanda", "Africa"),
+    "MZ": ("موزمبيق", "Mozambique", "🇲🇿", "Africa/Maputo", "Africa"),
+    "CM": ("الكاميرون", "Cameroon", "🇨🇲", "Africa/Douala", "Africa"),
+    "MG": ("مدغشقر", "Madagascar", "🇲🇬", "Indian/Antananarivo", "Africa"),
+    "NE": ("النيجر", "Niger", "🇳🇪", "Africa/Niamey", "Africa"),
+    "BF": ("بوركينا فاسو", "Burkina Faso", "🇧🇫", "Africa/Ouagadougou", "Africa"),
+    "ML": ("مالي", "Mali", "🇲🇱", "Africa/Bamako", "Africa"),
+    "MW": ("مالاوي", "Malawi", "🇲🇼", "Africa/Blantyre", "Africa"),
+    "ZM": ("زامبيا", "Zambia", "🇿🇲", "Africa/Lusaka", "Africa"),
+    "SN": ("السنغال", "Senegal", "🇸🇳", "Africa/Dakar", "Africa"),
+    "TD": ("تشاد", "Chad", "🇹🇩", "Africa/Ndjamena", "Africa"),
+    "ZW": ("زيمبابوي", "Zimbabwe", "🇿🇼", "Africa/Harare", "Africa"),
+    "RW": ("رواندا", "Rwanda", "🇷🇼", "Africa/Kigali", "Africa"),
+    "BI": ("بوروندي", "Burundi", "🇧🇮", "Africa/Bujumbura", "Africa"),
+    "BJ": ("بنين", "Benin", "🇧🇯", "Africa/Porto-Novo", "Africa"),
+    "TG": ("توغو", "Togo", "🇹🇬", "Africa/Lome", "Africa"),
+    "SL": ("سيراليون", "Sierra Leone", "🇸🇱", "Africa/Freetown", "Africa"),
+    "LR": ("ليبيريا", "Liberia", "🇱🇷", "Africa/Monrovia", "Africa"),
+    "CG": ("جمهورية الكونغو", "Republic of the Congo", "🇨🇬", "Africa/Brazzaville", "Africa"),
+    "CD": ("جمهورية الكونغو الديمقراطية", "DR Congo", "🇨🇩", "Africa/Kinshasa", "Africa"),
+    "CF": ("جمهورية أفريقيا الوسطى", "Central African Republic", "🇨🇫", "Africa/Bangui", "Africa"),
+    "GA": ("الغابون", "Gabon", "🇬🇦", "Africa/Libreville", "Africa"),
+    "GQ": ("غينيا الاستوائية", "Equatorial Guinea", "🇬🇶", "Africa/Malabo", "Africa"),
+    "GN": ("غينيا", "Guinea", "🇬🇳", "Africa/Conakry", "Africa"),
+    "GW": ("غينيا بيساو", "Guinea-Bissau", "🇬🇼", "Africa/Bissau", "Africa"),
+    "GM": ("غامبيا", "Gambia", "🇬🇲", "Africa/Banjul", "Africa"),
+    "CV": ("الرأس الأخضر", "Cape Verde", "🇨🇻", "Atlantic/Cape_Verde", "Africa"),
+    "ST": ("ساو تومي وبرينسيبي", "Sao Tome and Principe", "🇸🇹", "Africa/Sao_Tome", "Africa"),
+    "SC": ("سيشل", "Seychelles", "🇸🇨", "Indian/Mahe", "Africa"),
+    "MU": ("موريشيوس", "Mauritius", "🇲🇺", "Indian/Mauritius", "Africa"),
+    "NA": ("ناميبيا", "Namibia", "🇳🇦", "Africa/Windhoek", "Africa"),
+    "BW": ("بوتسوانا", "Botswana", "🇧🇼", "Africa/Gaborone", "Africa"),
+    "LS": ("ليسوتو", "Lesotho", "🇱🇸", "Africa/Maseru", "Africa"),
+    "SZ": ("إسواتيني", "Eswatini", "🇸🇿", "Africa/Mbabane", "Africa"),
+    "ER": ("إريتريا", "Eritrea", "🇪🇷", "Africa/Asmara", "Africa"),
+    "SS": ("جنوب السودان", "South Sudan", "🇸🇸", "Africa/Juba", "Africa"),
+    "EH": ("الصحراء الغربية", "Western Sahara", "🇪🇭", "Africa/El_Aaiun", "Africa"),
+    "SH": ("سانت هيلينا", "Saint Helena", "🇸🇭", "Atlantic/St_Helena", "Africa"),
+    "IO": ("إقليم المحيط الهندي البريطاني", "British Indian Ocean Territory", "🇮🇴", "Indian/Chagos", "Africa"),
+    "YT": ("مايوت", "Mayotte", "🇾🇹", "Indian/Mayotte", "Africa"),
+    "RE": ("ريونيون", "Reunion", "🇷🇪", "Indian/Reunion", "Africa"),
+    "TF": ("الأراضي الجنوبية الفرنسية", "French Southern Territories", "🇹🇫", "Indian/Kerguelen", "Africa"),
+
+    # ═══════════ 🇪🇺 أوروبا (53) ═══════════
+    "GB": ("المملكة المتحدة", "United Kingdom", "🇬🇧", "Europe/London", "Europe"),
+    "FR": ("فرنسا", "France", "🇫🇷", "Europe/Paris", "Europe"),
+    "DE": ("ألمانيا", "Germany", "🇩🇪", "Europe/Berlin", "Europe"),
+    "IT": ("إيطاليا", "Italy", "🇮🇹", "Europe/Rome", "Europe"),
+    "ES": ("إسبانيا", "Spain", "🇪🇸", "Europe/Madrid", "Europe"),
+    "PT": ("البرتغال", "Portugal", "🇵🇹", "Europe/Lisbon", "Europe"),
+    "NL": ("هولندا", "Netherlands", "🇳🇱", "Europe/Amsterdam", "Europe"),
+    "BE": ("بلجيكا", "Belgium", "🇧🇪", "Europe/Brussels", "Europe"),
+    "CH": ("سويسرا", "Switzerland", "🇨🇭", "Europe/Zurich", "Europe"),
+    "AT": ("النمسا", "Austria", "🇦🇹", "Europe/Vienna", "Europe"),
+    "SE": ("السويد", "Sweden", "🇸🇪", "Europe/Stockholm", "Europe"),
+    "NO": ("النرويج", "Norway", "🇳🇴", "Europe/Oslo", "Europe"),
+    "DK": ("الدنمارك", "Denmark", "🇩🇰", "Europe/Copenhagen", "Europe"),
+    "FI": ("فنلندا", "Finland", "🇫🇮", "Europe/Helsinki", "Europe"),
+    "IS": ("آيسلندا", "Iceland", "🇮🇸", "Atlantic/Reykjavik", "Europe"),
+    "IE": ("أيرلندا", "Ireland", "🇮🇪", "Europe/Dublin", "Europe"),
+    "PL": ("بولندا", "Poland", "🇵🇱", "Europe/Warsaw", "Europe"),
+    "CZ": ("التشيك", "Czech Republic", "🇨🇿", "Europe/Prague", "Europe"),
+    "SK": ("سلوفاكيا", "Slovakia", "🇸🇰", "Europe/Bratislava", "Europe"),
+    "HU": ("المجر", "Hungary", "🇭🇺", "Europe/Budapest", "Europe"),
+    "RO": ("رومانيا", "Romania", "🇷🇴", "Europe/Bucharest", "Europe"),
+    "BG": ("بلغاريا", "Bulgaria", "🇧🇬", "Europe/Sofia", "Europe"),
+    "GR": ("اليونان", "Greece", "🇬🇷", "Europe/Athens", "Europe"),
+    "HR": ("كرواتيا", "Croatia", "🇭🇷", "Europe/Zagreb", "Europe"),
+    "RS": ("صربيا", "Serbia", "🇷🇸", "Europe/Belgrade", "Europe"),
+    "BA": ("البوسنة والهرسك", "Bosnia and Herzegovina", "🇧🇦", "Europe/Sarajevo", "Europe"),
+    "SI": ("سلوفينيا", "Slovenia", "🇸🇮", "Europe/Ljubljana", "Europe"),
+    "MK": ("مقدونيا الشمالية", "North Macedonia", "🇲🇰", "Europe/Skopje", "Europe"),
+    "AL": ("ألبانيا", "Albania", "🇦🇱", "Europe/Tirane", "Europe"),
+    "ME": ("الجبل الأسود", "Montenegro", "🇲🇪", "Europe/Podgorica", "Europe"),
+    "XK": ("كوسوفو", "Kosovo", "🇽🇰", "Europe/Belgrade", "Europe"),
+    "MD": ("مولدوفا", "Moldova", "🇲🇩", "Europe/Chisinau", "Europe"),
+    "UA": ("أوكرانيا", "Ukraine", "🇺🇦", "Europe/Kyiv", "Europe"),
+    "BY": ("بيلاروسيا", "Belarus", "🇧🇾", "Europe/Minsk", "Europe"),
+    "LT": ("ليتوانيا", "Lithuania", "🇱🇹", "Europe/Vilnius", "Europe"),
+    "LV": ("لاتفيا", "Latvia", "🇱🇻", "Europe/Riga", "Europe"),
+    "EE": ("إستونيا", "Estonia", "🇪🇪", "Europe/Tallinn", "Europe"),
+    "RU": ("روسيا", "Russia", "🇷🇺", "Europe/Moscow", "Europe"),
+    "TR": ("تركيا", "Turkey", "🇹🇷", "Europe/Istanbul", "Europe"),
+    "CY": ("قبرص", "Cyprus", "🇨🇾", "Asia/Nicosia", "Europe"),
+    "MT": ("مالطا", "Malta", "🇲🇹", "Europe/Malta", "Europe"),
+    "LU": ("لوكسمبورغ", "Luxembourg", "🇱🇺", "Europe/Luxembourg", "Europe"),
+    "LI": ("ليختنشتاين", "Liechtenstein", "🇱🇮", "Europe/Vaduz", "Europe"),
+    "MC": ("موناكو", "Monaco", "🇲🇨", "Europe/Monaco", "Europe"),
+    "SM": ("سان مارينو", "San Marino", "🇸🇲", "Europe/San_Marino", "Europe"),
+    "VA": ("الفاتيكان", "Vatican City", "🇻🇦", "Europe/Vatican", "Europe"),
+    "AD": ("أندورا", "Andorra", "🇦🇩", "Europe/Andorra", "Europe"),
+    "GI": ("جبل طارق", "Gibraltar", "🇬🇮", "Europe/Gibraltar", "Europe"),
+    "FO": ("جزر فارو", "Faroe Islands", "🇫🇴", "Atlantic/Faroe", "Europe"),
+    "GG": ("غيرنزي", "Guernsey", "🇬🇬", "Europe/Guernsey", "Europe"),
+    "JE": ("جيرزي", "Jersey", "🇯🇪", "Europe/Jersey", "Europe"),
+    "IM": ("جزيرة مان", "Isle of Man", "🇮🇲", "Europe/Isle_of_Man", "Europe"),
+    "AX": ("جزر أولاند", "Aland Islands", "🇦🇽", "Europe/Mariehamn", "Europe"),
+    "SJ": ("سفالبارد وجان ماين", "Svalbard and Jan Mayen", "🇸🇯", "Arctic/Longyearbyen", "Europe"),
+
+    # ═══════════ 🌏 آسيا (50 - بعد استبعاد العرب) ═══════════
+    "CN": ("الصين", "China", "🇨🇳", "Asia/Shanghai", "Asia"),
+    "JP": ("اليابان", "Japan", "🇯🇵", "Asia/Tokyo", "Asia"),
+    "KR": ("كوريا الجنوبية", "South Korea", "🇰🇷", "Asia/Seoul", "Asia"),
+    "KP": ("كوريا الشمالية", "North Korea", "🇰🇵", "Asia/Pyongyang", "Asia"),
+    "IN": ("الهند", "India", "🇮🇳", "Asia/Kolkata", "Asia"),
+    "PK": ("باكستان", "Pakistan", "🇵🇰", "Asia/Karachi", "Asia"),
+    "BD": ("بنغلاديش", "Bangladesh", "🇧🇩", "Asia/Dhaka", "Asia"),
+    "LK": ("سريلانكا", "Sri Lanka", "🇱🇰", "Asia/Colombo", "Asia"),
+    "NP": ("نيبال", "Nepal", "🇳🇵", "Asia/Kathmandu", "Asia"),
+    "BT": ("بوتان", "Bhutan", "🇧🇹", "Asia/Thimphu", "Asia"),
+    "MV": ("جزر المالديف", "Maldives", "🇲🇻", "Indian/Maldives", "Asia"),
+    "AF": ("أفغانستان", "Afghanistan", "🇦🇫", "Asia/Kabul", "Asia"),
+    "IR": ("إيران", "Iran", "🇮🇷", "Asia/Tehran", "Asia"),
+    "IL": ("إسرائيل", "Israel", "🇮🇱", "Asia/Jerusalem", "Asia"),
+    "TH": ("تايلاند", "Thailand", "🇹🇭", "Asia/Bangkok", "Asia"),
+    "VN": ("فيتنام", "Vietnam", "🇻🇳", "Asia/Ho_Chi_Minh", "Asia"),
+    "MY": ("ماليزيا", "Malaysia", "🇲🇾", "Asia/Kuala_Lumpur", "Asia"),
+    "SG": ("سنغافورة", "Singapore", "🇸🇬", "Asia/Singapore", "Asia"),
+    "ID": ("إندونيسيا", "Indonesia", "🇮🇩", "Asia/Jakarta", "Asia"),
+    "PH": ("الفلبين", "Philippines", "🇵🇭", "Asia/Manila", "Asia"),
+    "MM": ("ميانمار", "Myanmar", "🇲🇲", "Asia/Yangon", "Asia"),
+    "KH": ("كمبوديا", "Cambodia", "🇰🇭", "Asia/Phnom_Penh", "Asia"),
+    "LA": ("لاوس", "Laos", "🇱🇦", "Asia/Vientiane", "Asia"),
+    "BN": ("بروناي", "Brunei", "🇧🇳", "Asia/Brunei", "Asia"),
+    "TL": ("تيمور الشرقية", "East Timor", "🇹🇱", "Asia/Dili", "Asia"),
+    "MN": ("منغوليا", "Mongolia", "🇲🇳", "Asia/Ulaanbaatar", "Asia"),
+    "KZ": ("كازاخستان", "Kazakhstan", "🇰🇿", "Asia/Almaty", "Asia"),
+    "UZ": ("أوزبكستان", "Uzbekistan", "🇺🇿", "Asia/Tashkent", "Asia"),
+    "TM": ("تركمانستان", "Turkmenistan", "🇹🇲", "Asia/Ashgabat", "Asia"),
+    "KG": ("قيرغيزستان", "Kyrgyzstan", "🇰🇬", "Asia/Bishkek", "Asia"),
+    "TJ": ("طاجيكستان", "Tajikistan", "🇹🇯", "Asia/Dushanbe", "Asia"),
+    "AZ": ("أذربيجان", "Azerbaijan", "🇦🇿", "Asia/Baku", "Asia"),
+    "AM": ("أرمينيا", "Armenia", "🇦🇲", "Asia/Yerevan", "Asia"),
+    "GE": ("جورجيا", "Georgia", "🇬🇪", "Asia/Tbilisi", "Asia"),
+    "TW": ("تايوان", "Taiwan", "🇹🇼", "Asia/Taipei", "Asia"),
+    "HK": ("هونغ كونغ", "Hong Kong", "🇭🇰", "Asia/Hong_Kong", "Asia"),
+    "MO": ("ماكاو", "Macau", "🇲🇴", "Asia/Macau", "Asia"),
+
+    # ═══════════ 🌎 الأمريكتان (56) ═══════════
+    "US": ("الولايات المتحدة الأمريكية", "United States", "🇺🇸", "America/New_York", "Americas"),
+    "CA": ("كندا", "Canada", "🇨🇦", "America/Toronto", "Americas"),
+    "MX": ("المكسيك", "Mexico", "🇲🇽", "America/Mexico_City", "Americas"),
+    "BR": ("البرازيل", "Brazil", "🇧🇷", "America/Sao_Paulo", "Americas"),
+    "AR": ("الأرجنتين", "Argentina", "🇦🇷", "America/Argentina/Buenos_Aires", "Americas"),
+    "CL": ("تشيلي", "Chile", "🇨🇱", "America/Santiago", "Americas"),
+    "CO": ("كولومبيا", "Colombia", "🇨🇴", "America/Bogota", "Americas"),
+    "PE": ("بيرو", "Peru", "🇵🇪", "America/Lima", "Americas"),
+    "VE": ("فنزويلا", "Venezuela", "🇻🇪", "America/Caracas", "Americas"),
+    "EC": ("الإكوادور", "Ecuador", "🇪🇨", "America/Guayaquil", "Americas"),
+    "BO": ("بوليفيا", "Bolivia", "🇧🇴", "America/La_Paz", "Americas"),
+    "PY": ("باراغواي", "Paraguay", "🇵🇾", "America/Asuncion", "Americas"),
+    "UY": ("الأوروغواي", "Uruguay", "🇺🇾", "America/Montevideo", "Americas"),
+    "GY": ("غيانا", "Guyana", "🇬🇾", "America/Guyana", "Americas"),
+    "SR": ("سورينام", "Suriname", "🇸🇷", "America/Paramaribo", "Americas"),
+    "GF": ("غويانا الفرنسية", "French Guiana", "🇬🇫", "America/Cayenne", "Americas"),
+    "PA": ("بنما", "Panama", "🇵🇦", "America/Panama", "Americas"),
+    "CR": ("كوستاريكا", "Costa Rica", "🇨🇷", "America/Costa_Rica", "Americas"),
+    "NI": ("نيكاراغوا", "Nicaragua", "🇳🇮", "America/Managua", "Americas"),
+    "HN": ("هندوراس", "Honduras", "🇭🇳", "America/Tegucigalpa", "Americas"),
+    "SV": ("السلفادور", "El Salvador", "🇸🇻", "America/El_Salvador", "Americas"),
+    "GT": ("غواتيمالا", "Guatemala", "🇬🇹", "America/Guatemala", "Americas"),
+    "BZ": ("بليز", "Belize", "🇧🇿", "America/Belize", "Americas"),
+    "CU": ("كوبا", "Cuba", "🇨🇺", "America/Havana", "Americas"),
+    "DO": ("جمهورية الدومينيكان", "Dominican Republic", "🇩🇴", "America/Santo_Domingo", "Americas"),
+    "HT": ("هايتي", "Haiti", "🇭🇹", "America/Port-au-Prince", "Americas"),
+    "JM": ("جامايكا", "Jamaica", "🇯🇲", "America/Jamaica", "Americas"),
+    "PR": ("بورتوريكو", "Puerto Rico", "🇵🇷", "America/Puerto_Rico", "Americas"),
+    "TT": ("ترينيداد وتوباغو", "Trinidad and Tobago", "🇹🇹", "America/Port_of_Spain", "Americas"),
+    "BS": ("جزر البهاما", "Bahamas", "🇧🇸", "America/Nassau", "Americas"),
+    "BB": ("بربادوس", "Barbados", "🇧🇧", "America/Barbados", "Americas"),
+    "GD": ("غرينادا", "Grenada", "🇬🇩", "America/Grenada", "Americas"),
+    "LC": ("سانت لوسيا", "Saint Lucia", "🇱🇨", "America/St_Lucia", "Americas"),
+    "VC": ("سانت فنسنت والغرينادين", "Saint Vincent", "🇻🇨", "America/St_Vincent", "Americas"),
+    "AG": ("أنتيغوا وباربودا", "Antigua and Barbuda", "🇦🇬", "America/Antigua", "Americas"),
+    "DM": ("دومينيكا", "Dominica", "🇩🇲", "America/Dominica", "Americas"),
+    "KN": ("سانت كيتس ونيفيس", "Saint Kitts and Nevis", "🇰🇳", "America/St_Kitts", "Americas"),
+    "GL": ("غرينلاند", "Greenland", "🇬🇱", "America/Godthab", "Americas"),
+    "BM": ("برمودا", "Bermuda", "🇧🇲", "Atlantic/Bermuda", "Americas"),
+    "KY": ("جزر كايمان", "Cayman Islands", "🇰🇾", "America/Cayman", "Americas"),
+    "VG": ("جزر العذراء البريطانية", "British Virgin Islands", "🇻🇬", "America/Tortola", "Americas"),
+    "VI": ("جزر العذراء الأمريكية", "US Virgin Islands", "🇻🇮", "America/St_Thomas", "Americas"),
+    "AI": ("أنغويلا", "Anguilla", "🇦🇮", "America/Anguilla", "Americas"),
+    "MS": ("مونتسيرات", "Montserrat", "🇲🇸", "America/Montserrat", "Americas"),
+    "TC": ("جزر توركس وكايكوس", "Turks and Caicos", "🇹🇨", "America/Grand_Turk", "Americas"),
+    "AW": ("أروبا", "Aruba", "🇦🇼", "America/Aruba", "Americas"),
+    "CW": ("كوراساو", "Curacao", "🇨🇼", "America/Curacao", "Americas"),
+    "SX": ("سينت مارتن", "Sint Maarten", "🇸🇽", "America/Lower_Princes", "Americas"),
+    "BQ": ("بونير", "Bonaire", "🇧🇶", "America/Kralendijk", "Americas"),
+    "MQ": ("مارتينيك", "Martinique", "🇲🇶", "America/Martinique", "Americas"),
+    "GP": ("غوادلوب", "Guadeloupe", "🇬🇵", "America/Guadeloupe", "Americas"),
+    "BL": ("سان بارتيلمي", "Saint Barthelemy", "🇧🇱", "America/St_Barthelemy", "Americas"),
+    "MF": ("سان مارتن", "Saint Martin", "🇲🇫", "America/Marigot", "Americas"),
+    "PM": ("سان بيير وميكلون", "Saint Pierre and Miquelon", "🇵🇲", "America/Miquelon", "Americas"),
+    "FK": ("جزر فوكلاند", "Falkland Islands", "🇫🇰", "Atlantic/Stanley", "Americas"),
+    "GS": ("جورجيا الجنوبية", "South Georgia", "🇬🇸", "Atlantic/South_Georgia", "Americas"),
+
+    # ═══════════ 🏝️ أوقيانوسيا (29) ═══════════
+    "AU": ("أستراليا", "Australia", "🇦🇺", "Australia/Sydney", "Oceania"),
+    "NZ": ("نيوزيلندا", "New Zealand", "🇳🇿", "Pacific/Auckland", "Oceania"),
+    "FJ": ("فيجي", "Fiji", "🇫🇯", "Pacific/Fiji", "Oceania"),
+    "PG": ("بابوا غينيا الجديدة", "Papua New Guinea", "🇵🇬", "Pacific/Port_Moresby", "Oceania"),
+    "SB": ("جزر سليمان", "Solomon Islands", "🇸🇧", "Pacific/Guadalcanal", "Oceania"),
+    "VU": ("فانواتو", "Vanuatu", "🇻🇺", "Pacific/Efate", "Oceania"),
+    "NC": ("كاليدونيا الجديدة", "New Caledonia", "🇳🇨", "Pacific/Noumea", "Oceania"),
+    "PF": ("بولينيزيا الفرنسية", "French Polynesia", "🇵🇫", "Pacific/Tahiti", "Oceania"),
+    "WS": ("ساموا", "Samoa", "🇼🇸", "Pacific/Apia", "Oceania"),
+    "TO": ("تونغا", "Tonga", "🇹🇴", "Pacific/Tongatapu", "Oceania"),
+    "KI": ("كيريباتي", "Kiribati", "🇰🇮", "Pacific/Tarawa", "Oceania"),
+    "FM": ("ولايات ميكرونيزيا", "Micronesia", "🇫🇲", "Pacific/Pohnpei", "Oceania"),
+    "MH": ("جزر مارشال", "Marshall Islands", "🇲🇭", "Pacific/Majuro", "Oceania"),
+    "PW": ("بالاو", "Palau", "🇵🇼", "Pacific/Palau", "Oceania"),
+    "TV": ("توفالو", "Tuvalu", "🇹🇻", "Pacific/Funafuti", "Oceania"),
+    "NR": ("ناورو", "Nauru", "🇳🇷", "Pacific/Nauru", "Oceania"),
+    "CK": ("جزر كوك", "Cook Islands", "🇨🇰", "Pacific/Rarotonga", "Oceania"),
+    "NU": ("نييوي", "Niue", "🇳🇺", "Pacific/Niue", "Oceania"),
+    "GU": ("غوام", "Guam", "🇬🇺", "Pacific/Guam", "Oceania"),
+    "AS": ("ساموا الأمريكية", "American Samoa", "🇦🇸", "Pacific/Pago_Pago", "Oceania"),
+    "MP": ("جزر ماريانا الشمالية", "Northern Mariana Islands", "🇲🇵", "Pacific/Saipan", "Oceania"),
+    "WF": ("واليس وفوتونا", "Wallis and Futuna", "🇼🇫", "Pacific/Wallis", "Oceania"),
+    "TK": ("توكيلاو", "Tokelau", "🇹🇰", "Pacific/Fakaofo", "Oceania"),
+    "PN": ("جزر بيتكيرن", "Pitcairn Islands", "🇵🇳", "Pacific/Pitcairn", "Oceania"),
+    "NF": ("جزيرة نورفولك", "Norfolk Island", "🇳🇫", "Pacific/Norfolk", "Oceania"),
+    "CX": ("جزيرة كريسماس", "Christmas Island", "🇨🇽", "Indian/Christmas", "Oceania"),
+    "CC": ("جزر كوكوس", "Cocos Islands", "🇨🇨", "Indian/Cocos", "Oceania"),
+    "HM": ("جزيرة هيرد وماكدونالد", "Heard Island", "🇭🇲", "Indian/Kerguelen", "Oceania"),
+    "UM": ("جزر الولايات المتحدة النائية", "US Minor Outlying Islands", "🇺🇲", "Pacific/Midway", "Oceania"),
+
+    # ═══════════ ❄️ أنتاركتيكا ═══════════
+    "AQ": ("أنتاركتيكا", "Antarctica", "🇦🇶", "Antarctica/McMurdo", "Antarctica"),
 }
 
 
-import re as _re
+# ============================================================
+# 🗺️ خريطة IANA Timezones → ISO Country Code
+# ============================================================
+TIMEZONE_TO_COUNTRY: Dict[str, str] = {
+    tz: iso for iso, (_, _, _, tz, _) in WORLD_COUNTRIES.items()
+}
 
-def lookup_region(country, text):
+# ============================================================
+# 🌐 المجموعات الجاهزة
+# ============================================================
+ARAB_COUNTRIES = ["SA", "AE", "KW", "QA", "BH", "OM", "YE", "IQ", "SY", "LB",
+                  "JO", "PS", "EG", "SD", "LY", "TN", "DZ", "MA", "MR", "SO",
+                  "DJ", "KM"]
+
+GCC_COUNTRIES = ["SA", "AE", "KW", "QA", "BH", "OM"]
+
+EU_COUNTRIES = ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+                "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+                "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+
+
+# ============================================================
+# 🔧 الدوال المساعدة (Public API)
+# ============================================================
+
+def get_country_info(iso_code: str) -> Optional[Tuple[str, str, str, str, str]]:
     """
-    البحث عن منطقة/مدينة داخل النص (BIO + Nickname + Username)
-    ✅ v2.1.1: حدود كلمات + دعم العربية
-    Returns: dict | None
+    استرجاع كافة بيانات دولة عبر الـ ISO code.
+
+    Args:
+        iso_code: كود ISO 3166-1 alpha-2 (مثال: 'SA', 'US')
+
+    Returns:
+        tuple: (arabic, english, flag, timezone, continent) أو None
     """
-    if not country or not text:
+    if not iso_code:
         return None
-    if country not in REGIONS_DATABASE:
-        return None
-    text_lower = text.lower()
-    regions = REGIONS_DATABASE[country]
-    sorted_keys = sorted(regions.keys(), key=lambda k: -len(k))
-    
-    # الطبقة 1: بحث بالعربية الأولاي (تطوير #2)
-    for key_en in sorted_keys:
-        region_ar = regions[key_en]
-        # بحث عن الاسم العربي في النص مباشرة
-        if region_ar in text:
-            return {
-                'region_en': key_en.title(),
-                'region_ar': region_ar,
-                'confidence': 92,
-            }
-    
-    # الطبقة 2: بحث بالإنجليزية بحدود الكلمات (تطوير #1)
-    for key_en in sorted_keys:
-        # بحدود الكلمة - تجنب المطابقة الجزئية
-        pattern = r'\b' + _re.escape(key_en) + r'\b'
-        if _re.search(pattern, text_lower):
-            return {
-                'region_en': key_en.title(),
-                'region_ar': regions[key_en],
-                'confidence': 90,
-            }
-    return None
+    return WORLD_COUNTRIES.get(iso_code.upper())
 
 
-def get_total_regions():
-    """عدد المناطق الإجمالي"""
-    return sum(len(v) for v in REGIONS_DATABASE.values())
+def get_arabic_name(iso_code: str) -> str:
+    """الاسم العربي أو 'غير محدد'."""
+    info = get_country_info(iso_code)
+    return info[0] if info else "غير محدد"
 
 
-def get_countries_count():
-    """عدد الدول المدعومة"""
-    return len(REGIONS_DATABASE)
+def get_english_name(iso_code: str) -> str:
+    """الاسم الإنجليزي أو 'Unknown'."""
+    info = get_country_info(iso_code)
+    return info[1] if info else "Unknown"
 
 
-if __name__ == '__main__':
-    print(f"✅ إجمالي المناطق: {get_total_regions()}")
-    print(f"✅ الدول المدعومة: {get_countries_count()}")
-    # اختبار سريع
-    test_cases = [
-        ('Saudi Arabia', 'I live in Hawtat Bani Tamim'),
-        ('Saudi Arabia', 'Riyadh - السعودية'),
-        ('United States', 'Washington DC'),
-        ('Kuwait', 'Salmiya beach lover'),
-        ('Egypt', 'Cairo born and raised'),
+def get_flag(iso_code: str) -> str:
+    """علم Emoji أو 🏳️."""
+    info = get_country_info(iso_code)
+    return info[2] if info else "🏳️"
+
+
+def get_timezone(iso_code: str) -> Optional[str]:
+    """المنطقة الزمنية الأساسية IANA."""
+    info = get_country_info(iso_code)
+    return info[3] if info else None
+
+
+def get_continent(iso_code: str) -> Optional[str]:
+    """القارة."""
+    info = get_country_info(iso_code)
+    return info[4] if info else None
+
+
+def get_country_by_timezone(timezone: str) -> Optional[str]:
+    """
+    استنتاج ISO code من timezone.
+
+    Args:
+        timezone: مثال 'Asia/Riyadh'
+
+    Returns:
+        ISO code مثل 'SA' أو None
+    """
+    return TIMEZONE_TO_COUNTRY.get(timezone)
+
+
+def get_all_arab_countries() -> List[Dict]:
+    """قائمة كاملة بالدول العربية."""
+    return [
+        {
+            "iso": iso,
+            "ar": WORLD_COUNTRIES[iso][0],
+            "en": WORLD_COUNTRIES[iso][1],
+            "flag": WORLD_COUNTRIES[iso][2],
+            "timezone": WORLD_COUNTRIES[iso][3],
+        }
+        for iso in ARAB_COUNTRIES if iso in WORLD_COUNTRIES
     ]
-    for country, text in test_cases:
-        result = lookup_region(country, text)
-        print(f"\n🔍 {country} | '{text}'")
-        print(f"   → {result}")
+
+
+def get_countries_by_continent(continent: str) -> List[str]:
+    """
+    قائمة بأكواد ISO لدول قارة معينة.
+
+    Args:
+        continent: 'Asia' | 'Africa' | 'Europe' | 'Americas' | 'Oceania' | 'Antarctica'
+    """
+    return [
+        iso for iso, data in WORLD_COUNTRIES.items()
+        if data[4] == continent
+    ]
+
+
+def format_country_display(iso_code: str, lang: str = "ar") -> str:
+    """
+    عرض منسّق للدولة: '🇸🇦 المملكة العربية السعودية'.
+
+    Args:
+        iso_code: ISO 3166-1 alpha-2
+        lang: 'ar' | 'en'
+    """
+    info = get_country_info(iso_code)
+    if not info:
+        return "🏳️ غير محدد" if lang == "ar" else "🏳️ Unknown"
+    ar, en, flag, _, _ = info
+    name = ar if lang == "ar" else en
+    return f"{flag} {name}"
+
+
+def is_arab_country(iso_code: str) -> bool:
+    """هل الدولة عربية؟"""
+    return iso_code and iso_code.upper() in ARAB_COUNTRIES
+
+
+def is_gcc_country(iso_code: str) -> bool:
+    """هل الدولة من دول الخليج؟"""
+    return iso_code and iso_code.upper() in GCC_COUNTRIES
+
+
+# ============================================================
+# 📊 إحصائيات وقت التحميل
+# ============================================================
+STATS = {
+    "total_countries": len(WORLD_COUNTRIES),
+    "arab_countries": len(ARAB_COUNTRIES),
+    "gcc_countries": len(GCC_COUNTRIES),
+    "eu_countries": len(EU_COUNTRIES),
+    "continents": {},
+    "version": "v2.2.1-WorldCompleteMap",
+    "release_date": "2026-07-26",
+    "committee_id": "BSR-V221-CTO-WORLD-MAP-COMPLETE-AHMAD-20260726",
+}
+
+for iso, data in WORLD_COUNTRIES.items():
+    continent = data[4]
+    STATS["continents"][continent] = STATS["continents"].get(continent, 0) + 1
+
+
+# ============================================================
+# 🧪 Self-test on import
+# ============================================================
+if __name__ == "__main__":
+    import json
+    print("=" * 60)
+    print(f"  regions_database.py {STATS['version']}")
+    print(f"  {STATS['committee_id']}")
+    print("=" * 60)
+    print(json.dumps(STATS, ensure_ascii=False, indent=2))
+    print()
+    print("Sample tests:")
+    print(f"  get_arabic_name('SA') = {get_arabic_name('SA')}")
+    print(f"  get_flag('US') = {get_flag('US')}")
+    print(f"  get_country_by_timezone('Asia/Riyadh') = {get_country_by_timezone('Asia/Riyadh')}")
+    print(f"  format_country_display('EG') = {format_country_display('EG')}")
+    print(f"  is_arab_country('EG') = {is_arab_country('EG')}")
+    print(f"  is_gcc_country('MA') = {is_gcc_country('MA')}")
