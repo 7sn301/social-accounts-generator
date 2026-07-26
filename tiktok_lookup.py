@@ -1,41 +1,28 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  BSR-V233-CTO-RUNTIME-ENV-LOOKUP-AHMAD-20260726                  ║
-║  tiktok_lookup.py v2.3.3 - Runtime Env Lookup (Railway fix)      ║
+║  BSR-V240-CTO-NUCLEAR-FIX-FULL-STACK-AHMAD-20260726              ║
+║  tiktok_lookup.py v2.4.0 - NUCLEAR FIX (HTML + Runtime Env)      ║
 ║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)             ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-🏆 Architecture v2.3.1 (VPN-Aware):
-  L0: RapidAPI tiktok-scraper7 (PRIMARY - 99% success)
-      - /user/info : basic info + stats
-      - /user/posts : 30 videos with region + timestamp
-  L1-L3: Fallback layers
+🏆 v2.4.0 NUCLEAR FIX:
+  1. Runtime env lookup (no module-level RAPIDAPI_KEY capture)
+  2. HTML output (parse_mode="HTML" - safer than Markdown)
+  3. VPN-aware detection (minority region as REAL country)
+  4. 30 videos analysis + timezone cross-check
+  5. Defensive error handling everywhere
 
-🧠 VPN Detection Logic:
-  1. Fetch 30 videos → collect all video.region values
-  2. If ONE region dominates (>80%), check for minority region
-  3. Minority region often reveals TRUE origin (VPN forgotten)
-  4. Cross-check with posting timezone (VPN can't fake habits)
-  5. Weighted verdict:
-     - minority + timezone match → HIGH confidence for minority
-     - majority alone → MEDIUM confidence
-     - timezone strongly matches specific region → override
-
-Environment Variables:
-  RAPIDAPI_KEY   - Required for L0
-  RAPIDAPI_HOST  - Default: tiktok-scraper7.p.rapidapi.com
-
-Public API (backward compatible with bot.py v2.1.8.9):
-  lookup_tiktok_user(username) -> str  (Markdown for Telegram)
+Public API (backward compatible):
+  lookup_tiktok_user(username) -> str  (HTML for Telegram)
   clean_username(raw) -> str
   lookup_tiktok_user_dict(username) -> dict
 """
 
 import asyncio
+import html
 import json
 import logging
 import os
-import random
 import re
 import time
 from collections import Counter
@@ -51,8 +38,6 @@ try:
     from regions_database import (
         WORLD_COUNTRIES,
         get_country_info,
-        get_arabic_name,
-        get_english_name,
         get_flag,
         is_arab_country,
         is_gcc_country,
@@ -63,29 +48,22 @@ except ImportError as e:
     logging.error(f"[tiktok_lookup] regions_database not available: {e}")
     REGIONS_DB_AVAILABLE = False
     WORLD_COUNTRIES = {}
-
-try:
-    import cloudscraper
-    CLOUDSCRAPER_AVAILABLE = True
-except ImportError:
-    CLOUDSCRAPER_AVAILABLE = False
+    REGIONS_STATS = {"version": "MISSING"}
 
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════
-# 🏆 RapidAPI Configuration - RUNTIME LOOKUP (v2.3.3 fix)
+# 🔧 Runtime env lookup (v2.4.0 KEY FIX)
 # ═══════════════════════════════════════════════════════════
-# ⚠️ Do NOT capture os.getenv at module-level. Railway may inject
-# ENV variables AFTER Python imports this module. Read them inside
-# functions on each call (lazy/runtime lookup).
-
-def _get_rapidapi_config():
+def _get_rapidapi_config() -> Tuple[str, str, bool]:
     """Read RAPIDAPI credentials at CALL time (not import time).
 
-    Also tries load_dotenv() as fallback for local dev.
+    v2.4.0: Also loads .env file as fallback for both local dev
+    and edge cases where Railway env injection is delayed.
     """
     key = os.getenv("RAPIDAPI_KEY", "").strip()
     host = os.getenv("RAPIDAPI_HOST", "tiktok-scraper7.p.rapidapi.com").strip()
+
     if not key:
         try:
             from dotenv import load_dotenv
@@ -94,37 +72,20 @@ def _get_rapidapi_config():
             host = os.getenv("RAPIDAPI_HOST", host).strip()
         except ImportError:
             pass
+
     return key, host, bool(key)
 
 
-# Import-time snapshot (for logging only — not used for decisions)
-_INITIAL_KEY, _INITIAL_HOST, _INITIAL_ENABLED = _get_rapidapi_config()
-if _INITIAL_ENABLED:
-    logger.info(f"[L0] ✅ RapidAPI enabled at import: {_INITIAL_HOST}")
+# Import-time snapshot (informational only)
+_k, _h, _e = _get_rapidapi_config()
+if _e:
+    logger.info(f"[L0] ✅ RapidAPI available at import: {_h}")
 else:
     logger.warning("[L0] ⚠️ RAPIDAPI_KEY not set at import (will retry at runtime)")
 
-# Config
-POSTS_COUNT = 30  # Sample size for VPN-aware analysis
+POSTS_COUNT = 30
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
-# ═══════════════════════════════════════════════════════════
-# 🗺️ Timezone → Country ranges (for VPN detection)
-# ═══════════════════════════════════════════════════════════
-# Each entry: prime-time hours in UTC when locals post most
-TIMEZONE_PRIME_WINDOWS = {
-    # UTC hour ranges → likely country ISO
-    (15, 21): "SA",  # 18-24 SA local (also UAE, KW, QA, BH)
-    (17, 23): "GB",  # 18-24 GB local
-    (0, 4):   "US",  # 20-24 EST (US East)
-    (16, 22): "EG",  # 18-24 EG local (also TR, GR)
-    (11, 15): "JP",  # 20-24 JST
-    (12, 16): "CN",  # 20-24 CST (also SG, MY)
-    (23, 3):  "BR",  # 20-24 BRT
-    (18, 22): "DE",  # 19-23 CET (also FR, IT, ES, NL)
-}
-
-# Countries that share UTC offset (used to disambiguate)
 UTC_OFFSET_TO_COUNTRIES = {
     3:  ["SA", "AE", "KW", "QA", "BH", "IQ", "YE", "TR", "RU", "KE", "ET"],
     2:  ["EG", "LY", "GR", "FI", "SD", "JO", "LB", "SY", "ZA", "PS"],
@@ -136,38 +97,31 @@ UTC_OFFSET_TO_COUNTRIES = {
     7:  ["TH", "VN", "ID"],
     8:  ["CN", "MY", "SG", "PH", "HK", "TW", "AU"],
     9:  ["JP", "KR"],
-    5.5: ["IN"],
 }
 
 
-# ═══════════════════════════════════════════════════════════
-# 📊 Result container
-# ═══════════════════════════════════════════════════════════
 class LookupResult(dict):
     def __getattr__(self, key):
         return self.get(key)
 
 
 # ═══════════════════════════════════════════════════════════
-# 🏆 LAYER 0: RapidAPI tiktok-scraper7
+# 🏆 LAYER 0: RapidAPI (with runtime env lookup)
 # ═══════════════════════════════════════════════════════════
 async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
-    """RapidAPI primary layer - reads env at CALL time (v2.3.3)."""
-    rapidapi_key, rapidapi_host, rapidapi_enabled = _get_rapidapi_config()
-    if not rapidapi_enabled:
-        logger.warning(f"[L0] RAPIDAPI_KEY still not available for @{username}")
+    """RapidAPI primary layer - reads env at CALL time."""
+    key, host, enabled = _get_rapidapi_config()
+    if not enabled:
+        logger.warning(f"[L0] RAPIDAPI_KEY not available for @{username}")
         return None
 
-    logger.info(f"[L0] 🚀 Attempting RapidAPI for @{username} (host={rapidapi_host})")
-    headers = {
-        "x-rapidapi-key": rapidapi_key,
-        "x-rapidapi-host": rapidapi_host,
-    }
+    logger.info(f"[L0] 🚀 Attempting RapidAPI for @{username}")
+    headers = {"x-rapidapi-key": key, "x-rapidapi-host": host}
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            # ── /user/info ──
-            info_url = f"https://{rapidapi_host}/user/info"
+            # /user/info
+            info_url = f"https://{host}/user/info"
             info_resp = await client.get(info_url, headers=headers, params={"unique_id": username})
 
             if info_resp.status_code == 429:
@@ -182,7 +136,7 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
 
             payload = info_resp.json()
             if payload.get("code") not in (0, None):
-                logger.warning(f"[L0] info code={payload.get('code')} msg={payload.get('msg')}")
+                logger.warning(f"[L0] code={payload.get('code')} msg={payload.get('msg')}")
                 return None
 
             data = payload.get("data", {}) or {}
@@ -196,7 +150,7 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
                 "avatarThumb": user.get("avatarLarger") or user.get("avatarMedium") or user.get("avatarThumb", ""),
                 "signature": user.get("signature", ""),
                 "verified": user.get("verified", False),
-                "region": (user.get("region") or "").upper(),  # often empty from this endpoint
+                "region": (user.get("region") or "").upper(),
                 "followerCount": _to_int(stats.get("followerCount")),
                 "followingCount": _to_int(stats.get("followingCount")),
                 "heartCount": _to_int(stats.get("heartCount")),
@@ -206,9 +160,9 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
                 "source": "L0_rapidapi",
             }
 
-            # ── /user/posts (30 videos for VPN-aware analysis) ──
+            # /user/posts (30 videos for VPN-aware analysis)
             try:
-                posts_url = f"https://{rapidapi_host}/user/posts"
+                posts_url = f"https://{host}/user/posts"
                 posts_resp = await client.get(
                     posts_url, headers=headers,
                     params={"unique_id": username, "count": str(POSTS_COUNT), "cursor": "0"},
@@ -231,9 +185,6 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
             logger.info(f"[L0] ✅ SUCCESS for @{username}")
             return info
 
-    except httpx.TimeoutException:
-        logger.warning(f"[L0] timeout for @{username}")
-        return None
     except Exception as e:
         logger.warning(f"[L0] exception for @{username}: {e}")
         return None
@@ -243,6 +194,7 @@ async def layer0_rapidapi(username: str) -> Optional[Dict[str, Any]]:
 # 🌐 LAYER 1: TikTok Web Direct (fallback)
 # ═══════════════════════════════════════════════════════════
 async def layer1_tiktok_web(username: str) -> Optional[Dict[str, Any]]:
+    """Fallback: Direct TikTok web scraping."""
     url = f"https://www.tiktok.com/@{username}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -259,13 +211,13 @@ async def layer1_tiktok_web(username: str) -> Optional[Dict[str, Any]]:
             )
             if m:
                 data = json.loads(m.group(1))
-                return _parse_universal_data(data, username, source="L1_web")
-    except Exception:
-        pass
+                return _parse_universal_data(data, username)
+    except Exception as e:
+        logger.debug(f"[L1] exception: {e}")
     return None
 
 
-def _parse_universal_data(data: dict, username: str, source: str) -> Optional[Dict[str, Any]]:
+def _parse_universal_data(data: dict, username: str) -> Optional[Dict[str, Any]]:
     try:
         scope = data.get("__DEFAULT_SCOPE__", {})
         user_info = scope.get("webapp.user-detail", {}).get("userInfo", {})
@@ -287,7 +239,7 @@ def _parse_universal_data(data: dict, username: str, source: str) -> Optional[Di
             "videoCount": _to_int(stats.get("videoCount")),
             "createTime": user.get("createTime", 0),
             "privateAccount": user.get("privateAccount", False),
-            "source": source,
+            "source": "L1_web",
             "_videos": [],
         }
     except Exception:
@@ -295,25 +247,15 @@ def _parse_universal_data(data: dict, username: str, source: str) -> Optional[Di
 
 
 # ═══════════════════════════════════════════════════════════
-# 🧠 VPN-Aware Verdict (the smart core)
+# 🧠 VPN-Aware Verdict
 # ═══════════════════════════════════════════════════════════
 def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Multi-signal verdict with VPN detection.
-
-    Strategy:
-      1. Collect all video regions
-      2. If dominant (>80%) region exists, check for MINORITY (10-25%)
-         - The minority often = user's TRUE country (forgot VPN)
-      3. Cross-check with timezone analysis
-      4. If minority + timezone agree → HIGH confidence for minority
-      5. Also consider: single video with SA in a sea of GB = strong signal
-    """
+    """Multi-signal verdict with VPN detection."""
     videos = user_info.get("_videos", []) or []
 
-    # ── Collect signals ──
     video_regions = [(v.get("region") or "").upper() for v in videos if v.get("region")]
     video_regions = [r for r in video_regions if r in WORLD_COUNTRIES]
+
     timestamps = []
     for v in videos:
         ts = v.get("create_time") or v.get("createTime")
@@ -323,8 +265,12 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass
 
-    # ── Signal 1: user.region (from /user/info if present) ──
     signals = []
+    vpn_detected = False
+    vpn_country = None
+    real_country = None
+
+    # Signal 1: user.region
     user_region = (user_info.get("region") or "").upper().strip()
     if user_region and user_region in WORLD_COUNTRIES:
         signals.append({
@@ -334,72 +280,63 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
             "reason": f"من ملف المستخدم: {user_region}",
         })
 
-    # ── Signal 2: Video regions analysis (VPN-aware) ──
+    # Signal 2: Video regions analysis (VPN-aware)
     region_counter = Counter(video_regions)
-    total_videos = len(video_regions)
-    vpn_detected = False
-    vpn_country = None
-    real_country = None
+    total = len(video_regions)
 
-    if total_videos >= 5:
-        top_regions = region_counter.most_common()
-        majority_iso, majority_count = top_regions[0]
-        majority_ratio = majority_count / total_videos
+    if total >= 5:
+        top = region_counter.most_common()
+        majority_iso, majority_count = top[0]
+        majority_ratio = majority_count / total
 
-        # Check for minority (potential real country)
         minority_iso = None
         minority_ratio = 0.0
-        if len(top_regions) >= 2:
-            minority_iso, minority_count = top_regions[1]
-            minority_ratio = minority_count / total_videos
+        if len(top) >= 2:
+            minority_iso, minority_count = top[1]
+            minority_ratio = minority_count / total
 
-        # VPN detection heuristic
         if (majority_ratio >= 0.75 and minority_iso and minority_ratio >= 0.05
                 and minority_iso != majority_iso):
-            # Likely VPN: dominant = VPN, minority = real
+            # VPN detected: minority = real country
             vpn_detected = True
             vpn_country = majority_iso
             real_country = minority_iso
 
-            # Add minority as HIGH weight (real country)
             signals.append({
                 "type": "video_minority_region",
                 "iso": minority_iso,
                 "weight": 0.95,
                 "reason": f"🎯 {minority_count} فيديو من {minority_iso} (VPN مُشتَبَه به: {majority_iso})",
-                "sample": total_videos,
+                "sample": total,
             })
-            # Add majority as LOW weight (VPN suspected)
             signals.append({
                 "type": "video_majority_region_vpn",
                 "iso": majority_iso,
                 "weight": 0.15,
                 "reason": f"⚠️ {majority_count} فيديو من {majority_iso} (يبدو VPN)",
-                "sample": total_videos,
+                "sample": total,
             })
         else:
-            # Normal case: no VPN suspicion
             signals.append({
                 "type": "video_region",
                 "iso": majority_iso,
                 "weight": 0.75 * majority_ratio,
-                "reason": f"{majority_count}/{total_videos} فيديو مُعلَّم {majority_iso}",
-                "sample": total_videos,
+                "reason": f"{majority_count}/{total} فيديو مُعلَّم {majority_iso}",
+                "sample": total,
             })
 
-    # ── Signal 3: Timezone analysis (can't be faked by VPN) ──
+    # Signal 3: Timezone
     tz_analysis = _analyze_timezone(timestamps)
     if tz_analysis and tz_analysis.get("candidate_countries"):
         candidates = tz_analysis["candidate_countries"]
         primary_candidate = candidates[0]
 
-        # If timezone matches suspected real country → boost it
         if real_country and real_country in candidates:
             signals.append({
                 "type": "timezone_confirms_real",
                 "iso": real_country,
                 "weight": 0.8 * tz_analysis["peak_ratio"],
-                "reason": f"⏰ التوقيت يؤكد {real_country} (UTC{tz_analysis['utc_offset']:+d})",
+                "reason": f"⏰ التوقيت يؤكد {real_country}",
                 "candidates": candidates,
             })
         else:
@@ -407,11 +344,10 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
                 "type": "timezone",
                 "iso": primary_candidate,
                 "weight": 0.5 * tz_analysis["peak_ratio"],
-                "reason": f"⏰ UTC{tz_analysis['utc_offset']:+d} (ساعة الذروة {tz_analysis['peak_utc_hour']:02d}:00 UTC)",
+                "reason": f"⏰ UTC{tz_analysis['utc_offset']:+d}",
                 "candidates": candidates,
             })
 
-    # ── No signals? ──
     if not signals:
         return {
             "country_iso": None,
@@ -426,7 +362,7 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
             "vpn_detected": False,
         }
 
-    # ── Weighted voting ──
+    # Weighted voting
     scores: Dict[str, float] = {}
     for s in signals:
         iso = s["iso"]
@@ -437,7 +373,6 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
     total_score = sum(scores.values())
     confidence = int(round((winner_score / total_score) * 100)) if total_score else 0
 
-    # Get country info
     info = get_country_info(winner_iso) if REGIONS_DB_AVAILABLE else None
     if info:
         ar_name, en_name, flag, tz, continent = info
@@ -446,7 +381,7 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
 
     primary = max(signals, key=lambda s: s["weight"])
 
-    result = {
+    return {
         "country_iso": winner_iso,
         "country_ar": ar_name,
         "country_en": en_name,
@@ -465,14 +400,9 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
         "real_country": real_country,
         "video_regions_distribution": dict(region_counter),
     }
-    return result
 
 
 def _analyze_timezone(timestamps: List[int]) -> Optional[Dict[str, Any]]:
-    """
-    Estimate user's timezone from posting hour pattern.
-    Assumes peak posting hour = 20:00 local (typical prime time).
-    """
     if not timestamps or len(timestamps) < 5:
         return None
 
@@ -487,30 +417,24 @@ def _analyze_timezone(timestamps: List[int]) -> Optional[Dict[str, Any]]:
     if not hour_counts:
         return None
 
-    # Compute prime-window scores for each region
     saudi_prime = sum(hour_counts.get(h, 0) for h in [15, 16, 17, 18, 19, 20, 21])
     british_prime = sum(hour_counts.get(h, 0) for h in [17, 18, 19, 20, 21, 22, 23])
     us_east_prime = sum(hour_counts.get(h, 0) for h in [22, 23, 0, 1, 2, 3, 4])
     total = sum(hour_counts.values())
 
-    # Determine best fit
     scores = {
-        "SA_family": saudi_prime,      # UTC+3
-        "GB_family": british_prime,    # UTC+0
-        "US_east": us_east_prime,      # UTC-5
+        "SA_family": saudi_prime,
+        "GB_family": british_prime,
+        "US_east": us_east_prime,
     }
     best_family = max(scores, key=scores.get)
-    best_score = scores[best_family]
-    best_ratio = best_score / total if total else 0
+    best_ratio = scores[best_family] / total if total else 0
 
-    # Peak hour offset calculation
-    peak_utc_hour, peak_count = hour_counts.most_common(1)[0]
-    ASSUMED_LOCAL_PEAK = 20
-    utc_offset = (ASSUMED_LOCAL_PEAK - peak_utc_hour) % 24
+    peak_utc_hour, _ = hour_counts.most_common(1)[0]
+    utc_offset = (20 - peak_utc_hour) % 24
     if utc_offset > 12:
         utc_offset -= 24
 
-    # Map to candidate countries
     if best_family == "SA_family":
         candidates = UTC_OFFSET_TO_COUNTRIES.get(3, ["SA"])
     elif best_family == "GB_family":
@@ -526,13 +450,11 @@ def _analyze_timezone(timestamps: List[int]) -> Optional[Dict[str, Any]]:
         "peak_ratio": round(best_ratio, 2),
         "candidate_countries": candidates,
         "sample_size": total,
-        "prime_scores": scores,
-        "best_family": best_family,
     }
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎯 Main lookup engine
+# 🎯 Main engine
 # ═══════════════════════════════════════════════════════════
 async def lookup_tiktok(username: str) -> LookupResult:
     username = username.strip().lstrip("@")
@@ -541,7 +463,6 @@ async def lookup_tiktok(username: str) -> LookupResult:
     user_info = None
     start = time.time()
 
-    # v2.3.3: Read env at runtime (not module-level)
     _key, _host, _enabled = _get_rapidapi_config()
     if _enabled:
         layers_tried.append("L0_rapidapi")
@@ -556,7 +477,7 @@ async def lookup_tiktok(username: str) -> LookupResult:
     if not user_info:
         return LookupResult(
             success=False,
-            error="جميع الطبقات فشلت في جلب بيانات المستخدم من TikTok",
+            error="جميع الطبقات فشلت في جلب بيانات المستخدم",
             username=username,
             layers_tried=layers_tried,
             elapsed=round(time.time() - start, 2),
@@ -585,45 +506,39 @@ async def lookup_tiktok(username: str) -> LookupResult:
         "primary_source": user_info.get("source"),
         "videos_analyzed": len(videos),
         "elapsed": round(time.time() - start, 2),
-        "regions_db_version": REGIONS_STATS.get("version", "unknown") if REGIONS_DB_AVAILABLE else "MISSING",
+        "regions_db_version": REGIONS_STATS.get("version", "unknown"),
         "rapidapi_enabled": _enabled,
     })
     return result
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎨 Markdown formatter (VPN-aware display)
+# 🎨 HTML formatter (v2.4.0 - safer than Markdown)
 # ═══════════════════════════════════════════════════════════
-def _md_escape(text: str) -> str:
-    """Escape Telegram Markdown special chars: _, *, `, [ to prevent parse errors.
-    
-    Critical fix for v2.3.2: usernames like 'citizen_lawyerr' contain _ which
-    Telegram interprets as italic. Without escaping, Telegram returns
-    'Can't parse entities' error.
-    """
-    if not text:
+def _html_escape(text: str) -> str:
+    """Escape HTML special chars for Telegram parse_mode='HTML'."""
+    if text is None:
         return ""
-    s = str(text)
-    for ch in ('_', '*', '`', '['):
-        s = s.replace(ch, '\\' + ch)
-    return s
+    return html.escape(str(text), quote=False)
 
 
-def _format_markdown_for_bot(result: LookupResult) -> str:
+def _format_html_for_bot(result: LookupResult) -> str:
+    """Render result as HTML text (Telegram parse_mode='HTML')."""
     if not result.get("success"):
-        err = result.get("error", "فشل جلب البيانات")
+        err = _html_escape(result.get("error", "فشل جلب البيانات"))
         layers = result.get("layers_tried", [])
         return (
-            f"❌ *فشل البحث*\n\n{_md_escape(err)}\n"
-            f"📡 الطبقات: `{', '.join(layers) if layers else 'لا شيء'}`\n\n"
+            f"❌ <b>فشل البحث</b>\n\n"
+            f"{err}\n"
+            f"📡 الطبقات: <code>{', '.join(layers) if layers else 'لا شيء'}</code>\n\n"
             f"💡 تأكد من اسم المستخدم وحاول مرة أخرى."
         )
 
     stats = result.get("stats", {}) or {}
     geo = result.get("geo", {}) or {}
 
-    nickname = _md_escape(result.get("nickname", "") or "")
-    username = _md_escape(result.get("username", "") or "")
+    nickname = _html_escape(result.get("nickname", "") or "")
+    username = _html_escape(result.get("username", "") or "")
     verified_badge = " ✅" if result.get("verified") else ""
     private_badge = " 🔒" if result.get("private") else ""
 
@@ -633,7 +548,7 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
     videos = stats.get("videos", 0) or 0
 
     flag = geo.get("flag", "🏳️") or "🏳️"
-    country_ar = _md_escape(geo.get("country_ar", "غير محدد") or "غير محدد")
+    country_ar = _html_escape(geo.get("country_ar", "غير محدد") or "غير محدد")
     confidence = geo.get("confidence", 0) or 0
     tz = geo.get("timezone") or ""
     continent = geo.get("continent") or ""
@@ -650,7 +565,7 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
         "timezone_confirms_real": "⏰ التوقيت يؤكد الأصل",
         "none": "❌ لا توجد إشارات كافية",
     }
-    src_display = src_labels.get(src, "") if src else ""
+    src_display = _html_escape(src_labels.get(src, "") if src else "")
 
     continent_ar = {
         "Asia": "آسيا",
@@ -662,86 +577,84 @@ def _format_markdown_for_bot(result: LookupResult) -> str:
     }.get(continent, continent)
 
     lines = []
-    lines.append(f"👤 *{nickname}*{verified_badge}{private_badge}")
+    lines.append(f"👤 <b>{nickname}</b>{verified_badge}{private_badge}")
     lines.append(f"🔗 @{username}")
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("📊 *الإحصائيات*")
-    lines.append(f"👥 المتابعون: `{followers:,}`")
-    lines.append(f"➕ يتابع: `{following:,}`")
-    lines.append(f"📹 الفيديوهات: `{videos:,}`")
-    lines.append(f"❤️ الإعجابات: `{hearts:,}`")
+    lines.append("📊 <b>الإحصائيات</b>")
+    lines.append(f"👥 المتابعون: <code>{followers:,}</code>")
+    lines.append(f"➕ يتابع: <code>{following:,}</code>")
+    lines.append(f"📹 الفيديوهات: <code>{videos:,}</code>")
+    lines.append(f"❤️ الإعجابات: <code>{hearts:,}</code>")
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🌍 *التحليل الجغرافي*")
-    lines.append(f"🎯 الدولة: {flag} *{country_ar}*")
+    lines.append("🌍 <b>التحليل الجغرافي</b>")
+    lines.append(f"🎯 الدولة: {flag} <b>{country_ar}</b>")
 
     if confidence > 0:
         conf_bar = "🟢" if confidence >= 70 else ("🟡" if confidence >= 40 else "🔴")
-        lines.append(f"📊 مستوى الثقة: {conf_bar} `{confidence}%`")
+        lines.append(f"📊 مستوى الثقة: {conf_bar} <code>{confidence}%</code>")
 
     if src_display:
         lines.append(f"🔍 المصدر: {src_display}")
 
     reason = geo.get("primary_reason")
     if reason:
-        lines.append(f"ℹ️ _{_md_escape(reason)}_")
+        lines.append(f"ℹ️ <i>{_html_escape(reason)}</i>")
 
-    # 🚨 VPN detection alert
     if vpn_detected and vpn_country:
         vpn_info = get_country_info(vpn_country) if REGIONS_DB_AVAILABLE else None
         vpn_flag = vpn_info[2] if vpn_info else "🏳️"
-        vpn_name = _md_escape(vpn_info[0] if vpn_info else vpn_country)
+        vpn_name = _html_escape(vpn_info[0] if vpn_info else vpn_country)
         lines.append("")
-        lines.append(f"⚠️ *تحذير VPN:*")
-        lines.append(f"   يبدو أن المستخدم يستخدم VPN من {vpn_flag} *{vpn_name}*")
-        lines.append(f"   _تم اكتشاف الأصل الحقيقي عبر تحليل متعدد الإشارات_")
+        lines.append(f"⚠️ <b>تحذير VPN:</b>")
+        lines.append(f"   يبدو أن المستخدم يستخدم VPN من {vpn_flag} <b>{vpn_name}</b>")
+        lines.append(f"   <i>تم اكتشاف الأصل الحقيقي عبر تحليل متعدد الإشارات</i>")
 
-    # Distribution
     dist = geo.get("video_regions_distribution", {}) or {}
     if dist:
-        dist_parts = []
+        parts = []
         for iso, count in sorted(dist.items(), key=lambda x: -x[1])[:4]:
             f = get_flag(iso) if REGIONS_DB_AVAILABLE else "🏳️"
-            dist_parts.append(f"{f}`{iso}:{count}`")
-        if dist_parts:
-            lines.append(f"📊 توزيع الفيديوهات: {' '.join(dist_parts)}")
+            parts.append(f"{f}<code>{_html_escape(iso)}:{count}</code>")
+        if parts:
+            lines.append(f"📊 توزيع الفيديوهات: {' '.join(parts)}")
 
     if tz:
-        lines.append(f"🕐 التوقيت المحلي: `{tz}`")
+        lines.append(f"🕐 التوقيت المحلي: <code>{_html_escape(tz)}</code>")
 
     if continent_ar:
-        lines.append(f"🌐 القارة: {continent_ar}")
+        lines.append(f"🌐 القارة: {_html_escape(continent_ar)}")
 
     if geo.get("is_arab"):
         badge = "🕌 دولة عربية"
         if geo.get("is_gcc"):
-            badge += " _(خليجية 🕋)_"
+            badge += " <i>(خليجية 🕋)</i>"
         lines.append(badge)
 
     lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🏆 *مدعوم بـ RapidAPI + VPN-Aware*")
+    lines.append("🏆 <b>مدعوم بـ RapidAPI + VPN-Aware</b>")
     lines.append("✅ لا اعتماد على الاسم/اللهجة")
 
     layers = result.get("layers_tried", [])
     if layers:
-        lines.append(f"📡 الطبقات: `{', '.join(layers)}`")
+        lines.append(f"📡 الطبقات: <code>{', '.join(layers)}</code>")
 
     analyzed = result.get("videos_analyzed", 0) or 0
     if analyzed:
-        lines.append(f"📹 المُحلَّل: `{analyzed} فيديو`")
+        lines.append(f"📹 المُحلَّل: <code>{analyzed} فيديو</code>")
 
     elapsed = result.get("elapsed", 0) or 0
     if elapsed:
-        lines.append(f"⚡ الاستجابة: `{elapsed}s`")
+        lines.append(f"⚡ الاستجابة: <code>{elapsed}s</code>")
 
-    lines.append("🗺️ قاعدة: `v2.3.1` (249 دولة)")
+    lines.append("🗺️ قاعدة: <code>v2.4.0</code> (249 دولة)")
     return "\n".join(lines)
 
 
 # ═══════════════════════════════════════════════════════════
-# 🔄 Backward-Compat API for bot.py v2.1.8.9
+# 🔄 Public API (backward compat with bot.py)
 # ═══════════════════════════════════════════════════════════
 def clean_username(raw: str) -> str:
     if not raw:
@@ -754,18 +667,19 @@ def clean_username(raw: str) -> str:
 
 
 async def lookup_tiktok_user(username: str) -> str:
+    """Legacy wrapper - returns HTML string for Telegram."""
     cleaned = clean_username(username)
     try:
         result = await lookup_tiktok(cleaned)
-        return _format_markdown_for_bot(result)
+        return _format_html_for_bot(result)
     except Exception as e:
         logger.error(f"[lookup_tiktok_user] {cleaned}: {e}", exc_info=True)
-        safe_err = _md_escape(str(e)[:200])
-        safe_user = _md_escape(cleaned)
+        safe_err = _html_escape(str(e)[:200])
+        safe_user = _html_escape(cleaned)
         return (
-            f"❌ *فشل البحث*\n\n"
+            f"❌ <b>فشل البحث</b>\n\n"
             f"حدث خطأ داخلي أثناء جلب بيانات @{safe_user}\n"
-            f"`{safe_err}`\n\n"
+            f"<code>{safe_err}</code>\n\n"
             f"💡 حاول مرة أخرى بعد قليل."
         )
 
@@ -796,7 +710,7 @@ async def lookup_tiktok_user_dict(username: str) -> Dict[str, Any]:
         "is_gcc": geo.get("is_gcc", False),
         "vpn_detected": geo.get("vpn_detected", False),
         "vpn_country": geo.get("vpn_country"),
-        "formatted_markdown": _format_markdown_for_bot(result),
+        "formatted_html": _format_html_for_bot(result),
         "_full_result": dict(result),
     }
 
@@ -807,9 +721,6 @@ get_tiktok_info = lookup_tiktok_user
 tiktok_lookup = lookup_tiktok_user
 
 
-# ═══════════════════════════════════════════════════════════
-# 🔧 Helpers
-# ═══════════════════════════════════════════════════════════
 def _to_int(v) -> int:
     try:
         return int(v)
@@ -817,16 +728,13 @@ def _to_int(v) -> int:
         return 0
 
 
-# ═══════════════════════════════════════════════════════════
-# 🧪 CLI test
-# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
     username = sys.argv[1] if len(sys.argv) > 1 else "citizen_lawyerr"
+    _, _, _en = _get_rapidapi_config()
     print(f"\n🔍 Testing: @{username}")
-    _, _, _rapid_enabled = _get_rapidapi_config()
-    print(f"🏆 RapidAPI: {_rapid_enabled}\n")
+    print(f"🏆 RapidAPI: {_en}\n")
 
     async def _main():
         s = await lookup_tiktok_user(username)
