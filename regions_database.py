@@ -507,43 +507,82 @@ for _iso, _data in WORLD_COUNTRIES.items():
     }
 
 
-def lookup_region(text: str) -> Optional[Dict]:
-    """
-    Legacy function for app.py v2.1.0 Streamlit compatibility.
-    Searches for a country match by:
-      - ISO code (SA, US, EG)
-      - Arabic name (السعودية, مصر)
-      - English name (Saudi Arabia, Egypt)
-      - Timezone (Asia/Riyadh)
-      - Flag emoji (🇸🇦)
-    Returns the country dict or None.
-    """
+def _search_one(text: str) -> Optional[Dict]:
+    """Internal single-string search — used by lookup_region wrapper."""
     if not text or not isinstance(text, str):
         return None
 
-    text_lower = text.strip().lower()
-    text_upper = text.strip().upper()
+    text_stripped = text.strip()
+    if not text_stripped:
+        return None
 
-    # 1) Direct ISO code match
-    if text_upper in REGIONS_DATABASE:
+    text_lower = text_stripped.lower()
+    text_upper = text_stripped.upper()
+
+    # 1) Direct ISO code match (2-letter)
+    if len(text_upper) == 2 and text_upper in REGIONS_DATABASE:
         return REGIONS_DATABASE[text_upper]
 
     # 2) Timezone match
-    tz_match = get_country_by_timezone(text)
+    tz_match = get_country_by_timezone(text_stripped)
     if tz_match and tz_match in REGIONS_DATABASE:
         return REGIONS_DATABASE[tz_match]
 
-    # 3) Name / Flag search
+    # 3) Flag emoji anywhere in text
     for iso, data in REGIONS_DATABASE.items():
-        # Flag match
-        if data["flag"] and data["flag"] in text:
+        if data["flag"] and data["flag"] in text_stripped:
             return data
-        # English name (partial, case-insensitive)
-        if data["name_en"] and data["name_en"].lower() in text_lower:
+
+    # 4) Full ISO code as token in text (e.g., " SA " or "SA,")
+    import re as _re
+    for iso in REGIONS_DATABASE.keys():
+        if _re.search(rf"\b{iso}\b", text_upper):
+            return REGIONS_DATABASE[iso]
+
+    # 5) English name (case-insensitive substring)
+    for iso, data in REGIONS_DATABASE.items():
+        en = (data["name_en"] or "").lower()
+        if en and len(en) >= 4 and en in text_lower:
             return data
-        # Arabic name
-        if data["name_ar"] and data["name_ar"] in text:
+
+    # 6) Arabic name (substring)
+    for iso, data in REGIONS_DATABASE.items():
+        ar = data["name_ar"] or ""
+        if ar and len(ar) >= 3 and ar in text_stripped:
             return data
+
+    return None
+
+
+def lookup_region(*args, **kwargs) -> Optional[Dict]:
+    """
+    Legacy function for app.py v2.1.0 Streamlit compatibility.
+    Supports 1-N string arguments — tries each in order and returns the first match.
+
+    Usage patterns from app.py v2.1.0:
+      lookup_region(actual_location, text)    # location first, then bio text
+      lookup_region(country, text)             # country first, then bio text
+      lookup_region(some_text)                 # single-arg legacy
+
+    Searches by: ISO code, Arabic name, English name, timezone, flag emoji.
+    Returns the country dict or None.
+    """
+    # Flatten all string arguments (positional + keyword)
+    candidates = []
+    for a in args:
+        if a is None:
+            continue
+        if isinstance(a, str) and a.strip():
+            candidates.append(a.strip())
+    for _, v in kwargs.items():
+        if isinstance(v, str) and v.strip():
+            candidates.append(v.strip())
+
+    # Try each candidate in order — first match wins
+    for c in candidates:
+        result = _search_one(c)
+        if result:
+            return result
 
     return None
 
@@ -553,9 +592,9 @@ COUNTRIES = REGIONS_DATABASE
 CAPITALS_DATABASE = REGIONS_DATABASE  # legacy
 
 
-def lookup_capital(text: str) -> Optional[Dict]:
+def lookup_capital(*args, **kwargs) -> Optional[Dict]:
     """Legacy alias — same behavior as lookup_region for app.py compatibility."""
-    return lookup_region(text)
+    return lookup_region(*args, **kwargs)
 
 
 # Sanity log at import
