@@ -1,60 +1,111 @@
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║  BSR-V240-CTO-NUCLEAR-FIX-BOT-AHMAD-20260726                     ║
+║  bot.py v2.4.0 - NUCLEAR FIX (HTML + Robust Error Handling)      ║
+║  Date: 2026-07-26 | Leader: Dr. Ahmad Al-Fanni (CTO)             ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🏆 v2.4.0 FIXES:
+  1. load_dotenv() FIRST before any other import (env priority)
+  2. HTML parse mode (safer than Markdown, no _ escape needed)
+  3. DB failures don't stop the bot (analytics is optional)
+  4. Error handler registered (no unhandled Conflict 409)
+  5. Detailed logging for every step
+
+Public Commands:
+  /start   - Welcome message + register user (best-effort)
+  /help    - Command list
+  /privacy - Privacy policy URL
+  <text>   - TikTok lookup for @username
+"""
+
 # ═══════════════════════════════════════════════════════════
-# BSR-V2189-BOT-PARAMS-FIXED-AHMAD-20260613
-# بوت بصير v2.1.8.9 - تصحيح معاملات record_user_start و record_search
+# 🔥 STEP 1: Load .env BEFORE any other import (critical!)
 # ═══════════════════════════════════════════════════════════
-"""Baseer_Lookup_Bot v2.1.8.9 — تسجيل صحيح للمستخدمين والبحثات"""
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)
+except ImportError:
+    pass
+
 import os
 import logging
-import httpx
 import asyncio
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
+from telegram.error import Conflict, NetworkError, TelegramError
 
+# ═══════════════════════════════════════════════════════════
+# 📦 STEP 2: Import our modules (env is loaded now)
+# ═══════════════════════════════════════════════════════════
 from tiktok_lookup import lookup_tiktok_user, clean_username
-from analytics_db import record_user_start, record_search
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "Baseer_Lookup_Bot")
+# Analytics DB is OPTIONAL - bot works without it
+try:
+    from analytics_db import record_user_start, record_search
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AVAILABLE = False
+
+    def record_user_start(*args, **kwargs):
+        pass
+
+    def record_search(*args, **kwargs):
+        pass
+
+# ═══════════════════════════════════════════════════════════
+# ⚙️ Configuration
+# ═══════════════════════════════════════════════════════════
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+BOT_USERNAME = os.getenv("BOT_USERNAME", "Baseer_Lookup_Bot").strip()
 PRIVACY_POLICY_URL = os.getenv(
     "PRIVACY_POLICY_URL",
     "https://github.com/7sn301/social-accounts-generator/blob/main/PRIVACY.md"
-)
+).strip()
 
+# Verbose logging for diagnostics
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# ═══════════════════════════════════════════════════════════
+# 🔎 Environment sanity check (v2.4.0 diagnostic)
+# ═══════════════════════════════════════════════════════════
+def _env_sanity_check():
+    """Print env status at startup for diagnostics."""
+    logger.info("=" * 60)
+    logger.info("🔎 BSR v2.4.0 Environment Sanity Check")
+    logger.info("=" * 60)
 
-async def get_ip_geolocation(ip):
-    """جلب الموقع من IP عبر ipapi.co (مجاني)"""
-    if not ip or ip in ("0.0.0.0", "127.0.0.1", "TELEGRAM_HIDDEN"):
-        return {'country': None, 'city': None, 'isp': None}
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"https://ipapi.co/{ip}/json/")
-            if r.status_code == 200:
-                d = r.json()
-                return {
-                    'country': d.get('country_name'),
-                    'city': d.get('city'),
-                    'isp': d.get('org'),
-                }
-    except Exception as e:
-        logger.warning(f"ipapi failed: {e}")
-    return {'country': None, 'city': None, 'isp': None}
+    checks = [
+        ("BOT_TOKEN", bool(BOT_TOKEN), f"({len(BOT_TOKEN)} chars)" if BOT_TOKEN else "MISSING"),
+        ("BOT_USERNAME", bool(BOT_USERNAME), BOT_USERNAME),
+        ("RAPIDAPI_KEY", bool(os.getenv("RAPIDAPI_KEY", "").strip()),
+         f"({len(os.getenv('RAPIDAPI_KEY', '').strip())} chars)"),
+        ("RAPIDAPI_HOST", bool(os.getenv("RAPIDAPI_HOST", "").strip()),
+         os.getenv("RAPIDAPI_HOST", "MISSING")),
+        ("DATABASE_URL", bool(os.getenv("DATABASE_URL", "").strip()),
+         f"({len(os.getenv('DATABASE_URL', '').strip())} chars)"),
+        ("ANALYTICS_MODULE", ANALYTICS_AVAILABLE,
+         "loaded" if ANALYTICS_AVAILABLE else "not loaded"),
+    ]
+
+    for name, ok, detail in checks:
+        icon = "✅" if ok else "⚠️ "
+        logger.info(f"{icon} {name}: {detail}")
+    logger.info("=" * 60)
 
 
-async def extract_user_ip(update: Update):
-    """Telegram لا يكشف IP الفعلي — placeholder"""
-    return "TELEGRAM_HIDDEN"
-
-
+# ═══════════════════════════════════════════════════════════
+# 🎯 Command handlers
+# ═══════════════════════════════════════════════════════════
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command."""
     user = update.effective_user
     telegram_id = user.id
     username = user.username or ""
@@ -62,105 +113,169 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_name = user.last_name or ""
     language_code = user.language_code or ""
 
-    ip = await extract_user_ip(update)
-    geo = await get_ip_geolocation(ip)
-
-    # ✅ FIX: استخدم الأسماء الصحيحة من analytics_db.py
-    try:
-        record_user_start(
-            telegram_id=telegram_id,
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            language_code=language_code,
-            ip=ip,                      # ✅ ip (not ip_address)
-            country=geo.get('country'),
-            city=geo.get('city'),
-            # ❌ removed: isp=... (not supported)
-        )
-        logger.info(f"📊 سجّلت /start: {telegram_id} @{username} | {geo.get('country')}")
-    except Exception as e:
-        logger.error(f"❌ فشل تسجيل المستخدم: {e}")
+    # Best-effort DB recording (never blocks)
+    if ANALYTICS_AVAILABLE:
+        try:
+            record_user_start(
+                telegram_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                language_code=language_code,
+                ip="TELEGRAM_HIDDEN",
+                country=None,
+                city=None,
+            )
+            logger.info(f"📊 recorded /start: {telegram_id} @{username}")
+        except Exception as e:
+            logger.warning(f"📊 DB record_user_start skipped: {e}")
 
     welcome = (
-        f"👋 مرحبًا {first_name}!\n\n"
-        f"🔍 *بوت بصير — TikTok Lookup*\n\n"
+        f"👋 مرحبًا <b>{_html_escape(first_name)}</b>!\n\n"
+        f"🔍 <b>بوت بصير — TikTok Lookup v2.4.0</b>\n\n"
         f"أرسل اسم مستخدم TikTok أو رابط حساب وسأعرض لك:\n"
         f"  • 👤 معلومات الحساب\n"
-        f"  • 🌍 دولة الحساب (220+ دولة)\n"
+        f"  • 🌍 دولة الحساب (249+ دولة)\n"
+        f"  • 🎯 كشف VPN تلقائي\n"
         f"  • 📊 الإحصائيات الكاملة\n\n"
-        f"مثال: `@charlidamelio`"
+        f"مثال: <code>@charlidamelio</code>\n"
+        f"أو: <code>citizen_lawyerr</code>"
     )
-    await update.message.reply_text(welcome, parse_mode="Markdown")
+    await update.message.reply_text(welcome, parse_mode="HTML")
 
 
 async def handle_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle any text message as a TikTok lookup."""
     text = update.message.text.strip()
     user = update.effective_user
-    progress = await update.message.reply_text("🔎 جاري البحث...")
-    target_country_detected = None
-    try:
-        result = await lookup_tiktok_user(text)
 
-        # ✅ محاولة استخراج رمز الدولة من النتيجة
+    progress = await update.message.reply_text("🔎 جاري البحث...")
+
+    try:
+        # Perform lookup (returns HTML string ready for Telegram)
+        result_html = await lookup_tiktok_user(text)
+
+        # Extract country name from HTML for DB logging
+        country_detected = None
         try:
             import re
-            country_match = re.search(r'🌍\s*\*?الدولة\*?:?\s*([^\n]+)', result)
-            if country_match:
-                target_country_detected = country_match.group(1).strip()
+            m = re.search(r'الدولة:.*?<b>([^<]+)</b>', result_html)
+            if m:
+                country_detected = m.group(1).strip()
         except Exception:
             pass
 
-        # ✅ FIX: استخدم الأسماء الصحيحة من analytics_db.py
-        try:
-            target_username = clean_username(text)
-            record_search(
-                telegram_id=user.id,
-                target_username=target_username,    # ✅ target_username (not search_query)
-                target_country=target_country_detected,  # ✅ target_country (not result_country)
-                target_region=None,
-                followers=0,
-            )
-            logger.info(f"📊 سجّلت بحث: {user.id} → @{target_username} | {target_country_detected}")
-        except Exception as e:
-            logger.error(f"❌ فشل تسجيل البحث: {e}")
+        # Best-effort DB log (never blocks)
+        if ANALYTICS_AVAILABLE:
+            try:
+                target_username = clean_username(text)
+                record_search(
+                    telegram_id=user.id,
+                    target_username=target_username,
+                    target_country=country_detected,
+                    target_region=None,
+                    followers=0,
+                )
+                logger.info(f"📊 recorded search: {user.id} → @{target_username} | {country_detected}")
+            except Exception as e:
+                logger.warning(f"📊 DB record_search skipped: {e}")
 
-        await progress.edit_text(
-            result, parse_mode="Markdown", disable_web_page_preview=False
-        )
+        # Send result as HTML (safer than Markdown - no _ escaping needed)
+        try:
+            await progress.edit_text(
+                result_html,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except TelegramError as te:
+            # If HTML fails, retry as plain text
+            logger.warning(f"HTML parse failed, retrying as plain: {te}")
+            plain = re.sub(r'<[^>]+>', '', result_html)
+            await progress.edit_text(plain, disable_web_page_preview=True)
+
     except Exception as e:
-        logger.error(f"Lookup error: {e}")
-        await progress.edit_text("❌ حدث خطأ. حاول مرة أخرى.")
+        logger.error(f"Lookup error for '{text}': {e}", exc_info=True)
+        error_msg = (
+            f"❌ <b>حدث خطأ أثناء البحث</b>\n\n"
+            f"<code>{_html_escape(str(e)[:200])}</code>\n\n"
+            f"💡 حاول مرة أخرى بعد قليل."
+        )
+        try:
+            await progress.edit_text(error_msg, parse_mode="HTML")
+        except Exception:
+            await progress.edit_text("❌ حدث خطأ. حاول مرة أخرى.")
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🆘 *قائمة الأوامر:*\n\n"
+    """Handle /help command."""
+    text = (
+        "🆘 <b>قائمة الأوامر:</b>\n\n"
         "/start — بدء البوت\n"
         "/help — هذه القائمة\n"
         "/privacy — سياسة الخصوصية\n\n"
-        "📌 لإجراء بحث: أرسل @username أو رابط TikTok",
-        parse_mode="Markdown"
+        "📌 <b>لإجراء بحث:</b>\n"
+        "أرسل <code>@username</code> أو رابط TikTok"
     )
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /privacy command."""
     await update.message.reply_text(
         f"🔒 سياسة الخصوصية:\n{PRIVACY_POLICY_URL}"
     )
 
 
+# ═══════════════════════════════════════════════════════════
+# 🛡️ Global error handler (v2.4.0)
+# ═══════════════════════════════════════════════════════════
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle uncaught exceptions gracefully."""
+    err = context.error
+    if isinstance(err, Conflict):
+        logger.warning(f"⚠️ Telegram Conflict 409 - another instance running: {err}")
+    elif isinstance(err, NetworkError):
+        logger.warning(f"⚠️ Network error: {err}")
+    else:
+        logger.error(f"Unhandled error: {err}", exc_info=err)
+
+
+# ═══════════════════════════════════════════════════════════
+# 🔧 Helpers
+# ═══════════════════════════════════════════════════════════
+def _html_escape(text: str) -> str:
+    if text is None:
+        return ""
+    import html
+    return html.escape(str(text), quote=False)
+
+
+# ═══════════════════════════════════════════════════════════
+# 🚀 Main
+# ═══════════════════════════════════════════════════════════
 def main():
+    _env_sanity_check()
+
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN غير مُعرّف!")
+        logger.error("❌ BOT_TOKEN غير مُعرّف! توقف.")
         return
+
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("privacy", privacy))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_lookup))
-    logger.info(f"🚀 بوت بصير {BOT_USERNAME} v2.1.8.9 بدأ التشغيل")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    # Global error handler (fixes Conflict 409 unhandled)
+    app.add_error_handler(error_handler)
+
+    logger.info(f"🚀 بوت بصير {BOT_USERNAME} v2.4.0 بدأ التشغيل")
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,  # v2.4.0: prevent Conflict 409
+    )
 
 
 if __name__ == "__main__":
