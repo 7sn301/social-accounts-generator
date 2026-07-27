@@ -293,45 +293,93 @@ def compute_verdict_vpn_aware(user_info: Dict[str, Any]) -> Dict[str, Any]:
     total = len(video_regions)
 
     if total >= 5:
+        # 🚀 v2.5.2 - Arab-preference VPN detection (matches Streamlit v2.5.1)
+        ARAB_ISOS_V252 = {'SA','AE','KW','QA','BH','OM','YE','IQ','SY','LB','JO','PS',
+                          'EG','SD','LY','TN','DZ','MA','MR','SO','DJ','KM'}
+
         top = region_counter.most_common()
         majority_iso, majority_count = top[0]
         majority_ratio = majority_count / total
 
-        minority_iso = None
-        minority_ratio = 0.0
-        if len(top) >= 2:
-            minority_iso, minority_count = top[1]
-            minority_ratio = minority_count / total
+        # 🎯 Step 1: Look for ANY Arab country in the distribution
+        arab_in_dist = [(iso, cnt) for iso, cnt in region_counter.items() if iso in ARAB_ISOS_V252]
 
-        if (majority_ratio >= 0.75 and minority_iso and minority_ratio >= 0.05
-                and minority_iso != majority_iso):
-            # VPN detected: minority = real country
-            vpn_detected = True
-            vpn_country = majority_iso
-            real_country = minority_iso
+        if arab_in_dist:
+            # Arab country present — prefer it as REAL origin
+            arab_in_dist.sort(key=lambda x: -x[1])  # sort by count desc
+            arab_iso, arab_count = arab_in_dist[0]
+            arab_total = sum(cnt for _, cnt in arab_in_dist)
 
-            signals.append({
-                "type": "video_minority_region",
-                "iso": minority_iso,
-                "weight": 0.95,
-                "reason": f"🎯 {minority_count} فيديو من {minority_iso} (VPN مُشتَبَه به: {majority_iso})",
-                "sample": total,
-            })
-            signals.append({
-                "type": "video_majority_region_vpn",
-                "iso": majority_iso,
-                "weight": 0.15,
-                "reason": f"⚠️ {majority_count} فيديو من {majority_iso} (يبدو VPN)",
-                "sample": total,
-            })
+            # Check if non-Arab country has more videos (= VPN suspected)
+            non_arab_top = [(iso, cnt) for iso, cnt in region_counter.items() if iso not in ARAB_ISOS_V252]
+            non_arab_top.sort(key=lambda x: -x[1])
+
+            if non_arab_top and non_arab_top[0][1] > arab_total:
+                # VPN detected: real=Arab, VPN=non-Arab majority
+                vpn_detected = True
+                vpn_country = non_arab_top[0][0]
+                real_country = arab_iso
+
+                signals.append({
+                    "type": "video_minority_region",
+                    "iso": arab_iso,
+                    "weight": 0.95,
+                    "reason": f"🎯 {arab_count} فيديو من {arab_iso} (VPN مُشتَبَه به: {vpn_country})",
+                    "sample": total,
+                })
+                signals.append({
+                    "type": "video_majority_region_vpn",
+                    "iso": vpn_country,
+                    "weight": 0.15,
+                    "reason": f"⚠️ {non_arab_top[0][1]} فيديو من {vpn_country} (يبدو VPN)",
+                    "sample": total,
+                })
+            else:
+                # No VPN — Arab country dominates naturally
+                signals.append({
+                    "type": "video_region",
+                    "iso": arab_iso,
+                    "weight": 0.75 * (arab_total / total),
+                    "reason": f"{arab_total}/{total} فيديو من دولة عربية ({arab_iso})",
+                    "sample": total,
+                })
         else:
-            signals.append({
-                "type": "video_region",
-                "iso": majority_iso,
-                "weight": 0.75 * majority_ratio,
-                "reason": f"{majority_count}/{total} فيديو مُعلَّم {majority_iso}",
-                "sample": total,
-            })
+            # No Arab country — use original logic (75% threshold)
+            minority_iso = None
+            minority_ratio = 0.0
+            if len(top) >= 2:
+                minority_iso, minority_count = top[1]
+                minority_ratio = minority_count / total
+
+            if (majority_ratio >= 0.75 and minority_iso and minority_ratio >= 0.05
+                    and minority_iso != majority_iso):
+                # Classic VPN detection (non-Arab)
+                vpn_detected = True
+                vpn_country = majority_iso
+                real_country = minority_iso
+
+                signals.append({
+                    "type": "video_minority_region",
+                    "iso": minority_iso,
+                    "weight": 0.95,
+                    "reason": f"🎯 {minority_count} فيديو من {minority_iso} (VPN مُشتَبَه به: {majority_iso})",
+                    "sample": total,
+                })
+                signals.append({
+                    "type": "video_majority_region_vpn",
+                    "iso": majority_iso,
+                    "weight": 0.15,
+                    "reason": f"⚠️ {majority_count} فيديو من {majority_iso} (يبدو VPN)",
+                    "sample": total,
+                })
+            else:
+                signals.append({
+                    "type": "video_region",
+                    "iso": majority_iso,
+                    "weight": 0.75 * majority_ratio,
+                    "reason": f"{majority_count}/{total} فيديو مُعلَّم {majority_iso}",
+                    "sample": total,
+                })
 
     # Signal 3: Timezone
     tz_analysis = _analyze_timezone(timestamps)
