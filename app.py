@@ -27,26 +27,46 @@ sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
 
 # ═══════════════════════════════════════════════════════════
-# 🚀 v2.4.8 - RapidAPI Layer 0 (SYNC + POSTS REGION)
-# BSR-V248-CTO-CLEAN-EDITION-AHMAD-20260726
+# 🚀 v2.4.9 - RapidAPI Layer 0 (SYNC + Type-Safe)
+# BSR-V249-CTO-ROBUST-TYPE-SAFETY-FINAL-AHMAD-20260727
 # ═══════════════════════════════════════════════════════════
-import os as _os_v248   # ✅ FIX: explicit os import
-_RAPIDAPI_KEY_V248 = _os_v248.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
-_RAPIDAPI_HOST_V248 = _os_v248.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
+import os as _os_v249
+_RAPIDAPI_KEY_V249 = _os_v249.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
+_RAPIDAPI_HOST_V249 = _os_v249.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
 
 
-def _rapidapi_fetch_v248(username: str) -> dict:
-    """SYNC RapidAPI - gets region from /user/posts videos (VPN-aware)."""
-    if not _RAPIDAPI_KEY_V248:
+def _safe_str_v249(val, default=""):
+    """Ensure value is always a string - never None."""
+    if val is None:
+        return default
+    try:
+        return str(val)
+    except Exception:
+        return default
+
+
+def _safe_int_v249(val, default=0):
+    """Ensure value is always an int - never None."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _rapidapi_fetch_v249(username: str) -> dict:
+    """SYNC RapidAPI - fully type-safe, Streamlit-compatible."""
+    if not _RAPIDAPI_KEY_V249:
         return {'success': False, 'error': 'no_rapidapi_key'}
 
     headers = {
-        "X-RapidAPI-Key": _RAPIDAPI_KEY_V248,
-        "X-RapidAPI-Host": _RAPIDAPI_HOST_V248,
+        "X-RapidAPI-Key": _RAPIDAPI_KEY_V249,
+        "X-RapidAPI-Host": _RAPIDAPI_HOST_V249,
     }
 
     try:
-        info_url = f"https://{_RAPIDAPI_HOST_V248}/user/info?unique_id={username}"
+        info_url = f"https://{_RAPIDAPI_HOST_V249}/user/info?unique_id={username}"
         r = requests.get(info_url, headers=headers, timeout=15)
         if r.status_code != 200:
             return {'success': False, 'error': f'http_{r.status_code}'}
@@ -59,8 +79,8 @@ def _rapidapi_fetch_v248(username: str) -> dict:
         user = data.get('user', {}) or {}
         stats = data.get('stats', {}) or {}
 
-        # Posts endpoint for region detection
-        posts_url = f"https://{_RAPIDAPI_HOST_V248}/user/posts?unique_id={username}&count=30&cursor=0"
+        # Get posts for region detection
+        posts_url = f"https://{_RAPIDAPI_HOST_V249}/user/posts?unique_id={username}&count=30&cursor=0"
         region_distribution = {}
         videos_count = 0
         country_iso = ""
@@ -96,37 +116,42 @@ def _rapidapi_fetch_v248(username: str) -> dict:
         except Exception:
             pass
 
+        # 🔒 Type-safe payload - guarantees NO None values in strings
+        nickname = _safe_str_v249(user.get('nickname'), username)
+        if not nickname or nickname.strip() == "":
+            nickname = username
+
         return {
             'success': True,
             'json': {
                 'code': 0,
                 'data': {
                     'user': {
-                        'uniqueId': user.get('uniqueId', username),
-                        'nickname': user.get('nickname', ''),
-                        'signature': user.get('signature', ''),
-                        'avatarLarger': user.get('avatarLarger', '') or user.get('avatarMedium', ''),
-                        'verified': user.get('verified', False),
-                        'region': country_iso,
-                        'language': user.get('language', ''),
-                        'id': user.get('id', ''),
-                        'secUid': user.get('secUid', ''),
-                        'createTime': user.get('createTime', 0),
+                        'uniqueId': _safe_str_v249(user.get('uniqueId'), username),
+                        'nickname': nickname,
+                        'signature': _safe_str_v249(user.get('signature'), ''),
+                        'avatarLarger': _safe_str_v249(user.get('avatarLarger'), '') or _safe_str_v249(user.get('avatarMedium'), ''),
+                        'verified': bool(user.get('verified', False)),
+                        'region': _safe_str_v249(country_iso, ''),
+                        'language': _safe_str_v249(user.get('language'), ''),
+                        'id': _safe_str_v249(user.get('id'), ''),
+                        'secUid': _safe_str_v249(user.get('secUid'), ''),
+                        'createTime': _safe_int_v249(user.get('createTime'), 0),
                     },
                     'stats': {
-                        'followerCount': stats.get('followerCount', 0),
-                        'followingCount': stats.get('followingCount', 0),
-                        'heartCount': stats.get('heartCount', 0) or stats.get('heart', 0),
-                        'videoCount': stats.get('videoCount', 0),
-                        'friendCount': stats.get('friendCount', 0),
+                        'followerCount': _safe_int_v249(stats.get('followerCount'), 0),
+                        'followingCount': _safe_int_v249(stats.get('followingCount'), 0),
+                        'heartCount': _safe_int_v249(stats.get('heartCount') or stats.get('heart'), 0),
+                        'videoCount': _safe_int_v249(stats.get('videoCount'), 0),
+                        'friendCount': _safe_int_v249(stats.get('friendCount'), 0),
                     }
                 }
             },
-            'proxy': 'rapidapi_v248',
+            'proxy': 'rapidapi_v249',
             'time': 2.0,
-            'region_iso': country_iso,
-            'actual_residence': country_iso,
-            'previous_residence': vpn_country,
+            'region_iso': _safe_str_v249(country_iso, ''),
+            'actual_residence': _safe_str_v249(country_iso, ''),
+            'previous_residence': _safe_str_v249(vpn_country, ''),
             'residence_confidence': 90 if country_iso else 0,
             'residence_type': 'rapidapi_posts',
             'timezone_match': None,
@@ -777,9 +802,9 @@ def detect_actual_residence(regions_seq, times_seq):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
-    """✅ v2.4.8 - RapidAPI Layer 0 + tikwm/jina fallback"""
-    # 🚀 v2.4.8: Try RapidAPI FIRST (sync, gets region from videos)
-    rapidapi_result = _rapidapi_fetch_v248(username)
+    """✅ v2.4.9 - RapidAPI Layer 0 + tikwm/jina fallback"""
+    # 🚀 v2.4.9: Try RapidAPI FIRST (sync, type-safe)
+    rapidapi_result = _rapidapi_fetch_v249(username)
     if rapidapi_result.get('success'):
         return rapidapi_result
 
@@ -1906,6 +1931,9 @@ def display_single_result(result):
         return
     
     # ✅ تطوير #5 v2.1.1 - عرض الأفاتار + الاسم بصورة بارزة
+    # 🔒 v2.4.9: nickname fallback to username if None
+    if not result.get('nickname') or result.get('nickname') in (None, '', 'None'):
+        result['nickname'] = result.get('username', '—')
     avatar = result.get('avatar')
     nickname = result.get('nickname', 'غير معروف')
     username_display = result.get('username', '')
@@ -2256,12 +2284,17 @@ def display_single_result(result):
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
         # ✅ Patch14: حُذِفت بطاقة التشخيص المكرّرة (المتطابقة مع Patch13 أعلى الصفحة)
-        user_id = result.get('user_id', '—')
-        sec_uid = result.get('sec_uid', '—')
-        if sec_uid != '—' and len(sec_uid) > 20:
+        # 🔒 v2.4.9: Type-safe field extraction
+        user_id = result.get('user_id') or '—'
+        if not isinstance(user_id, str):
+            user_id = str(user_id) if user_id else '—'
+        sec_uid = result.get('sec_uid') or '—'
+        if not isinstance(sec_uid, str):
+            sec_uid = str(sec_uid) if sec_uid else '—'
+        if sec_uid and sec_uid != '—' and len(sec_uid) > 20:
             sec_uid_display = f"{sec_uid[:15]}...{sec_uid[-8:]}"
         else:
-            sec_uid_display = sec_uid
+            sec_uid_display = sec_uid or '—' 
 
         st.markdown(f"""
         <div class="tech-details-card" dir="rtl">
