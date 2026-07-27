@@ -662,10 +662,24 @@ def _format_html_for_bot(result: LookupResult) -> str:
         vpn_info = get_country_info(vpn_country) if REGIONS_DB_AVAILABLE else None
         vpn_flag = vpn_info[2] if vpn_info else "🏳️"
         vpn_name = _html_escape(vpn_info[0] if vpn_info else vpn_country)
+
+        # Calculate VPN video count for percentage
+        _dist_temp = geo.get("video_regions_distribution", {}) or {}
+        _vpn_videos = _dist_temp.get(vpn_country, 0)
+        _total_videos = sum(_dist_temp.values()) if _dist_temp else 0
+        _vpn_pct = round((_vpn_videos / _total_videos) * 100) if _total_videos else 0
+
+        # 🎨 v2.6.0: Beautified VPN card with HTML frame (Telegram-compatible)
         lines.append("")
-        lines.append(f"⚠️ <b>تحذير VPN:</b>")
-        lines.append(f"   يبدو أن المستخدم يستخدم VPN من {vpn_flag} <b>{vpn_name}</b>")
-        lines.append(f"   <i>تم اكتشاف الأصل الحقيقي عبر تحليل متعدد الإشارات</i>")
+        lines.append("╔═══════════════════════════════╗")
+        lines.append("🚨 <b>كاشف VPN — تم اكتشاف تمويه</b> 🚨")
+        lines.append("╠═══════════════════════════════╣")
+        lines.append(f"   {vpn_flag} <b>{vpn_name}</b>")
+        lines.append(f"   <code>{_html_escape(vpn_country)}</code>")
+        if _vpn_videos > 0:
+            lines.append(f"   📊 <b>{_vpn_videos}</b> من <b>{_total_videos}</b> فيديو (<b>{_vpn_pct}%</b>)")
+        lines.append(f"   🕵️ <i>تم كشف الأصل الحقيقي رغم الـ VPN</i>")
+        lines.append("╚═══════════════════════════════╝")
 
     dist = geo.get("video_regions_distribution", {}) or {}
     if dist:
