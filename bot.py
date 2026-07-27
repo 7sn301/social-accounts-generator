@@ -43,6 +43,37 @@ from telegram.error import Conflict, NetworkError, TelegramError
 # ═══════════════════════════════════════════════════════════
 from tiktok_lookup import lookup_tiktok_user, clean_username
 
+# ═══════════════════════════════════════════════════════════
+# 🚀 v2.6.0 - Cache Layer + Rate Limiter integration
+# BSR-V260-CTO-ULTIMATE-EDITION-AHMAD-20260727
+# ═══════════════════════════════════════════════════════════
+try:
+    from cache_layer import get_cached_lookup, cache_lookup, cache_stats
+    CACHE_AVAILABLE = True
+except Exception as _e:
+    CACHE_AVAILABLE = False
+    def get_cached_lookup(u): return None
+    def cache_lookup(u, r, ttl=None): pass
+    def cache_stats(): return {}
+
+try:
+    from rate_limiter import check_rate_limit, format_rate_limit_message, add_admin, rate_limit_stats
+    RATE_LIMIT_AVAILABLE = True
+except Exception as _e:
+    RATE_LIMIT_AVAILABLE = False
+    def check_rate_limit(uid): return (True, None)
+    def format_rate_limit_message(retry, remaining=0): return "⏳ يرجى الانتظار قليلاً"
+    def add_admin(uid): pass
+    def rate_limit_stats(): return {}
+
+# Register admins (bypass rate limit) - configurable via env
+_ADMIN_IDS = os.getenv("ADMIN_USER_IDS", "").strip()
+if _ADMIN_IDS and RATE_LIMIT_AVAILABLE:
+    for _aid in _ADMIN_IDS.split(","):
+        _aid = _aid.strip()
+        if _aid.isdigit():
+            add_admin(_aid)
+
 # Analytics DB is OPTIONAL - bot works without it
 try:
     from analytics_db import record_user_start, record_search
@@ -143,15 +174,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle any text message as a TikTok lookup."""
+    """Handle any text message as a TikTok lookup — with rate limit + cache."""
     text = update.message.text.strip()
     user = update.effective_user
+
+    # 🔒 v2.6.0: Rate limit check FIRST
+    if RATE_LIMIT_AVAILABLE:
+        allowed, retry_after = check_rate_limit(user.id)
+        if not allowed:
+            cooldown_msg = format_rate_limit_message(retry_after or 60)
+            await update.message.reply_text(cooldown_msg, parse_mode="HTML")
+            logger.info(f"🔒 Rate limit blocked user {user.id} for {retry_after}s")
+            return
 
     progress = await update.message.reply_text("🔎 جاري البحث...")
 
     try:
-        # Perform lookup (returns HTML string ready for Telegram)
-        result_html = await lookup_tiktok_user(text)
+        # 💾 v2.6.0: Check cache FIRST
+        cached = get_cached_lookup(text) if CACHE_AVAILABLE else None
+        if cached:
+            logger.info(f"💾 Cache HIT for '{text}'")
+            result_html = cached + "\n\n<i>⚡ نتيجة محفوظة (تسريع فوري)</i>"
+        else:
+            # Perform lookup (returns HTML string ready for Telegram)
+            result_html = await lookup_tiktok_user(text)
+            # 💾 Cache successful results (30 min)
+            if CACHE_AVAILABLE and result_html and "فشل البحث" not in result_html:
+                cache_lookup(text, result_html)
+                logger.info(f"💾 Cache STORE for '{text}'")
 
         # Extract country name from HTML for DB logging
         country_detected = None
@@ -202,6 +252,40 @@ async def handle_lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await progress.edit_text(error_msg, parse_mode="HTML")
         except Exception:
             await progress.edit_text("❌ حدث خطأ. حاول مرة أخرى.")
+
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only /stats command — show cache + rate limit statistics."""
+    user = update.effective_user
+    admin_env = os.getenv("ADMIN_USER_IDS", "").strip()
+    admin_ids = [x.strip() for x in admin_env.split(",") if x.strip().isdigit()]
+
+    if str(user.id) not in admin_ids:
+        await update.message.reply_text("⛔ هذا الأمر للمشرفين فقط.")
+        return
+
+    cs = cache_stats() if CACHE_AVAILABLE else {"note": "cache disabled"}
+    rls = rate_limit_stats() if RATE_LIMIT_AVAILABLE else {"note": "rate limit disabled"}
+
+    msg = (
+        "📊 <b>إحصائيات البوت v2.6.0</b>\n\n"
+        "<b>💾 Cache Layer:</b>\n"
+        f"  • الطلبات: <code>{cs.get('total_requests', 0)}</code>\n"
+        f"  • Hits: <code>{cs.get('hits', 0)}</code>\n"
+        f"  • Misses: <code>{cs.get('misses', 0)}</code>\n"
+        f"  • معدل النجاح: <code>{cs.get('hit_rate_pct', 0)}%</code>\n"
+        f"  • الحجم الحالي: <code>{cs.get('size', 0)}/{cs.get('max_size', 500)}</code>\n"
+        f"  • TTL: <code>{cs.get('ttl_seconds', 1800)}s</code>\n\n"
+        "<b>🔒 Rate Limiter:</b>\n"
+        f"  • الطلبات الكلية: <code>{rls.get('total', 0)}</code>\n"
+        f"  • مسموح: <code>{rls.get('allowed', 0)}</code>\n"
+        f"  • محظور: <code>{rls.get('blocked', 0)}</code>\n"
+        f"  • معدل الحظر: <code>{rls.get('block_rate_pct', 0)}%</code>\n"
+        f"  • المستخدمون النشطون: <code>{rls.get('active_users', 0)}</code>\n"
+        f"  • المشرفون: <code>{rls.get('admin_users', 0)}</code>\n"
+        f"  • الحد: <code>{rls.get('max_requests_per_window', 10)}/{rls.get('window_seconds', 60)}s</code>\n"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -264,6 +348,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("privacy", privacy))
+    app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_lookup))
 
     # Global error handler (fixes Conflict 409 unhandled)
