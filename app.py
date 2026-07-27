@@ -1517,6 +1517,41 @@ header {visibility: hidden;}
     display: inline-block; margin: 0.5rem 0;
     box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
 }
+/* 🚨 v2.5.1 - VPN Detector Card */
+.vpn-card {
+    background: linear-gradient(135deg, #7F1D1D, #DC2626);
+    border-radius: 20px; padding: 1.5rem; text-align: center;
+    box-shadow: 0 10px 40px rgba(220, 38, 38, 0.4); margin: 1rem 0;
+    border: 2px solid #FCA5A5;
+    position: relative; overflow: hidden;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+}
+.vpn-card::before {
+    content: "⚠️"; position: absolute; top: 0.5rem; right: 0.8rem;
+    font-size: 1.3rem; opacity: 0.4;
+}
+.vpn-card::after {
+    content: "🕵️"; position: absolute; top: 0.5rem; left: 0.8rem;
+    font-size: 1.3rem; opacity: 0.4;
+}
+.vpn-badge {
+    background: linear-gradient(135deg, #DC2626, #B91C1C); color: white;
+    padding: 0.5rem 1.3rem; border-radius: 999px; font-weight: 700;
+    display: inline-block; margin: 0.5rem 0;
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+    animation: pulse-vpn 2s infinite;
+}
+@keyframes pulse-vpn {
+    0%, 100% { box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4); }
+    50% { box-shadow: 0 4px 24px rgba(220, 38, 38, 0.8); }
+}
+.vpn-clean-card {
+    background: linear-gradient(135deg, #064E3B, #059669);
+    border-radius: 20px; padding: 1.5rem; text-align: center;
+    box-shadow: 0 10px 40px rgba(5, 150, 105, 0.4); margin: 1rem 0;
+    border: 2px solid #6EE7B7;
+    font-family: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+}
 .estimate-badge {
     background: #FBBF24; color: #0F172A; padding: 0.4rem 1rem;
     border-radius: 999px; font-weight: 700; display: inline-block;
@@ -1605,7 +1640,7 @@ header {visibility: hidden;}
     .tech-item { padding: 0.8rem !important; }
     .tech-label { font-size: 0.75rem !important; letter-spacing: 0.5px !important; }
     .tech-value { font-size: 0.9rem !important; word-break: break-word !important; }
-    .country-card, .residence-card, .region-card { padding: 1rem !important; }
+    .country-card, .residence-card, .region-card, .vpn-card, .vpn-clean-card { padding: 1rem !important; }
 
     /* ترويسة الخريطة - تنزل عمودياً */
     .map-header-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
@@ -2039,6 +2074,89 @@ def display_single_result(result):
             """, unsafe_allow_html=True)
             expat_conf = result.get('expat_confidence', 0)
             st.markdown(f'<div style="text-align: center;" dir="rtl"><span class="expat-badge">🛂 مغترب ({expat_conf}%)</span></div>', unsafe_allow_html=True)
+
+        # 🚨 v2.5.1: بطاقة كاشف VPN
+        vpn_country = result.get('previous_residence') or ''
+        region_dist_vpn = result.get('region_distribution') or {}
+        actual_res_iso = result.get('actual_residence') or result.get('region_iso') or ''
+
+        # Determine if VPN is detected
+        vpn_detected = False
+        vpn_iso = ''
+        vpn_arabic = ''
+        vpn_flag_emoji = ''
+        vpn_videos = 0
+        total_videos = sum(region_dist_vpn.values()) if region_dist_vpn else 0
+
+        if vpn_country and isinstance(vpn_country, str) and vpn_country.strip() and vpn_country != actual_res_iso:
+            vpn_iso = vpn_country.upper()
+            vpn_detected = True
+            vpn_videos = region_dist_vpn.get(vpn_iso, 0) if region_dist_vpn else 0
+        elif region_dist_vpn and actual_res_iso:
+            # Check if any non-origin country has majority
+            arab_isos_set = {'SA','AE','KW','QA','BH','OM','YE','IQ','SY','LB','JO','PS',
+                             'EG','SD','LY','TN','DZ','MA','MR','SO','DJ','KM'}
+            for iso_k, count_v in region_dist_vpn.items():
+                iso_up = iso_k.upper()
+                if iso_up != actual_res_iso.upper() and iso_up not in arab_isos_set and count_v >= 2:
+                    if count_v > region_dist_vpn.get(actual_res_iso.upper(), 0):
+                        vpn_iso = iso_up
+                        vpn_detected = True
+                        vpn_videos = count_v
+                        break
+
+        if vpn_detected and vpn_iso:
+            # Get Arabic name and flag
+            vpn_arabic = COUNTRY_AR.get(REGION_ISO_TO_COUNTRY.get(vpn_iso, vpn_iso), vpn_iso)
+            for emoji_x, country_x in FLAG_EMOJI_TO_COUNTRY.items():
+                if country_x == REGION_ISO_TO_COUNTRY.get(vpn_iso, ''):
+                    vpn_flag_emoji = emoji_x
+                    break
+            if not vpn_flag_emoji:
+                # Build from ISO
+                try:
+                    vpn_flag_emoji = ''.join(chr(ord(c.upper()) - ord('A') + 0x1F1E6) for c in vpn_iso if c.isalpha())
+                except Exception:
+                    vpn_flag_emoji = '🏳️'
+
+            vpn_pct = round((vpn_videos / total_videos) * 100) if total_videos else 0
+
+            st.markdown(f"""
+            <div class="vpn-card" dir="rtl">
+                <div style="color: #FCA5A5; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">
+                    🚨 كاشف VPN — تم اكتشاف تمويه
+                </div>
+                <div style="font-size: 3rem; line-height: 1; margin-bottom: 0.5rem;">{vpn_flag_emoji}</div>
+                <div style="color: #FEF2F2; font-size: 1.4rem; font-weight: 700;">{vpn_arabic}</div>
+                <div style="color: #FECACA; font-size: 0.9rem; margin-top: 0.4rem;">
+                    <code style="background: rgba(0,0,0,0.3); padding: 0.15rem 0.5rem; border-radius: 6px; color: #FEF2F2;">{vpn_iso}</code>
+                </div>
+                <div style="color: #FECACA; font-size: 0.85rem; margin-top: 0.7rem; line-height: 1.6;">
+                    📊 <b>{vpn_videos}</b> من <b>{total_videos}</b> فيديو ({vpn_pct}%)
+                    <br>
+                    <span style="font-size: 0.78rem; opacity: 0.9;">تم كشف الأصل الحقيقي رغم الـ VPN</span>
+                </div>
+            </div>
+            <div style="text-align: center;" dir="rtl">
+                <span class="vpn-badge">🕵️ VPN مؤكّد ({vpn_pct}%)</span>
+            </div>
+            """, unsafe_allow_html=True)
+        elif actual_res_iso and total_videos > 0:
+            # No VPN detected — clean status
+            st.markdown(f"""
+            <div class="vpn-clean-card" dir="rtl">
+                <div style="color: #A7F3D0; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">
+                    ✅ كاشف VPN — الاتصال نظيف
+                </div>
+                <div style="font-size: 2.5rem; line-height: 1; margin-bottom: 0.5rem;">🛡️</div>
+                <div style="color: #ECFDF5; font-size: 1.2rem; font-weight: 700;">لا يوجد VPN</div>
+                <div style="color: #A7F3D0; font-size: 0.85rem; margin-top: 0.7rem; line-height: 1.6;">
+                    📊 جميع الفيديوهات ({total_videos}) من الدولة نفسها
+                    <br>
+                    <span style="font-size: 0.78rem; opacity: 0.9;">اتصال طبيعي — لا تمويه</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         # 🏙️ بطاقة المنطقة الذكية
         region_info = result.get('region_info')
