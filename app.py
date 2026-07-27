@@ -27,16 +27,15 @@ sys.path.insert(0, str(Path(__file__).parent / 'data'))
 from regions_database import REGIONS_DATABASE, lookup_region
 
 # ═══════════════════════════════════════════════════════════
-# 🚀 v2.4.9 - RapidAPI Layer 0 (SYNC + Type-Safe)
-# BSR-V249-CTO-ROBUST-TYPE-SAFETY-FINAL-AHMAD-20260727
+# 🚀 v2.5.0 - RapidAPI Layer 0 (Full Country Mapping)
+# BSR-V250-CTO-COUNTRY-MAPPING-JACKPOT-AHMAD-20260727
 # ═══════════════════════════════════════════════════════════
-import os as _os_v249
-_RAPIDAPI_KEY_V249 = _os_v249.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
-_RAPIDAPI_HOST_V249 = _os_v249.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
+import os as _os_v250
+_RAPIDAPI_KEY_V250 = _os_v250.getenv("RAPIDAPI_KEY", "").strip() or "f7974f4f47msh1b8ab00838958e6p16d7c6jsn25b0a2e8a564"
+_RAPIDAPI_HOST_V250 = _os_v250.getenv("RAPIDAPI_HOST", "").strip() or "tiktok-scraper7.p.rapidapi.com"
 
 
-def _safe_str_v249(val, default=""):
-    """Ensure value is always a string - never None."""
+def _safe_str_v250(val, default=""):
     if val is None:
         return default
     try:
@@ -45,8 +44,7 @@ def _safe_str_v249(val, default=""):
         return default
 
 
-def _safe_int_v249(val, default=0):
-    """Ensure value is always an int - never None."""
+def _safe_int_v250(val, default=0):
     if val is None:
         return default
     try:
@@ -55,18 +53,22 @@ def _safe_int_v249(val, default=0):
         return default
 
 
-def _rapidapi_fetch_v249(username: str) -> dict:
-    """SYNC RapidAPI - fully type-safe, Streamlit-compatible."""
-    if not _RAPIDAPI_KEY_V249:
+def _rapidapi_fetch_v250(username: str) -> dict:
+    """
+    v2.5.0: SYNC RapidAPI that returns tikwm-compatible payload,
+    so the rest of app.py (_raw_from_tikwm, REGION_ISO_TO_COUNTRY)
+    handles country/flag mapping automatically.
+    """
+    if not _RAPIDAPI_KEY_V250:
         return {'success': False, 'error': 'no_rapidapi_key'}
 
     headers = {
-        "X-RapidAPI-Key": _RAPIDAPI_KEY_V249,
-        "X-RapidAPI-Host": _RAPIDAPI_HOST_V249,
+        "X-RapidAPI-Key": _RAPIDAPI_KEY_V250,
+        "X-RapidAPI-Host": _RAPIDAPI_HOST_V250,
     }
 
     try:
-        info_url = f"https://{_RAPIDAPI_HOST_V249}/user/info?unique_id={username}"
+        info_url = f"https://{_RAPIDAPI_HOST_V250}/user/info?unique_id={username}"
         r = requests.get(info_url, headers=headers, timeout=15)
         if r.status_code != 200:
             return {'success': False, 'error': f'http_{r.status_code}'}
@@ -77,14 +79,15 @@ def _rapidapi_fetch_v249(username: str) -> dict:
 
         data = j.get('data', {}) or {}
         user = data.get('user', {}) or {}
-        stats = data.get('stats', {}) or {}
+        stats_raw = data.get('stats', {}) or data.get('statsV2', {}) or {}
 
         # Get posts for region detection
-        posts_url = f"https://{_RAPIDAPI_HOST_V249}/user/posts?unique_id={username}&count=30&cursor=0"
+        posts_url = f"https://{_RAPIDAPI_HOST_V250}/user/posts?unique_id={username}&count=30&cursor=0"
         region_distribution = {}
         videos_count = 0
         country_iso = ""
         vpn_country = None
+        regions_sequence = []
 
         try:
             r2 = requests.get(posts_url, headers=headers, timeout=15)
@@ -94,9 +97,10 @@ def _rapidapi_fetch_v249(username: str) -> dict:
                     videos = pj.get('data', {}).get('videos', []) or []
                     videos_count = len(videos)
                     for v in videos:
-                        rg = v.get('region', '') or ''
+                        rg = _safe_str_v250(v.get('region'), '').upper()
                         if rg:
                             region_distribution[rg] = region_distribution.get(rg, 0) + 1
+                            regions_sequence.append(rg)
 
                     if region_distribution:
                         arab_isos = {'SA','AE','KW','QA','BH','OM','YE','IQ','SY','LB','JO','PS',
@@ -116,50 +120,67 @@ def _rapidapi_fetch_v249(username: str) -> dict:
         except Exception:
             pass
 
-        # 🔒 Type-safe payload - guarantees NO None values in strings
-        nickname = _safe_str_v249(user.get('nickname'), username)
-        if not nickname or nickname.strip() == "":
-            nickname = username
+        # 🔥 v2.5.0 CRITICAL: Build EXACT tikwm-compatible payload
+        # so app.py's _raw_from_tikwm can convert ISO→country automatically
+        tikwm_json_payload = {
+            'code': 0,
+            'msg': 'success',
+            'processed_time': 0,
+            'data': {
+                'user': {
+                    'id': _safe_str_v250(user.get('id')),
+                    'uniqueId': _safe_str_v250(user.get('uniqueId'), username),
+                    'nickname': _safe_str_v250(user.get('nickname'), username) or username,
+                    'avatarThumb': _safe_str_v250(user.get('avatarThumb')),
+                    'avatarMedium': _safe_str_v250(user.get('avatarMedium')),
+                    'avatarLarger': _safe_str_v250(user.get('avatarLarger')),
+                    'signature': _safe_str_v250(user.get('signature')),
+                    'verified': bool(user.get('verified', False)),
+                    'secUid': _safe_str_v250(user.get('secUid')),
+                    'secret': bool(user.get('secret', False)),
+                    'ftc': bool(user.get('ftc', False)),
+                    'relation': _safe_int_v250(user.get('relation')),
+                    'openFavorite': bool(user.get('openFavorite', False)),
+                    'commentSetting': _safe_int_v250(user.get('commentSetting')),
+                    'duetSetting': _safe_int_v250(user.get('duetSetting')),
+                    'stitchSetting': _safe_int_v250(user.get('stitchSetting')),
+                    'privateAccount': bool(user.get('privateAccount', False)),
+                    'isADVirtual': bool(user.get('isADVirtual', False)),
+                    'isUnderAge18': bool(user.get('isUnderAge18', False)),
+                    'region': country_iso,  # ✅ ISO from posts
+                    'language': _safe_str_v250(user.get('language')),
+                    'createTime': _safe_int_v250(user.get('createTime')),
+                },
+                'stats': {
+                    'followerCount': _safe_int_v250(stats_raw.get('followerCount') or stats_raw.get('follower_count')),
+                    'followingCount': _safe_int_v250(stats_raw.get('followingCount') or stats_raw.get('following_count')),
+                    'heartCount': _safe_int_v250(stats_raw.get('heartCount') or stats_raw.get('heart') or stats_raw.get('heart_count')),
+                    'videoCount': _safe_int_v250(stats_raw.get('videoCount') or stats_raw.get('video_count')),
+                    'friendCount': _safe_int_v250(stats_raw.get('friendCount') or stats_raw.get('friend_count')),
+                    'diggCount': _safe_int_v250(stats_raw.get('diggCount') or stats_raw.get('digg_count')),
+                },
+            }
+        }
 
+        # Return dict shaped like fetch_user_tikwm output
         return {
             'success': True,
-            'json': {
-                'code': 0,
-                'data': {
-                    'user': {
-                        'uniqueId': _safe_str_v249(user.get('uniqueId'), username),
-                        'nickname': nickname,
-                        'signature': _safe_str_v249(user.get('signature'), ''),
-                        'avatarLarger': _safe_str_v249(user.get('avatarLarger'), '') or _safe_str_v249(user.get('avatarMedium'), ''),
-                        'verified': bool(user.get('verified', False)),
-                        'region': _safe_str_v249(country_iso, ''),
-                        'language': _safe_str_v249(user.get('language'), ''),
-                        'id': _safe_str_v249(user.get('id'), ''),
-                        'secUid': _safe_str_v249(user.get('secUid'), ''),
-                        'createTime': _safe_int_v249(user.get('createTime'), 0),
-                    },
-                    'stats': {
-                        'followerCount': _safe_int_v249(stats.get('followerCount'), 0),
-                        'followingCount': _safe_int_v249(stats.get('followingCount'), 0),
-                        'heartCount': _safe_int_v249(stats.get('heartCount') or stats.get('heart'), 0),
-                        'videoCount': _safe_int_v249(stats.get('videoCount'), 0),
-                        'friendCount': _safe_int_v249(stats.get('friendCount'), 0),
-                    }
-                }
-            },
-            'proxy': 'rapidapi_v249',
-            'time': 2.0,
-            'region_iso': _safe_str_v249(country_iso, ''),
-            'actual_residence': _safe_str_v249(country_iso, ''),
-            'previous_residence': _safe_str_v249(vpn_country, ''),
+            'tikwm_json': tikwm_json_payload,
+            'json': tikwm_json_payload,
+            'region_iso': country_iso,
+            'actual_residence': country_iso,
+            'previous_residence': vpn_country,
             'residence_confidence': 90 if country_iso else 0,
             'residence_type': 'rapidapi_posts',
             'timezone_match': None,
-            'regions_sequence': list(region_distribution.keys()),
+            'regions_sequence': regions_sequence,
             'region_distribution': region_distribution,
             'videos_count': videos_count,
-            'region_source': 'rapidapi_posts',
+            'region_source': 'rapidapi_v250',
+            'source': 'rapidapi_v250',
             'content': None,
+            'proxy': 'rapidapi_v250',
+            'time': 2.0,
         }
     except Exception as _e:
         return {'success': False, 'error': f'exception: {str(_e)[:100]}'}
@@ -802,9 +823,9 @@ def detect_actual_residence(regions_seq, times_seq):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_user(username):
-    """✅ v2.4.9 - RapidAPI Layer 0 + tikwm/jina fallback"""
-    # 🚀 v2.4.9: Try RapidAPI FIRST (sync, type-safe)
-    rapidapi_result = _rapidapi_fetch_v249(username)
+    """✅ v2.5.0 - RapidAPI Layer 0 (tikwm-compatible payload)"""
+    # 🚀 v2.5.0: RapidAPI first, returns tikwm-shaped dict so _raw_from_tikwm handles country mapping
+    rapidapi_result = _rapidapi_fetch_v250(username)
     if rapidapi_result.get('success'):
         return rapidapi_result
 
@@ -1931,7 +1952,7 @@ def display_single_result(result):
         return
     
     # ✅ تطوير #5 v2.1.1 - عرض الأفاتار + الاسم بصورة بارزة
-    # 🔒 v2.4.9: nickname fallback to username if None
+    # 🔒 v2.5.0: nickname fallback
     if not result.get('nickname') or result.get('nickname') in (None, '', 'None'):
         result['nickname'] = result.get('username', '—')
     avatar = result.get('avatar')
@@ -2284,7 +2305,7 @@ def display_single_result(result):
     # 🔧 تفاصيل تقنية للمطورين - ✅ v2.1.5 مغلقة افتراضياً
     with st.expander("🔧 تفاصيل تقنية للمطورين", expanded=False):
         # ✅ Patch14: حُذِفت بطاقة التشخيص المكرّرة (المتطابقة مع Patch13 أعلى الصفحة)
-        # 🔒 v2.4.9: Type-safe field extraction
+        # 🔒 v2.5.0: Type-safe field extraction
         user_id = result.get('user_id') or '—'
         if not isinstance(user_id, str):
             user_id = str(user_id) if user_id else '—'
